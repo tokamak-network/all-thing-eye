@@ -83,17 +83,35 @@ docker-compose logs -f
 
 ## 📖 Usage
 
-### Data Collection
+### 1. Data Collection
 
 ```bash
-# Collect last 7 days from all sources
-python -m src.cli collect --source all --days 7
+# Test GitHub data collection (single member)
+python tests/test_github_plugin.py --single-member Kevin
 
-# Collect from specific source
-python -m src.cli collect --source slack --days 30
+# Collect for all members (current week)
+python tests/test_github_plugin.py
+
+# Collect last week's data
+python tests/test_github_plugin.py --last-week
 ```
 
-### Member Queries
+### 2. Query and Analysis
+
+```bash
+# Analyze single member (generates AI prompts)
+python tests/test_query_and_ai.py --member Kevin
+
+# Team summary
+python tests/test_query_and_ai.py --team-summary
+
+# Export specific format
+python tests/test_query_and_ai.py --member Kevin --format json
+```
+
+**Output files saved to**: `output/reports/`
+
+### 3. Member Management
 
 ```bash
 # List all members
@@ -219,9 +237,10 @@ pytest --cov=src tests/
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 - [GitHub Setup Guide](docs/GITHUB_SETUP.md)
 - [Quick Start Guide](docs/QUICK_START.md)
-- [Weekly Collection Guide](docs/WEEKLY_COLLECTION.md)
-- [Member Management](docs/MEMBER_MANAGEMENT.md)
 - [Environment Setup](docs/ENV_SETUP.md)
+- [Member Management](docs/MEMBER_MANAGEMENT.md)
+- [Weekly Data Collection](docs/WEEKLY_COLLECTION.md)
+- [Query & AI Formatter](docs/QUERY_AND_AI.md) ⭐ New!
 - [API Reference](docs/API_REFERENCE.md) (Coming soon)
 
 ## 🤝 Contributing

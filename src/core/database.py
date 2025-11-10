@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
+from src.utils.logger import get_logger
 
 
 class DatabaseManager:
@@ -24,6 +25,7 @@ class DatabaseManager:
         Args:
             main_db_url: SQLAlchemy database URL for main database
         """
+        self.logger = get_logger(__name__)
         self.main_db_url = main_db_url
         self.main_engine = self._create_engine(main_db_url)
         self.source_engines: Dict[str, Engine] = {}
@@ -83,6 +85,27 @@ class DatabaseManager:
         self._create_tables(engine, schema)
         
         print(f"✅ Created database for source: {source_name}")
+        return engine
+    
+    def register_existing_source_database(self, source_name: str, db_url: str) -> Engine:
+        """
+        Register an existing source database without creating new tables
+        
+        Args:
+            source_name: Name of the data source
+            db_url: Database URL for the source
+            
+        Returns:
+            Database engine for the source
+        """
+        if source_name in self.source_engines:
+            return self.source_engines[source_name]
+        
+        # Create engine and register it
+        engine = self._create_engine(db_url)
+        self.source_engines[source_name] = engine
+        
+        self.logger.debug(f"✅ Registered existing database for source: {source_name}")
         return engine
     
     def _create_tables(self, engine: Engine, schema: Dict[str, str]) -> None:

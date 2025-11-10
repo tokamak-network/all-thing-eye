@@ -126,15 +126,51 @@ class MemberIndex:
         return None
     
     def get_member_by_name(self, name: str) -> Optional[Dict[str, Any]]:
-        """Get member information by name"""
+        """Get member information by name or email"""
+        # Try exact name match first
         query = '''
             SELECT id, name, email, created_at 
             FROM members 
-            WHERE name = :name
+            WHERE name = :name OR email = :name
         '''
         
         result = self.db.execute_query(query, {'name': name})
+        if result:
+            return result[0]
+        
+        # Try case-insensitive match
+        query_insensitive = '''
+            SELECT id, name, email, created_at 
+            FROM members 
+            WHERE LOWER(name) = LOWER(:name) OR LOWER(email) = LOWER(:name)
+        '''
+        
+        result = self.db.execute_query(query_insensitive, {'name': name})
         return result[0] if result else None
+    
+    def get_member_identifier(self, member_id: int, source_type: str) -> Optional[str]:
+        """
+        Get a specific source identifier for a member
+        
+        Args:
+            member_id: Member ID
+            source_type: Type of data source (e.g., 'github', 'slack')
+            
+        Returns:
+            Source user ID or None if not found
+        """
+        query = '''
+            SELECT source_user_id 
+            FROM member_identifiers 
+            WHERE member_id = :member_id AND source_type = :source_type
+        '''
+        
+        result = self.db.execute_query(
+            query,
+            {'member_id': member_id, 'source_type': source_type}
+        )
+        
+        return result[0]['source_user_id'] if result else None
     
     def get_member_identifiers(self, member_id: int) -> Dict[str, str]:
         """
@@ -278,15 +314,17 @@ class MemberIndex:
         self,
         source_type: str,
         member_mapping: Dict[str, str],
-        activities: List[Dict[str, Any]]
+        activities: List[Dict[str, Any]],
+        member_details: Optional[Dict[str, Dict[str, str]]] = None
     ) -> Dict[str, int]:
         """
         Sync members and activities from a plugin
         
         Args:
             source_type: Type of data source
-            member_mapping: Dict of {source_user_id: member_identifier}
+            member_mapping: Dict of {source_user_id: member_name}
             activities: List of activity records from plugin
+            member_details: Optional dict of {member_name: {'email': '...', 'name': '...'}}
             
         Returns:
             Stats dict with sync results
@@ -300,25 +338,40 @@ class MemberIndex:
         # First, ensure all members are registered
         member_id_map = {}  # source_user_id -> member_id
         
-        for source_user_id, member_identifier in member_mapping.items():
+        for source_user_id, member_name in member_mapping.items():
             try:
                 # Try to find existing member
-                member = self.get_member_by_name(member_identifier)
+                member = self.get_member_by_name(member_name)
                 
                 if member:
                     member_id = member['id']
                 else:
-                    # Register new member
+                    # Get additional member details if available
+                    email = None
+                    original_source_id = source_user_id  # Default to lowercase key
+                    
+                    if member_details and member_name in member_details:
+                        details = member_details[member_name]
+                        email = details.get('email')
+                        # Get original case-sensitive source ID
+                        if source_type == 'github':
+                            original_source_id = details.get('github_id', source_user_id)
+                        elif source_type == 'slack':
+                            original_source_id = details.get('slack_id', source_user_id)
+                    
+                    # Register new member with name as primary identifier
+                    # IMPORTANT: Use original_source_id with correct case for member_identifiers
                     member_id = self.register_member(
-                        name=member_identifier,
-                        source_identifiers={source_type: source_user_id}
+                        name=member_name,
+                        email=email,
+                        source_identifiers={source_type: original_source_id}
                     )
                     stats['members_registered'] += 1
                 
                 member_id_map[source_user_id.lower()] = member_id
                 
             except Exception as e:
-                print(f"⚠️  Error registering member {member_identifier}: {e}")
+                print(f"⚠️  Error registering member {member_name}: {e}")
                 stats['errors'] += 1
         
         # Add activities

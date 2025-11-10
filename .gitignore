@@ -109,3 +109,6 @@ data/cache/
 # Cursor
 .cursor/
 .cursorrules   
+
+# Output
+output/

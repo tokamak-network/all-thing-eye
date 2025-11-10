@@ -204,15 +204,20 @@ def main(use_last_week: bool = False, single_member: str = None):
             # 9. Sync to member index
             print("\n8️⃣ Syncing to member index...")
             
-            # Extract member mapping and activities
+            # Extract member mapping, details, and activities
             member_mapping = github_plugin.get_member_mapping()
+            member_details = github_plugin.get_member_details()
             activities = github_plugin.extract_member_activities(data)
+            
+            print(f"   📋 Member mapping: {len(member_mapping)} members")
+            print(f"   📋 Sample mapping: {list(member_mapping.items())[:2]}")
             
             # Sync
             stats = member_index.sync_from_plugin(
                 source_type='github',
                 member_mapping=member_mapping,
-                activities=activities
+                activities=activities,
+                member_details=member_details
             )
             
             print(f"   ✅ Members registered: {stats['members_registered']}")

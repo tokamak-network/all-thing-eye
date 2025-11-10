@@ -226,20 +226,51 @@ class GitHubPlugin(DataSourcePlugin):
             raise
     
     def get_member_mapping(self) -> Dict[str, str]:
-        """Map GitHub usernames to member identifiers"""
+        """
+        Map GitHub usernames to member names
+        
+        Returns:
+            Dict of {github_login: member_name}
+            Uses the 'name' field from members.csv as the primary identifier
+        """
         mapping = {}
         
         for member in self.member_list:
             github_id = member.get('githubId') or member.get('github_id')
-            email = member.get('email')
             name = member.get('name')
+            email = member.get('email')
             
-            if github_id:
-                # Use email as identifier if available, otherwise use name
-                identifier = email or name or github_id
-                mapping[github_id.lower()] = identifier
+            if github_id and name:
+                # Use name as primary identifier (e.g., 'Ale', 'Kevin')
+                # This matches the 'name' column in members.csv
+                mapping[github_id.lower()] = name
+            elif github_id:
+                # Fallback to email if name is not available
+                mapping[github_id.lower()] = email or github_id
         
         return mapping
+    
+    def get_member_details(self) -> Dict[str, Dict[str, str]]:
+        """
+        Get detailed member information
+        
+        Returns:
+            Dict of {member_name: {'email': '...', 'github_id': '...'}}
+        """
+        details = {}
+        
+        for member in self.member_list:
+            name = member.get('name')
+            email = member.get('email')
+            github_id = member.get('githubId') or member.get('github_id')
+            
+            if name:
+                details[name] = {
+                    'email': email,
+                    'github_id': github_id
+                }
+        
+        return details
     
     def extract_member_activities(
         self, 
