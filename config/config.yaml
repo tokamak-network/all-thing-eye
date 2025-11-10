@@ -1,0 +1,200 @@
+# All-Thing-Eye Configuration
+
+# Application
+app:
+  name: "All-Thing-Eye"
+  version: "0.1.0"
+  environment: ${APP_ENV:development}
+  debug: ${APP_DEBUG:true}
+
+# Database
+database:
+  main_db: ${DATABASE_URL:sqlite:///data/databases/main.db}
+  echo: false # SQL 로깅
+  pool_size: 10
+  max_overflow: 20
+
+# Data Sources (Plugins)
+plugins:
+  slack:
+    enabled: ${SLACK_ENABLED:false}
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+    workspace_id: ${SLACK_WORKSPACE_ID}
+    rate_limit: 20 # requests per minute
+    collection:
+      channels: true
+      messages: true
+      threads: true
+      reactions: true
+      users: true
+
+  github:
+    enabled: ${GITHUB_ENABLED:true}
+    token: ${GITHUB_TOKEN}
+    organization: ${GITHUB_ORG}
+    rate_limit: 5000 # requests per hour (GitHub limit)
+    collection:
+      commits: true
+      pull_requests: true
+      issues: true
+      code_reviews: true
+      repositories: [] # empty = all repos
+      include_diff: true # Include actual code diffs (WARNING: many API calls!)
+    # Team members list (GitHub username mapping)
+    member_list:
+      - name: "Kevin"
+        githubId: "ggs134"
+        email: "kevin@company.com"
+      - name: "Jason"
+        githubId: "cd4761"
+        email: "jason@company.com"
+      - name: "Theo"
+        githubId: "theo-learner"
+        email: "theo@company.com"
+      - name: "Ale"
+        githubId: "SonYoungsung"
+        email: "ale@company.com"
+      # Add more members as needed
+
+  notion:
+    enabled: ${NOTION_ENABLED:true}
+    token: ${NOTION_TOKEN}
+    workspace_id: ${NOTION_WORKSPACE_ID}
+    rate_limit: 3 # requests per second
+    collection:
+      pages: true
+      databases: true
+      comments: false
+
+  google_drive:
+    enabled: ${GOOGLE_DRIVE_ENABLED:false}
+    credentials_path: ${GOOGLE_CREDENTIALS_PATH}
+    folder_id: ${GOOGLE_DRIVE_FOLDER_ID}
+    collection:
+      files: true
+      shares: true
+      comments: true
+      activity: true
+
+# Member Index
+member_index:
+  auto_create_members: true
+  fuzzy_matching: true # 이름 유사도 매칭
+  matching_threshold: 0.85
+
+# Scheduler
+scheduler:
+  enabled: ${SCHEDULER_ENABLED:true}
+  timezone: "Asia/Seoul"
+  jobs:
+    - name: "daily_collection"
+      plugin: "all"
+      schedule:
+        type: "cron"
+        hour: 2
+        minute: 0
+      config:
+        days: 1
+
+    - name: "weekly_full_sync"
+      plugin: "all"
+      schedule:
+        type: "cron"
+        day_of_week: 0 # Sunday
+        hour: 3
+        minute: 0
+      config:
+        days: 7
+
+    - name: "cleanup_old_data"
+      plugin: "cleanup"
+      schedule:
+        type: "cron"
+        day: 1 # 매월 1일
+        hour: 4
+        minute: 0
+      config:
+        retention_days: ${DATA_RETENTION_DAYS:365}
+
+# Data Collection
+collection:
+  default_days: ${DATA_COLLECTION_DAYS:30}
+  batch_size: 100
+  retry_attempts: 3
+  retry_delay_seconds: 5
+  timeout_seconds: 300
+
+# API Server
+api:
+  host: ${API_HOST:0.0.0.0}
+  port: ${API_PORT:8000}
+  workers: ${API_WORKERS:4}
+  reload: false # development only
+  cors:
+    enabled: true
+    origins: ${CORS_ORIGINS:http://localhost:3000}
+    allow_credentials: true
+    allow_methods: ["*"]
+    allow_headers: ["*"]
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+
+# AI Integration
+ai:
+  provider: ${AI_PROVIDER:openai}
+  api_key: ${AI_API_KEY}
+  model: ${AI_MODEL:gpt-4}
+  temperature: 0.7
+  max_tokens: 2000
+  prompt_templates:
+    performance_analysis: "templates/performance_analysis.txt"
+    team_insights: "templates/team_insights.txt"
+
+# Logging
+logging:
+  level: ${LOG_LEVEL:INFO}
+  format: "json" # json or text
+  output:
+    console: true
+    file: true
+    file_path: "logs/app.log"
+  rotation:
+    max_bytes: 10485760 # 10MB
+    backup_count: 5
+
+# Security
+security:
+  secret_key: ${SECRET_KEY}
+  algorithm: ${JWT_ALGORITHM:HS256}
+  access_token_expire_minutes: ${ACCESS_TOKEN_EXPIRE_MINUTES:30}
+  encryption:
+    enabled: true
+    algorithm: "AES256"
+
+# Cache
+cache:
+  enabled: true
+  backend: "memory" # memory, redis
+  redis_url: ${REDIS_URL}
+  ttl_seconds: ${CACHE_TTL_SECONDS:3600}
+  max_size: 1000 # for memory backend
+
+# Monitoring
+monitoring:
+  prometheus:
+    enabled: ${PROMETHEUS_ENABLED:false}
+    port: 9090
+  sentry:
+    enabled: false
+    dsn: ${SENTRY_DSN}
+    environment: ${APP_ENV:development}
+    traces_sample_rate: 0.1
+
+# Feature Flags
+features:
+  auto_member_creation: true
+  ai_analysis: true
+  real_time_sync: false
+  advanced_analytics: false

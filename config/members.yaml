@@ -1,0 +1,159 @@
+# Team Member List
+#
+# This file contains the list of team members and their identifiers across different platforms.
+# You can edit this file without touching the main config.yaml
+#
+# Format:
+#   - name: Display name (used as primary identifier)
+#     email: Email address (optional but recommended)
+#     github_id: GitHub username
+#     slack_id: Slack user ID (optional)
+#     notion_id: Notion user ID (optional)
+
+# Core Team Members
+- name: "Kevin"
+  email: "kevin@tokamak.network"
+  github_id: "ggs134"
+  slack_id: "kevin@tokamak.network"
+  notion_id: "kevin@tokamak.network"
+
+- name: "Jason"
+  email: "jason@tokamak.network"
+  github_id: "cd4761"
+  slack_id: "jason@tokamak.network"
+  notion_id: "jason@tokamak.network"
+
+- name: "Theo"
+  email: "theo@tokamak.network"
+  github_id: "theo-learner"
+  slack_id: "theo@tokamak.network"
+  notion_id: "theo@tokamak.network"
+
+- name: "Ale"
+  email: "ale@tokamak.network"
+  github_id: "SonYoungsung"
+  slack_id: "ale@tokamak.network"
+  notion_id: "ale@tokamak.network"
+
+- name: "Harvey"
+  email: "harvey@tokamak.network"
+  github_id: "zzooppii"
+  slack_id: "harvey@tokamak.network"
+  notion_id: "harvey@tokamak.network"
+
+- name: "Suhyeon"
+  email: "suhyeon@tokamak.network"
+  github_id: "shlee-lab"
+  slack_id: "suhyeon@tokamak.network"
+  notion_id: "suhyeon@tokamak.network"
+
+# External Collaborators
+- name: "Praveen"
+  email: "praveen@tokamak.network"
+  github_id: "praveen263112"
+  slack_id: "praveen@tokamak.network"
+  notion_id: "praveen@tokamak.network"
+
+- name: "Zena"
+  email: "zena@tokamak.network"
+  github_id: "Zena-park"
+  slack_id: "zena@tokamak.network"
+  notion_id: "zena@tokamak.network"
+
+- name: "Jake"
+  email: "jake@tokamak.network"
+  github_id: "JehyukJang"
+  slack_id: "jake@tokamak.network"
+  notion_id: "jake@tokamak.network"
+
+- name: "Nam"
+  email: "nam@tokamak.network"
+  github_id: "0x6e616d"
+  slack_id: "nam@tokamak.network"
+  notion_id: "nam@tokamak.network"
+
+- name: "Jamie"
+  email: "jamie@tokamak.network"
+  github_id: "jjamie65"
+  slack_id: "jamie@tokamak.network"
+  notion_id: "jamie@tokamak.network"
+
+- name: "Aryan"
+  email: "aryan@tokamak.network"
+  github_id: "DarkKnight3074"
+  slack_id: "aryan@tokamak.network"
+  notion_id: "aryan@tokamak.network"
+
+- name: "Muhammed"
+  email: "muhammed@tokamak.network"
+  github_id: "mabingol"
+  slack_id: "muhammed@tokamak.network"
+  notion_id: "muhammed@tokamak.network"
+
+- name: "Mehdi"
+  email: "mehdi@tokamak.network"
+  github_id: "mehdi-defiesta"
+  slack_id: "mehdi@tokamak.network"
+  notion_id: "mehdi@tokamak.network"
+
+- name: "George"
+  email: "george@tokamak.network"
+  github_id: "NegruGeorge"
+  slack_id: "george@tokamak.network"
+  notion_id: "george@tokamak.network"
+
+- name: "Singh"
+  email: "singh@tokamak.network"
+  github_id: "Shailu-s"
+  slack_id: "singh@tokamak.network"
+  notion_id: "singh@tokamak.network"
+
+- name: "Nil"
+  email: "nil@tokamak.network"
+  github_id: "nsoroush"
+  slack_id: "nil@tokamak.network"
+  notion_id: "nil@tokamak.network"
+
+- name: "Luca"
+  email: "luca@tokamak.network"
+  github_id: "Luca-DallAva"
+  slack_id: "luca@tokamak.network"
+  notion_id: "luca@tokamak.network"
+
+- name: "Jeff"
+  email: "jeff@tokamak.network"
+  github_id: "FoodChain1028"
+  slack_id: "jeff@tokamak.network"
+  notion_id: "jeff@tokamak.network"
+
+- name: "Amir"
+  email: "amir@tokamak.network"
+  github_id: "amrtokmak"
+  slack_id: "amir@tokamak.network"
+  notion_id: "amir@tokamak.network"
+
+- name: "Manish"
+  email: "manish@tokamak.network"
+  github_id: "cy00r"
+  slack_id: "manish@tokamak.network"
+  notion_id: "manish@tokamak.network"
+
+- name: "Bernard"
+  email: "bernard@tokamak.network"
+  github_id: "b3rnardlee"
+  slack_id: "bernard@tokamak.network"
+  notion_id: "bernard@tokamak.network"
+
+- name: "Eugenie"
+  email: "eugenie@tokamak.network"
+  github_id: "eugenietokamak"
+  slack_id: "eugenie@tokamak.network"
+  notion_id: "eugenie@tokamak.network"
+
+# Add more members here as needed
+# - name: "New Member"
+#   email: "newmember@tokamak.network"
+#   github_id: "github_username"
+#   slack_id: "newmember@tokamak.network"
+#   notion_id: "newmember@tokamak.network"
+
