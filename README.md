@@ -233,15 +233,27 @@ pytest --cov=src tests/
 
 ## 📚 Documentation
 
-- [Architecture Design](docs/ARCHITECTURE.md)
-- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
-- [GitHub Setup Guide](docs/GITHUB_SETUP.md)
+### Setup & Configuration
+
 - [Quick Start Guide](docs/QUICK_START.md)
 - [Environment Setup](docs/ENV_SETUP.md)
+- [GitHub Setup Guide](docs/GITHUB_SETUP.md)
+- [Slack Setup Guide](docs/SLACK_SETUP.md)
+- [**Google Drive Setup Guide**](docs/GOOGLE_DRIVE_SETUP.md) ⭐ New!
 - [Member Management](docs/MEMBER_MANAGEMENT.md)
-- [Weekly Data Collection](docs/WEEKLY_COLLECTION.md)
-- [Query & AI Formatter](docs/QUERY_AND_AI.md) ⭐ New!
+
+### Architecture & Development
+
+- [Architecture Design](docs/ARCHITECTURE.md)
+- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
+- [Database Schema Reference](docs/DATABASE_SCHEMA.md)
 - [API Reference](docs/API_REFERENCE.md) (Coming soon)
+
+### Data Collection & Analysis
+
+- [Weekly Data Collection](docs/WEEKLY_COLLECTION.md)
+- [Query & AI Formatter](docs/QUERY_AND_AI.md)
+- [**Report Guidelines**](docs/REPORT_GUIDELINES.md) ⭐ **Essential for Reports!**
 
 ## 🤝 Contributing
 

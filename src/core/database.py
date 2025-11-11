@@ -232,6 +232,7 @@ class DatabaseManager:
                     activity_type TEXT NOT NULL,
                     timestamp TIMESTAMP NOT NULL,
                     metadata TEXT,
+                    activity_id TEXT UNIQUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (member_id) REFERENCES members(id)
                 )

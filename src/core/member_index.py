@@ -198,7 +198,8 @@ class MemberIndex:
         source_type: str,
         activity_type: str,
         timestamp: datetime,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
+        activity_id: Optional[str] = None
     ) -> None:
         """
         Record a member activity
@@ -209,11 +210,12 @@ class MemberIndex:
             activity_type: Type of activity
             timestamp: Activity timestamp
             metadata: Additional activity data
+            activity_id: Unique activity identifier (for deduplication)
         """
         insert_query = text('''
-            INSERT INTO member_activities 
-            (member_id, source_type, activity_type, timestamp, metadata)
-            VALUES (:member_id, :source_type, :activity_type, :timestamp, :metadata)
+            INSERT OR IGNORE INTO member_activities 
+            (member_id, source_type, activity_type, timestamp, metadata, activity_id)
+            VALUES (:member_id, :source_type, :activity_type, :timestamp, :metadata, :activity_id)
         ''')
         
         with self.db.get_connection() as conn:
@@ -225,7 +227,8 @@ class MemberIndex:
                         'source_type': source_type,
                         'activity_type': activity_type,
                         'timestamp': timestamp.isoformat(),
-                        'metadata': json.dumps(metadata, ensure_ascii=False)
+                        'metadata': json.dumps(metadata, ensure_ascii=False),
+                        'activity_id': activity_id
                     }
                 )
     
@@ -404,7 +407,8 @@ class MemberIndex:
                     source_type=source_type,
                     activity_type=activity['activity_type'],
                     timestamp=activity['timestamp'],
-                    metadata=activity.get('metadata', {})
+                    metadata=activity.get('metadata', {}),
+                    activity_id=activity.get('activity_id')
                 )
                 
                 stats['activities_added'] += 1

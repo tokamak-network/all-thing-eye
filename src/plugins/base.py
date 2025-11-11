@@ -65,7 +65,7 @@ class DataSourcePlugin(ABC):
         start_date: datetime, 
         end_date: datetime,
         **kwargs
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Collect data from the source within the specified date range
         
@@ -75,7 +75,8 @@ class DataSourcePlugin(ABC):
             **kwargs: Additional source-specific parameters
             
         Returns:
-            List of collected data records
+            Dict containing collected data (structure depends on plugin)
+            Example: {'commits': [...], 'prs': [...]}
         """
         pass
     
@@ -97,13 +98,13 @@ class DataSourcePlugin(ABC):
     @abstractmethod
     def extract_member_activities(
         self, 
-        data: List[Dict[str, Any]]
+        data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
         Extract and normalize member activities from collected data
         
         Args:
-            data: Raw data collected from the source
+            data: Raw data collected from the source (Dict returned by collect_data)
             
         Returns:
             List of normalized activity records with format:

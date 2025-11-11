@@ -9,6 +9,8 @@
 #     github_id: GitHub username
 #     slack_id: Slack user ID (optional)
 #     notion_id: Notion user ID (optional)
+#     role: Role in the team (e.g., "Project Lead", "Developer")
+#     project: Project name (e.g., "project-ooo")
 
 # Core Team Members
 - name: "Kevin"
@@ -22,6 +24,8 @@
   github_id: "cd4761"
   slack_id: "jason@tokamak.network"
   notion_id: "jason@tokamak.network"
+  role: "Project Lead"
+  project: "project-eco"
 
 - name: "Theo"
   email: "theo@tokamak.network"
@@ -53,6 +57,8 @@
   github_id: "praveen263112"
   slack_id: "praveen@tokamak.network"
   notion_id: "praveen@tokamak.network"
+  role: "Project Lead"
+  project: "project-trh"
 
 - name: "Zena"
   email: "zena@tokamak.network"
@@ -65,6 +71,8 @@
   github_id: "JehyukJang"
   slack_id: "jake@tokamak.network"
   notion_id: "jake@tokamak.network"
+  role: "Project Lead"
+  project: "project-ooo"
 
 - name: "Nam"
   email: "nam@tokamak.network"
@@ -77,6 +85,8 @@
   github_id: "jjamie65"
   slack_id: "jamie@tokamak.network"
   notion_id: "jamie@tokamak.network"
+  role: "Project Lead"
+  project: "project-syb"
 
 - name: "Aryan"
   email: "aryan@tokamak.network"
@@ -127,9 +137,9 @@
   notion_id: "jeff@tokamak.network"
 
 - name: "Amir"
-  email: "amir@tokamak.network"
+  email: "aamir@tokamak.network"
   github_id: "amrtokmak"
-  slack_id: "amir@tokamak.network"
+  slack_id: "aamir@tokamak.network"
   notion_id: "amir@tokamak.network"
 
 - name: "Manish"
@@ -150,6 +160,10 @@
   slack_id: "eugenie@tokamak.network"
   notion_id: "eugenie@tokamak.network"
 
+- name: "Monica"
+  email: "monica@tokamak.network"
+  slack_id: "monica@tokamak.network"
+  notion_id: "monica@tokamak.network"
 # Add more members here as needed
 # - name: "New Member"
 #   email: "newmember@tokamak.network"

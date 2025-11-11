@@ -87,6 +87,12 @@ secrets/
 *-credentials.json
 service-account.json
 
+# Google Drive OAuth
+config/google_drive/credentials.json
+config/google_drive/token_admin.pickle
+config/google_drive/*.json
+config/google_drive/*.pickle
+
 # Docker
 docker-compose.override.yml
 

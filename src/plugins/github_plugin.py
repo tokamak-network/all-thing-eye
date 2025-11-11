@@ -171,7 +171,7 @@ class GitHubPlugin(DataSourcePlugin):
         start_date: datetime, 
         end_date: datetime,
         **kwargs
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """Collect GitHub data for the specified period"""
         print(f"\n📊 Collecting GitHub data for {self.org_name}")
         print(f"   Period: {start_date.isoformat()} ~ {end_date.isoformat()}")
@@ -274,7 +274,7 @@ class GitHubPlugin(DataSourcePlugin):
     
     def extract_member_activities(
         self, 
-        data: List[Dict[str, Any]]
+        data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Extract normalized member activities from GitHub data"""
         activities = []
@@ -286,13 +286,16 @@ class GitHubPlugin(DataSourcePlugin):
         
         # Extract commit activities
         for commit in github_data.get('commits', []):
+            sha = commit.get('sha')
             activities.append({
                 'member_identifier': commit.get('author_login'),
                 'activity_type': 'github_commit',
                 'timestamp': datetime.fromisoformat(commit.get('committed_at').replace('Z', '+00:00')),
+                'activity_id': f"github:commit:{sha}",
                 'metadata': {
                     'repository': commit.get('repository_name'),
                     'message': commit.get('message'),
+                    'sha': sha,
                     'additions': commit.get('additions', 0),
                     'deletions': commit.get('deletions', 0),
                     'url': commit.get('url')
@@ -301,14 +304,17 @@ class GitHubPlugin(DataSourcePlugin):
         
         # Extract PR activities
         for pr in github_data.get('pull_requests', []):
+            repo = pr.get('repository_name')
+            number = pr.get('number')
             activities.append({
                 'member_identifier': pr.get('author_login'),
                 'activity_type': 'github_pull_request',
                 'timestamp': datetime.fromisoformat(pr.get('created_at').replace('Z', '+00:00')),
+                'activity_id': f"github:pr:{repo}:{number}",
                 'metadata': {
-                    'repository': pr.get('repository_name'),
+                    'repository': repo,
                     'title': pr.get('title'),
-                    'number': pr.get('number'),
+                    'number': number,
                     'state': pr.get('state'),
                     'url': pr.get('url')
                 }
@@ -316,14 +322,17 @@ class GitHubPlugin(DataSourcePlugin):
         
         # Extract issue activities
         for issue in github_data.get('issues', []):
+            repo = issue.get('repository_name')
+            number = issue.get('number')
             activities.append({
                 'member_identifier': issue.get('author_login'),
                 'activity_type': 'github_issue',
                 'timestamp': datetime.fromisoformat(issue.get('created_at').replace('Z', '+00:00')),
+                'activity_id': f"github:issue:{repo}:{number}",
                 'metadata': {
-                    'repository': issue.get('repository_name'),
+                    'repository': repo,
                     'title': issue.get('title'),
-                    'number': issue.get('number'),
+                    'number': number,
                     'state': issue.get('state'),
                     'url': issue.get('url')
                 }

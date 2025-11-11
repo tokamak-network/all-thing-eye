@@ -178,7 +178,7 @@ class Config:
                             'slackId': m.get('slack_id'),
                             'email': m.get('email')
                         }
-                        for m in members if m.get('slack_id')
+                        for m in members if m.get('slack_id') or m.get('email')
                     ]
                     self._config['plugins']['slack']['member_list'] = slack_members
                 

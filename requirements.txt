@@ -21,7 +21,8 @@ apscheduler==3.10.4
 slack-sdk==3.26.1        # Slack
 PyGithub==2.1.1          # GitHub
 notion-client==2.2.1     # Notion
-google-api-python-client==2.108.0  # Google Drive
+google-api-python-client==2.108.0  # Google Drive & Admin SDK
+google-auth==2.25.2      # Google OAuth2 authentication
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.0
 
@@ -30,6 +31,7 @@ python-dotenv==1.0.0
 pyyaml==6.0.1
 python-dateutil==2.8.2
 pytz==2024.1
+certifi>=2023.7.22  # SSL certificates
 
 # Logging & Monitoring
 structlog==23.2.0
