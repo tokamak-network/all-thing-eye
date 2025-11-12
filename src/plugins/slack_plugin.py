@@ -423,6 +423,9 @@ class SlackPlugin(DataSourcePlugin):
                     if msg.get('subtype') in ['bot_message', 'channel_join', 'channel_leave']:
                         continue
                     
+                    # Convert Slack timestamp to UTC datetime
+                    msg_timestamp = datetime.fromtimestamp(float(msg['ts']), tz=pytz.UTC)
+                    
                     message_data = {
                         'ts': msg['ts'],
                         'channel_id': channel_id,
@@ -434,7 +437,7 @@ class SlackPlugin(DataSourcePlugin):
                         'is_thread_parent': 'thread_ts' in msg and msg.get('ts') == msg.get('thread_ts'),
                         'has_links': bool(re.search(r'https?://[^\s]+', msg.get('text', ''))),
                         'has_files': 'files' in msg,
-                        'posted_at': datetime.fromtimestamp(float(msg['ts'])).isoformat(),
+                        'posted_at': msg_timestamp.isoformat(),
                         'reactions': msg.get('reactions', []),
                         'files': msg.get('files', [])
                     }
@@ -480,6 +483,9 @@ class SlackPlugin(DataSourcePlugin):
                 if msg.get('subtype') in ['bot_message']:
                     continue
                 
+                # Convert Slack timestamp to UTC datetime
+                reply_timestamp = datetime.fromtimestamp(float(msg['ts']), tz=pytz.UTC)
+                
                 reply_data = {
                     'ts': msg['ts'],
                     'channel_id': channel_id,
@@ -491,7 +497,7 @@ class SlackPlugin(DataSourcePlugin):
                     'is_thread_parent': False,
                     'has_links': bool(re.search(r'https?://[^\s]+', msg.get('text', ''))),
                     'has_files': 'files' in msg,
-                    'posted_at': datetime.fromtimestamp(float(msg['ts'])).isoformat(),
+                    'posted_at': reply_timestamp.isoformat(),
                     'reactions': msg.get('reactions', []),
                     'files': msg.get('files', [])
                 }

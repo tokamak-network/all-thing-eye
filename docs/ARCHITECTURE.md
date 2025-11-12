@@ -1,305 +1,710 @@
-# HR 데이터 파이프라인 시스템 아키텍처
+# All-Thing-Eye Web Platform Architecture
 
-## 📌 프로젝트 개요
+**Version:** 1.0.0  
+**Last Updated:** 2025-11-12  
+**Status:** Planning Phase
 
-팀 멤버들의 퍼포먼스 분석을 위한 데이터 파이프라인 시스템
-- 다양한 데이터 소스에서 데이터 수집
-- 멤버 중심의 통합 데이터베이스 구축
-- AI 분석을 위한 데이터 제공
+---
 
-## 🎯 핵심 목표
+## 📋 Table of Contents
 
-1. **다중 소스 데이터 수집**: Slack, GitHub, Notion, Google Drive 등
-2. **소스별 독립 DB 관리**: 각 데이터 소스마다 전용 DB 생성
-3. **멤버 중심 통합**: 멤버 이름을 키로 하는 통합 쿼리 시스템
-4. **확장 가능성**: 새 데이터 소스 추가 시 자동 통합
-5. **AI 연동**: 프롬프트 AI에 최적화된 데이터 포맷 제공
+1. [System Overview](#system-overview)
+2. [Technology Stack](#technology-stack)
+3. [Architecture Diagram](#architecture-diagram)
+4. [Container Architecture](#container-architecture)
+5. [API Design](#api-design)
+6. [Frontend Design](#frontend-design)
+7. [Database Schema](#database-schema)
+8. [Deployment Strategy](#deployment-strategy)
+9. [Security Considerations](#security-considerations)
+10. [Development Roadmap](#development-roadmap)
 
-## 🏗 시스템 아키텍처
+---
+
+## 🎯 System Overview
+
+### Purpose
+Provide a **web-based interface** for non-technical users to:
+- ✅ View team activity data from multiple sources (GitHub, Slack, Google Drive)
+- ✅ Generate reports with filtering options
+- ✅ Download data in CSV/JSON formats
+- ✅ Track team performance metrics
+
+### Key Features
+- 📊 **Dashboard**: Real-time overview of team activities
+- 👥 **Member View**: Individual member activity details
+- 📁 **Project View**: Project-specific data filtering
+- 📈 **Reports**: Weekly/monthly activity reports
+- 💾 **Export**: CSV/JSON download with custom queries
+- 🔐 **Authentication**: Role-based access control
+
+---
+
+## 🛠 Technology Stack
+
+### Backend (Data Collection & API)
+- **Language**: Python 3.12+
+- **Framework**: FastAPI (async REST API)
+- **Database**: 
+  - **Development**: SQLite (existing)
+  - **Production**: PostgreSQL (for better concurrency)
+- **ORM**: SQLAlchemy 2.0
+- **Task Queue**: Celery + Redis (for scheduled data collection)
+- **Containerization**: Docker
+
+### Frontend (Web Interface)
+- **Framework**: Next.js 14+ (React with SSR)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **UI Components**: shadcn/ui
+- **State Management**: React Query (TanStack Query)
+- **Charts**: Recharts or Chart.js
+- **Containerization**: Docker
+
+### Infrastructure
+- **Container Orchestration**: Docker Compose (development/staging)
+- **Reverse Proxy**: Nginx (SSL termination, load balancing)
+- **Monitoring**: Prometheus + Grafana (optional)
+- **Logging**: ELK Stack (optional)
+
+---
+
+## 🏗 Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Data Sources Layer                      │
-├──────────────┬──────────────┬──────────────┬────────────────┤
-│    Slack     │   GitHub     │   Notion     │ Google Drive   │
-│   API/SDK    │   API/SDK    │   API/SDK    │   API/SDK      │
-└──────┬───────┴──────┬───────┴──────┬───────┴────────┬───────┘
-       │              │              │                │
-       └──────────────┼──────────────┼────────────────┘
-                      │              │
-              ┌───────▼──────────────▼──────┐
-              │   Data Collectors Layer     │
-              │  (Plugin Architecture)      │
-              └───────┬─────────────────────┘
-                      │
-              ┌───────▼─────────────────────┐
-              │   Source-Specific DBs       │
-              │  ┌─────────────────────┐    │
-              │  │ slack_db            │    │
-              │  │ github_db           │    │
-              │  │ notion_db           │    │
-              │  │ google_drive_db     │    │
-              │  └─────────────────────┘    │
-              └───────┬─────────────────────┘
-                      │
-              ┌───────▼─────────────────────┐
-              │  Integration Layer          │
-              │  (Member-Centric Index)     │
-              │  ┌─────────────────────┐    │
-              │  │ member_index        │    │
-              │  │ unified_query_api   │    │
-              │  └─────────────────────┘    │
-              └───────┬─────────────────────┘
-                      │
-              ┌───────▼─────────────────────┐
-              │  AI Prompt Formatter        │
-              │  (Performance Analysis)     │
-              └─────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                          User Browser                            │
+│                     (Non-technical users)                        │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ HTTPS
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       Nginx (Reverse Proxy)                      │
+│                    SSL Termination / Load Balancer              │
+└───────────────┬─────────────────────────┬───────────────────────┘
+                │                         │
+                │ /                       │ /api
+                ▼                         ▼
+┌───────────────────────────┐  ┌──────────────────────────────────┐
+│   Frontend Container      │  │    Backend API Container         │
+│   (Next.js / React)       │  │    (FastAPI)                     │
+│                           │  │                                  │
+│  - Dashboard              │  │  - REST API Endpoints            │
+│  - Member View            │  │  - Data Aggregation              │
+│  - Report Generator       │  │  - Export Services               │
+│  - Data Export UI         │  │  - Authentication                │
+│                           │  │                                  │
+│  Port: 3000               │  │  Port: 8000                      │
+└───────────────────────────┘  └─────────────┬────────────────────┘
+                                              │
+                                              ▼
+                            ┌──────────────────────────────────────┐
+                            │   Database Container                 │
+                            │   (PostgreSQL)                       │
+                            │                                      │
+                            │  - main.db (members, activities)     │
+                            │  - github.db → postgresql            │
+                            │  - slack.db → postgresql             │
+                            │  - google_drive.db → postgresql      │
+                            │                                      │
+                            │  Port: 5432                          │
+                            └──────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                 Data Collection Container                        │
+│                 (Background Workers)                             │
+│                                                                  │
+│  - Celery Workers                                                │
+│  - Scheduled Tasks (GitHub, Slack, Drive data collection)       │
+│  - Report Generation                                             │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                             ▲
+                             │
+                    ┌────────┴────────┐
+                    │  Redis          │
+                    │  (Task Queue)   │
+                    │  Port: 6379     │
+                    └─────────────────┘
 ```
 
-## 💾 데이터베이스 설계
+---
 
-### 1. 소스별 데이터베이스
+## 🐳 Container Architecture
 
-각 데이터 소스는 독립적인 SQLite/PostgreSQL DB를 가집니다.
+### 1. **Frontend Container** (`frontend`)
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
 
-#### Slack DB
+**Environment Variables:**
+```env
+NEXT_PUBLIC_API_URL=http://backend:8000
+NEXT_PUBLIC_APP_NAME=All-Thing-Eye
+```
+
+---
+
+### 2. **Backend API Container** (`backend`)
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY src/ ./src/
+COPY config/ ./config/
+EXPOSE 8000
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+**Environment Variables:**
+```env
+DATABASE_URL=postgresql://user:password@db:5432/allthingeye
+REDIS_URL=redis://redis:6379/0
+SECRET_KEY=your-secret-key
+CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
+```
+
+---
+
+### 3. **Database Container** (`db`)
+```yaml
+image: postgres:16-alpine
+volumes:
+  - postgres_data:/var/lib/postgresql/data
+environment:
+  POSTGRES_DB: allthingeye
+  POSTGRES_USER: admin
+  POSTGRES_PASSWORD: secure_password
+```
+
+---
+
+### 4. **Data Collection Worker** (`worker`)
+```dockerfile
+FROM python:3.12-slim
+# Same base as backend
+CMD ["celery", "-A", "src.tasks.celery_app", "worker", "--loglevel=info"]
+```
+
+---
+
+### 5. **Redis Container** (`redis`)
+```yaml
+image: redis:7-alpine
+volumes:
+  - redis_data:/data
+```
+
+---
+
+### 6. **Nginx Container** (`nginx`)
+```nginx
+upstream frontend {
+    server frontend:3000;
+}
+
+upstream backend {
+    server backend:8000;
+}
+
+server {
+    listen 80;
+    server_name localhost;
+
+    location / {
+        proxy_pass http://frontend;
+    }
+
+    location /api {
+        proxy_pass http://backend;
+    }
+}
+```
+
+---
+
+## 🔌 API Design
+
+### Base URL
+```
+Development: http://localhost:8000/api/v1
+Production: https://api.allthingeye.yourdomain.com/v1
+```
+
+### Authentication
+```
+POST /auth/login
+POST /auth/logout
+GET  /auth/me
+```
+
+### Members
+```
+GET    /members                          # List all members
+GET    /members/{member_id}              # Get member details
+GET    /members/{member_id}/activities   # Get member activities
+```
+
+### Activities
+```
+GET    /activities                       # List all activities (with filters)
+GET    /activities/stats                 # Activity statistics
+POST   /activities/export                # Export to CSV/JSON
+```
+
+**Query Parameters:**
+```
+?source_type=github,slack,google_drive
+?member_id=1,2,3
+?start_date=2025-10-01
+?end_date=2025-11-01
+?activity_type=commit,message,edit
+?format=json|csv
+```
+
+### Projects
+```
+GET    /projects                         # List all projects
+GET    /projects/{project_key}           # Get project details
+GET    /projects/{project_key}/report    # Generate project report
+```
+
+### Reports
+```
+GET    /reports/weekly                   # Weekly report
+GET    /reports/monthly                  # Monthly report
+POST   /reports/custom                   # Custom report with filters
+GET    /reports/{report_id}/download     # Download generated report
+```
+
+### GitHub
+```
+GET    /github/commits                   # List commits
+GET    /github/pull-requests             # List PRs
+GET    /github/repositories              # List repositories
+```
+
+### Slack
+```
+GET    /slack/channels                   # List channels
+GET    /slack/messages                   # List messages
+GET    /slack/threads                    # List thread conversations
+```
+
+### Google Drive
+```
+GET    /drive/activities                 # List drive activities
+GET    /drive/folders                    # List folders
+GET    /drive/documents                  # List documents
+```
+
+### Export
+```
+POST   /export/csv                       # Export to CSV
+POST   /export/json                      # Export to JSON
+GET    /export/{export_id}/download      # Download export file
+```
+
+**Request Body Example:**
+```json
+{
+  "query": {
+    "source_types": ["github", "slack"],
+    "member_ids": [1, 2, 3],
+    "start_date": "2025-10-01",
+    "end_date": "2025-11-01",
+    "activity_types": ["commit", "message"]
+  },
+  "fields": ["member_name", "timestamp", "activity_type", "metadata"],
+  "format": "csv"
+}
+```
+
+---
+
+## 🎨 Frontend Design
+
+### Pages
+
+#### 1. **Dashboard** (`/`)
+- Overview metrics (total activities, active members, etc.)
+- Recent activity timeline
+- Top contributors chart
+- Activity heatmap by source
+
+#### 2. **Members** (`/members`)
+- Member list with search/filter
+- Member card view with quick stats
+- Click to view detailed profile
+
+#### 3. **Member Profile** (`/members/[id]`)
+- Member information
+- Activity breakdown by source
+- Contribution timeline
+- Export member data button
+
+#### 4. **Projects** (`/projects`)
+- Project list with filter by key
+- Project stats overview
+- Recent activities per project
+
+#### 5. **Project Detail** (`/projects/[key]`)
+- Project information
+- Active members
+- Activity timeline
+- Repository/channel links
+- Generate report button
+
+#### 6. **Reports** (`/reports`)
+- Report generator with filters
+- Pre-defined templates (Weekly, Monthly)
+- Report history
+- Download/share options
+
+#### 7. **Activities** (`/activities`)
+- Activity log with advanced filters
+- Source type tabs (GitHub, Slack, Drive)
+- Search functionality
+- Export selected activities
+
+#### 8. **Export** (`/export`)
+- Custom export builder
+- Query preview
+- Format selection (CSV/JSON)
+- Download history
+
+---
+
+## 🗄 Database Schema
+
+### Migration from SQLite to PostgreSQL
+
+**Current Structure:**
+```
+data/databases/
+  ├── main.db          → PostgreSQL: allthingeye (main schema)
+  ├── github.db        → PostgreSQL: allthingeye_github (schema)
+  ├── slack.db         → PostgreSQL: allthingeye_slack (schema)
+  └── google_drive.db  → PostgreSQL: allthingeye_drive (schema)
+```
+
+**PostgreSQL Schema:**
 ```sql
--- 메시지, 리액션, 채널 활동
-messages: id, member_id, channel, timestamp, content, reactions
-channels: id, name, members
-threads: id, parent_message_id, reply_count
+-- Main database
+CREATE SCHEMA main;
+CREATE SCHEMA github;
+CREATE SCHEMA slack;
+CREATE SCHEMA drive;
+
+-- Use schemas for separation
+SELECT * FROM main.members;
+SELECT * FROM github.commits;
+SELECT * FROM slack.messages;
+SELECT * FROM drive.activities;
 ```
 
-#### GitHub DB
-```sql
--- 커밋, PR, 이슈, 리뷰
-commits: id, member_id, repo, timestamp, message, additions, deletions
-pull_requests: id, member_id, repo, status, created_at, merged_at
-code_reviews: id, reviewer_id, pr_id, timestamp, comments
-issues: id, assignee_id, status, created_at, closed_at
-```
-
-#### Notion DB
-```sql
--- 페이지, 작성 내용, 수정 이력
-pages: id, member_id, title, created_at, updated_at
-edits: id, page_id, member_id, timestamp, content_length
-```
-
-#### Google Drive DB
-```sql
--- 문서, 스프레드시트, 공유 활동
-files: id, owner_id, name, type, created_at, modified_at
-shares: id, file_id, shared_by, shared_with, timestamp
-comments: id, file_id, member_id, timestamp, content
-```
-
-### 2. 통합 멤버 인덱스
-
-모든 소스를 관통하는 멤버 중심 인덱스
-
-```sql
--- 멤버 마스터 테이블
-members:
-  id (primary key)
-  name
-  email
-  slack_user_id
-  github_username
-  notion_user_id
-  google_email
-
--- 멤버별 활동 통합 뷰
-member_activities:
-  member_id
-  source_type (slack/github/notion/drive)
-  source_db
-  activity_type
-  timestamp
-  metadata (JSON)
-```
-
-## 🔌 플러그인 아키텍처
-
-새로운 데이터 소스를 쉽게 추가할 수 있도록 플러그인 시스템 구현
-
-### 플러그인 인터페이스
-
-```python
-class DataSourcePlugin:
-    """모든 데이터 소스 플러그인의 기본 인터페이스"""
-    
-    def get_source_name(self) -> str:
-        """소스 이름 반환 (예: 'slack', 'github')"""
-        pass
-    
-    def get_db_schema(self) -> dict:
-        """DB 스키마 정의 반환"""
-        pass
-    
-    def collect_data(self, config: dict) -> list:
-        """데이터 수집"""
-        pass
-    
-    def get_member_mapping(self) -> dict:
-        """멤버 ID 매핑 정보 반환"""
-        pass
-    
-    def extract_member_activities(self, data: list) -> list:
-        """멤버별 활동 추출"""
-        pass
-```
-
-### 자동 통합 프로세스
-
-1. **플러그인 등록**: 새 소스 플러그인을 `plugins/` 디렉토리에 추가
-2. **자동 발견**: 시스템이 플러그인을 자동으로 스캔하고 로드
-3. **DB 생성**: 플러그인의 스키마를 기반으로 소스별 DB 자동 생성
-4. **멤버 매핑**: 새 소스의 멤버 정보를 통합 인덱스에 자동 연결
-5. **데이터 수집**: 스케줄러가 주기적으로 데이터 수집 실행
-
-## 🔄 데이터 파이프라인 흐름
-
-### 1단계: 데이터 수집 (Collection)
-
-```python
-for plugin in registered_plugins:
-    data = plugin.collect_data(config)
-    source_db = get_db(plugin.get_source_name())
-    source_db.insert(data)
-```
-
-### 2단계: 멤버 매핑 (Mapping)
-
-```python
-for plugin in registered_plugins:
-    member_mapping = plugin.get_member_mapping()
-    update_member_index(member_mapping)
-```
-
-### 3단계: 통합 인덱싱 (Integration)
-
-```python
-for plugin in registered_plugins:
-    activities = plugin.extract_member_activities()
-    for activity in activities:
-        member_id = resolve_member_id(activity)
-        member_activities.insert({
-            'member_id': member_id,
-            'source': plugin.get_source_name(),
-            'activity': activity
-        })
-```
-
-### 4단계: AI 포맷팅 (Formatting)
-
-```python
-def get_member_performance_data(member_name: str):
-    member = get_member_by_name(member_name)
-    
-    # 모든 소스에서 활동 데이터 수집
-    slack_data = query_slack_db(member.slack_user_id)
-    github_data = query_github_db(member.github_username)
-    notion_data = query_notion_db(member.notion_user_id)
-    drive_data = query_drive_db(member.google_email)
-    
-    # AI 프롬프트 포맷으로 변환
-    return format_for_ai({
-        'member': member_name,
-        'slack_activity': slack_data,
-        'github_contribution': github_data,
-        'notion_documentation': notion_data,
-        'drive_collaboration': drive_data
-    })
-```
-
-## 📊 멤버 중심 쿼리 예시
-
-```python
-# 특정 멤버의 모든 활동 조회
-get_member_all_activities("홍길동", date_range="2025-01-01~2025-01-31")
-
-# 멤버별 코드 기여도
-get_member_github_stats("홍길동")
-
-# 멤버별 커뮤니케이션 활동
-get_member_slack_stats("홍길동")
-
-# 멤버별 문서화 기여도
-get_member_notion_stats("홍길동")
-
-# 통합 퍼포먼스 리포트
-generate_performance_report("홍길동")
-```
-
-## 🛠 기술 스택
-
-### Backend
-- **언어**: Python 3.11+
-- **웹 프레임워크**: FastAPI
-- **데이터베이스**: 
-  - SQLite (개발/소규모)
-  - PostgreSQL (프로덕션)
-- **ORM**: SQLAlchemy
-- **작업 스케줄러**: APScheduler
-- **API 클라이언트**: 
-  - slack-sdk
-  - PyGithub
-  - notion-client
-  - google-api-python-client
-
-### 데이터 처리
-- **Pandas**: 데이터 변환 및 분석
-- **Pydantic**: 데이터 검증
-
-### 인프라
-- **컨테이너**: Docker
-- **오케스트레이션**: Docker Compose
-- **모니터링**: Prometheus + Grafana (선택사항)
-
-## 🔐 보안 및 개인정보 보호
-
-1. **API 키 관리**: 환경 변수 또는 비밀 관리 시스템
-2. **데이터 암호화**: 민감 정보는 암호화 저장
-3. **접근 제어**: RBAC 기반 권한 관리
-4. **개인정보 처리**: 
-   - 개인 식별 정보 최소화
-   - 데이터 익명화 옵션
-   - GDPR/개인정보보호법 준수
-5. **감사 로그**: 모든 데이터 접근 기록
-
-## 📈 확장성 고려사항
-
-1. **수평 확장**: 데이터 수집기를 독립적으로 스케일 가능
-2. **캐싱**: Redis를 활용한 쿼리 결과 캐싱
-3. **비동기 처리**: 대량 데이터 수집 시 백그라운드 작업
-4. **파티셔닝**: 시계열 데이터는 날짜별 파티션
-
-## 🚀 배포 전략
-
-### 개발 환경
+**Migration Script:**
 ```bash
-docker-compose up -d
-python manage.py migrate
-python manage.py collect --source all
+# Convert SQLite to PostgreSQL
+./scripts/migrate_to_postgres.sh
 ```
 
-### 프로덕션 환경
-- CI/CD 파이프라인 (GitHub Actions)
-- 자동 백업 시스템
-- 모니터링 및 알림 설정
+---
 
-## 📝 다음 단계
+## 🚀 Deployment Strategy
 
-1. ✅ 프로젝트 구조 생성
-2. ✅ 기본 플러그인 인터페이스 구현
-3. ✅ Slack 플러그인 구현 (첫 번째 소스)
-4. ✅ 멤버 인덱스 시스템 구현
-5. ✅ GitHub 플러그인 추가
-6. ✅ Notion, Google Drive 플러그인 추가
-7. ✅ AI 포맷터 구현
-8. ✅ API 서버 구축
-9. ✅ 스케줄러 설정
-10. ✅ 테스트 및 문서화
+### Development
+```bash
+docker-compose -f docker-compose.dev.yml up
+```
 
+### Staging
+```bash
+docker-compose -f docker-compose.staging.yml up -d
+```
+
+### Production
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### Docker Compose File Structure
+```yaml
+# docker-compose.yml (base)
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: allthingeye
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    depends_on:
+      - db
+      - redis
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/allthingeye
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+    networks:
+      - backend
+      - frontend
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    depends_on:
+      - db
+      - redis
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/allthingeye
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - backend
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000
+    networks:
+      - frontend
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./certs:/etc/nginx/certs
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - frontend
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+---
+
+## 🔐 Security Considerations
+
+### 1. **Authentication & Authorization**
+- JWT-based authentication
+- Role-based access control (Admin, Team Lead, Member)
+- API key for programmatic access
+
+### 2. **Data Protection**
+- HTTPS only (SSL/TLS)
+- Environment variable for secrets
+- Database encryption at rest
+- Input validation and sanitization
+
+### 3. **Rate Limiting**
+- API rate limiting (e.g., 100 requests/minute)
+- Export file size limits
+- Query complexity limits
+
+### 4. **CORS Configuration**
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://allthingeye.yourdomain.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+### 5. **Database Security**
+- Separate read-only user for exports
+- Connection pooling
+- Query timeouts
+
+---
+
+## 📅 Development Roadmap
+
+### Phase 1: Foundation (Week 1-2)
+- [ ] Set up FastAPI backend structure
+- [ ] Create PostgreSQL migration scripts
+- [ ] Design API endpoints
+- [ ] Set up Docker development environment
+- [ ] Create basic Next.js frontend structure
+
+### Phase 2: Core Features (Week 3-4)
+- [ ] Implement authentication system
+- [ ] Build member and activity APIs
+- [ ] Create dashboard UI
+- [ ] Implement member list and detail pages
+- [ ] Add basic filtering and search
+
+### Phase 3: Advanced Features (Week 5-6)
+- [ ] Implement export functionality (CSV/JSON)
+- [ ] Create report generator
+- [ ] Add project-based filtering
+- [ ] Build activity timeline visualization
+- [ ] Implement data caching
+
+### Phase 4: Background Tasks (Week 7)
+- [ ] Set up Celery workers
+- [ ] Schedule data collection tasks
+- [ ] Implement automated report generation
+- [ ] Add email notifications (optional)
+
+### Phase 5: Testing & Polish (Week 8)
+- [ ] Write API tests
+- [ ] Frontend E2E tests
+- [ ] Performance optimization
+- [ ] UI/UX improvements
+- [ ] Documentation
+
+### Phase 6: Deployment (Week 9-10)
+- [ ] Set up production Docker Compose
+- [ ] Configure Nginx with SSL
+- [ ] Deploy to staging environment
+- [ ] User acceptance testing
+- [ ] Deploy to production
+- [ ] Monitor and iterate
+
+---
+
+## 📚 File Structure
+
+```
+all-thing-eye/
+├── frontend/                    # Next.js frontend
+│   ├── src/
+│   │   ├── app/                # Next.js app directory
+│   │   ├── components/         # React components
+│   │   ├── lib/                # Utilities
+│   │   └── types/              # TypeScript types
+│   ├── public/
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── Dockerfile
+│
+├── src/                        # Backend Python code
+│   ├── api/                    # FastAPI routes
+│   │   ├── main.py            # FastAPI app
+│   │   ├── routes/
+│   │   │   ├── members.py
+│   │   │   ├── activities.py
+│   │   │   ├── projects.py
+│   │   │   ├── reports.py
+│   │   │   └── export.py
+│   │   ├── models/            # Pydantic models
+│   │   └── middleware/
+│   │
+│   ├── core/                  # Existing core logic
+│   │   ├── database.py
+│   │   ├── member_index.py
+│   │   └── query_engine.py
+│   │
+│   ├── plugins/               # Existing plugins
+│   │   ├── github_plugin.py
+│   │   ├── slack_plugin.py
+│   │   └── google_drive_plugin.py
+│   │
+│   ├── services/              # Business logic
+│   │   ├── export_service.py
+│   │   ├── report_service.py
+│   │   └── stats_service.py
+│   │
+│   └── tasks/                 # Celery tasks
+│       ├── celery_app.py
+│       ├── collection_tasks.py
+│       └── report_tasks.py
+│
+├── docker/
+│   ├── backend.Dockerfile
+│   ├── worker.Dockerfile
+│   └── nginx.Dockerfile
+│
+├── scripts/
+│   ├── migrate_to_postgres.sh
+│   ├── init_db.sh
+│   └── deploy.sh
+│
+├── tests/
+│   ├── api/                   # API tests
+│   └── integration/           # Integration tests
+│
+├── docs/
+│   ├── ARCHITECTURE.md        # This file
+│   ├── API.md                 # API documentation
+│   └── DEPLOYMENT.md          # Deployment guide
+│
+├── docker-compose.yml
+├── docker-compose.dev.yml
+├── docker-compose.prod.yml
+├── .env.example
+└── README.md
+```
+
+---
+
+## 🎯 Success Metrics
+
+- ✅ Non-technical users can access data without CLI
+- ✅ Export functionality works reliably
+- ✅ Page load time < 2 seconds
+- ✅ API response time < 500ms (95th percentile)
+- ✅ 99.9% uptime
+- ✅ Support 50+ concurrent users
+
+---
+
+## 📞 Questions & Feedback
+
+For questions or suggestions about this architecture:
+1. Review existing documentation
+2. Check API.md for endpoint details
+3. Consult DEPLOYMENT.md for deployment procedures
+4. Contact the development team
+
+---
+
+**Status:** Planning Complete ✅  
+**Next Step:** Phase 1 Implementation
+
+---

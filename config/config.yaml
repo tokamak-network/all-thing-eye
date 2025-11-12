@@ -20,7 +20,7 @@ plugins:
     enabled: ${SLACK_ENABLED:false}
     workspace: ${SLACK_WORKSPACE:tokamak-network}
     # Target channels to collect (empty = all channels bot is invited to)
-    target_channels: []  # e.g., ['general', 'dev', 'project-zkp']
+    target_channels: [] # e.g., ['general', 'dev', 'project-zkp']
     rate_limit: 50 # requests per minute
     collection:
       include_threads: true
@@ -48,8 +48,8 @@ plugins:
     credentials_path: "config/google_drive/credentials.json"
     token_path: "config/google_drive/token_admin.pickle"
     # Target users to track (empty = all users in organization)
-    target_users: []  # e.g., ['george@tokamak.network', 'kevin@tokamak.network']
-    days_to_collect: 7  # Default collection period
+    target_users: [] # e.g., ['george@tokamak.network', 'kevin@tokamak.network']
+    days_to_collect: 7 # Default collection period
     # Member mapping
     member_list:
       - name: "Kevin"
@@ -70,21 +70,14 @@ plugins:
     enabled: ${NOTION_ENABLED:true}
     token: ${NOTION_TOKEN}
     workspace_id: ${NOTION_WORKSPACE_ID}
+    days_to_collect: 7 # Default collection period
     rate_limit: 3 # requests per second
     collection:
       pages: true
       databases: true
-      comments: false
-
-  google_drive:
-    enabled: ${GOOGLE_DRIVE_ENABLED:false}
-    credentials_path: ${GOOGLE_CREDENTIALS_PATH}
-    folder_id: ${GOOGLE_DRIVE_FOLDER_ID}
-    collection:
-      files: true
-      shares: true
       comments: true
-      activity: true
+    # Member mapping
+    member_list:
 
 # Projects Configuration
 projects:
@@ -97,12 +90,12 @@ projects:
       - "Tokamak-zk-EVM"
       - "tokamak-zk-evm-docs"
       - "Tokamak-zkp-channel-manager"
-    drive_folders:  # Google Drive folder names for this project
+    drive_folders: # Google Drive folder names for this project
       - "Meet Recordings"
       - "singapore core"
       - "Project OOO"
     description: "Zero-knowledge proof implementation and synthesizer architecture"
-    
+
   project-eco:
     name: "Project ECO (Ecosystem Development)"
     slack_channel: "project-eco"
@@ -113,21 +106,21 @@ projects:
       - "grants-program"
       - "community-portal"
     description: "Ecosystem development and community engagement"
-    
+
   project-syb:
     name: "Project SYB"
     slack_channel: "project-syb"
     slack_channel_id: "TBD"
     lead: "Jamie"
-    repositories: []  # TBD
+    repositories: [] # TBD
     description: "TBD"
-    
+
   project-trh:
     name: "Project TRH"
     slack_channel: "project-trh"
     slack_channel_id: "TBD"
     lead: "Praveen"
-    repositories: []  # TBD
+    repositories: [] # TBD
     description: "TBD"
 
 # Member Index

@@ -274,11 +274,11 @@ class GoogleDrivePlugin(DataSourcePlugin):
             if not self.authenticate():
                 return {'activities': [], 'folders': []}
         
-        # Calculate date range
+        # Calculate date range (always use UTC)
         if not start_date:
-            start_date = datetime.now() - timedelta(days=self.days_to_collect)
+            start_date = datetime.now(tz=pytz.UTC) - timedelta(days=self.days_to_collect)
         if not end_date:
-            end_date = datetime.now()
+            end_date = datetime.now(tz=pytz.UTC)
         
         start_time = start_date.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         
@@ -448,11 +448,12 @@ class GoogleDrivePlugin(DataSourcePlugin):
         return activities
     
     def _parse_timestamp(self, timestamp_str: str) -> datetime:
-        """Parse RFC3339 timestamp to datetime"""
+        """Parse RFC3339 timestamp to datetime (always returns timezone-aware UTC)"""
         try:
             return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
         except:
-            return datetime.now()
+            # Fallback to current time in UTC
+            return datetime.now(tz=pytz.UTC)
     
     def _extract_doc_info(self, event: Dict[str, Any]) -> Dict[str, str]:
         """Extract document information from event"""

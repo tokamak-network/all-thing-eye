@@ -71,15 +71,24 @@ python tests/test_github_plugin.py
 
 For detailed guide: [**QUICK_START.md**](docs/QUICK_START.md)
 
-### Using Docker
+### Using Docker (Web API)
 
 ```bash
-# Build and run
+# Start all services (Backend API + PostgreSQL + Nginx + Redis)
 docker-compose up -d
 
 # View logs
-docker-compose logs -f
+docker-compose logs -f backend
+
+# Access API
+# API Docs: http://localhost/api/docs
+# Health: http://localhost/health
+
+# Stop services
+docker-compose down
 ```
+
+For detailed API guide: [**API Development Guide**](docs/API_DEVELOPMENT.md)
 
 ## 📖 Usage
 
@@ -245,9 +254,10 @@ pytest --cov=src tests/
 ### Architecture & Development
 
 - [Architecture Design](docs/ARCHITECTURE.md)
+- [**API Development Guide**](docs/API_DEVELOPMENT.md) ⭐ **New!**
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 - [Database Schema Reference](docs/DATABASE_SCHEMA.md)
-- [API Reference](docs/API_REFERENCE.md) (Coming soon)
+- [Notion Setup Guide](docs/NOTION_SETUP.md)
 
 ### Data Collection & Analysis
 
