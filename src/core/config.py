@@ -194,6 +194,18 @@ class Config:
                     ]
                     self._config['plugins']['notion']['member_list'] = notion_members
                 
+                # For Google Drive plugin
+                if 'plugins' in self._config and 'google_drive' in self._config['plugins']:
+                    google_drive_members = [
+                        {
+                            'name': m['name'],
+                            'googleEmail': m.get('google_email') or m.get('email'),  # Fallback to email
+                            'email': m.get('email')
+                        }
+                        for m in members if m.get('google_email') or m.get('email')
+                    ]
+                    self._config['plugins']['google_drive']['member_list'] = google_drive_members
+                
                 print(f"✅ Loaded {len(members)} members from {self.members_path.name}")
     
     def _load_members_file(self, path: Path) -> List[Dict[str, Any]]:

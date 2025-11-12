@@ -97,6 +97,10 @@ projects:
       - "Tokamak-zk-EVM"
       - "tokamak-zk-evm-docs"
       - "Tokamak-zkp-channel-manager"
+    drive_folders:  # Google Drive folder names for this project
+      - "Meet Recordings"
+      - "singapore core"
+      - "Project OOO"
     description: "Zero-knowledge proof implementation and synthesizer architecture"
     
   project-eco:

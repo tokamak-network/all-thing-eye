@@ -11,6 +11,7 @@ import argparse
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
+from sqlalchemy import text
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -64,6 +65,53 @@ def main():
     )
     db_manager = DatabaseManager(main_db_url)
     
+    # Create main database schema manually
+    logger.info("📂 Creating main database schema...")
+    main_schema = {
+        'members': '''
+            CREATE TABLE IF NOT EXISTS members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                email TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''',
+        'member_identifiers': '''
+            CREATE TABLE IF NOT EXISTS member_identifiers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                member_id INTEGER NOT NULL,
+                source_type TEXT NOT NULL,
+                source_user_id TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (member_id) REFERENCES members(id),
+                UNIQUE(source_type, source_user_id)
+            )
+        ''',
+        'member_activities': '''
+            CREATE TABLE IF NOT EXISTS member_activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                member_id INTEGER NOT NULL,
+                source_type TEXT NOT NULL,
+                activity_type TEXT NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                metadata TEXT,
+                activity_id TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (member_id) REFERENCES members(id)
+            )
+        '''
+    }
+    
+    with db_manager.get_connection() as conn:
+        with conn.begin():
+            for table_name, create_sql in main_schema.items():
+                conn.execute(text(create_sql))
+                logger.info(f"   ✅ Created table: {table_name}")
+    
+    # Initialize MemberIndex
+    logger.info("📂 Initializing member index...")
+    member_index = MemberIndex(db_manager)
+    
     # Register or create Google Drive database
     drive_db_path = Path(__file__).parent.parent / 'data' / 'databases' / 'google_drive.db'
     
@@ -77,6 +125,12 @@ def main():
     # Load Google Drive plugin
     logger.info("\n🔌 Loading Google Drive plugin...")
     plugin_config = config.get_plugin_config('google_drive')
+    
+    # Debug: Print config
+    logger.info(f"📋 Plugin config keys: {list(plugin_config.keys()) if plugin_config else 'None'}")
+    if plugin_config:
+        logger.info(f"   credentials_path: {plugin_config.get('credentials_path')}")
+        logger.info(f"   token_path: {plugin_config.get('token_path')}")
     
     if not plugin_config:
         logger.error("❌ Google Drive plugin not configured in config.yaml")
@@ -125,10 +179,11 @@ def main():
     data = drive_plugin.collect_data(start_date=start_date, end_date=end_date)
     
     activities = data.get('activities', [])
-    logger.info(f"\n✅ Collected {len(activities)} activities")
+    folders = data.get('folders', [])
+    logger.info(f"\n✅ Collected {len(activities)} activities and {len(folders)} folders")
     
-    if not activities:
-        logger.info("📭 No activities found in the specified period")
+    if not activities and not folders:
+        logger.info("📭 No data found")
         return
     
     # Show summary
@@ -161,28 +216,70 @@ def main():
         with conn.begin():
             for activity in activities:
                 conn.execute(
-                    '''
-                    INSERT INTO drive_activities 
-                    (timestamp, user_email, action, event_name, doc_title, doc_type, doc_id, raw_event)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    (
-                        activity['timestamp'],
-                        activity['user_email'],
-                        activity['action'],
-                        activity['event_name'],
-                        activity['doc_title'],
-                        activity['doc_type'],
-                        activity['doc_id'],
-                        activity['raw_event']
-                    )
+                    text('''
+                        INSERT INTO drive_activities 
+                        (timestamp, user_email, action, event_name, doc_title, doc_type, doc_id, raw_event)
+                        VALUES (:timestamp, :user_email, :action, :event_name, :doc_title, :doc_type, :doc_id, :raw_event)
+                    '''),
+                    {
+                        'timestamp': activity['timestamp'].isoformat(),
+                        'user_email': activity['user_email'],
+                        'action': activity['action'],
+                        'event_name': activity['event_name'],
+                        'doc_title': activity['doc_title'],
+                        'doc_type': activity['doc_type'],
+                        'doc_id': activity['doc_id'],
+                        'raw_event': activity['raw_event']
+                    }
                 )
     
     logger.info(f"✅ Saved {len(activities)} activities to database")
     
+    # Save folders to database
+    if folders:
+        logger.info("\n💾 Saving folders to database...")
+        
+        with db_manager.get_connection('google_drive') as conn:
+            with conn.begin():
+                for folder in folders:
+                    # Insert folder
+                    conn.execute(
+                        text('''
+                            INSERT OR REPLACE INTO drive_folders 
+                            (folder_id, folder_name, parent_folder_id, project_key, created_by, first_seen, last_activity)
+                            VALUES (:folder_id, :folder_name, :parent_id, :project_key, :created_by, :created_time, :modified_time)
+                        '''),
+                        {
+                            'folder_id': folder['folder_id'],
+                            'folder_name': folder['folder_name'],
+                            'parent_id': folder.get('parent_id'),
+                            'project_key': folder.get('project_key'),
+                            'created_by': folder.get('created_by'),
+                            'created_time': folder.get('created_time'),
+                            'modified_time': folder.get('modified_time')
+                        }
+                    )
+                    
+                    # Insert folder members
+                    for member in folder.get('members', []):
+                        conn.execute(
+                            text('''
+                                INSERT OR REPLACE INTO drive_folder_members 
+                                (folder_id, user_email, access_level, added_at)
+                                VALUES (:folder_id, :user_email, :access_level, :added_at)
+                            '''),
+                            {
+                                'folder_id': folder['folder_id'],
+                                'user_email': member['email'],
+                                'access_level': member['role'],
+                                'added_at': folder.get('created_time')
+                            }
+                        )
+        
+        logger.info(f"✅ Saved {len(folders)} folders to database")
+    
     # Sync to member index
     logger.info("\n🔄 Syncing to member index...")
-    member_index = MemberIndex(db_manager)
     
     member_activities = drive_plugin.extract_member_activities(data)
     member_details = drive_plugin.get_member_details()

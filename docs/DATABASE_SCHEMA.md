@@ -913,6 +913,80 @@ CREATE TABLE IF NOT EXISTS drive_documents (
 - `last_activity` (TIMESTAMP): Most recent activity timestamp
 - `created_at` (TIMESTAMP): Record creation timestamp
 
+---
+
+### Table: `drive_folders`
+
+Tracks folder structure and project associations.
+
+```sql
+CREATE TABLE IF NOT EXISTS drive_folders (
+    folder_id TEXT PRIMARY KEY,
+    folder_name TEXT NOT NULL,
+    parent_folder_id TEXT,
+    project_key TEXT,
+    is_project_root BOOLEAN DEFAULT 0,
+    created_by TEXT,
+    first_seen TIMESTAMP,
+    last_activity TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_folder_id) REFERENCES drive_folders(folder_id)
+)
+```
+
+**Columns:**
+
+- `folder_id` (TEXT): Google Drive folder ID (primary key)
+- `folder_name` (TEXT): Folder name
+- `parent_folder_id` (TEXT): Parent folder ID for hierarchical structure
+- `project_key` (TEXT): Associated project key (e.g., 'project-ooo', 'project-eco')
+- `is_project_root` (BOOLEAN): `1` if this is a project's root folder
+- `created_by` (TEXT): User email who created the folder
+- `first_seen` (TIMESTAMP): When folder was first observed
+- `last_activity` (TIMESTAMP): Most recent activity in this folder
+- `created_at` (TIMESTAMP): Record creation timestamp
+
+**Important Notes:**
+
+- `project_key` links to `config.yaml` projects section
+- `parent_folder_id` creates folder hierarchy (self-referencing foreign key)
+- Use for filtering activities by project
+
+---
+
+### Table: `drive_folder_members`
+
+Tracks folder access permissions and members.
+
+```sql
+CREATE TABLE IF NOT EXISTS drive_folder_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    folder_id TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    access_level TEXT,
+    added_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (folder_id) REFERENCES drive_folders(folder_id),
+    UNIQUE(folder_id, user_email)
+)
+```
+
+**Columns:**
+
+- `id` (INTEGER): Primary key, auto-increment
+- `folder_id` (TEXT): Foreign key to `drive_folders`
+- `user_email` (TEXT): User's email address
+- `access_level` (TEXT): Permission level (e.g., 'owner', 'editor', 'viewer')
+- `added_at` (TIMESTAMP): When user was granted access
+- `created_at` (TIMESTAMP): Record creation timestamp
+
+**Access Levels:**
+
+- `owner`: Full control, can delete folder
+- `editor`: Can add/edit/delete files
+- `commenter`: Can comment but not edit
+- `viewer`: Read-only access
+
 ### Activity Types
 
 | `event_name`         | `action` (Korean) | Description                    |
@@ -935,16 +1009,38 @@ CREATE TABLE IF NOT EXISTS drive_documents (
 
 ### Document Types
 
-| `doc_type` (API) | Type (Korean) | Description      |
-| ---------------- | ------------- | ---------------- |
-| `document`       | 문서          | Google Docs      |
-| `spreadsheet`    | 스프레드시트  | Google Sheets    |
-| `presentation`   | 프레젠테이션  | Google Slides    |
-| `folder`         | 폴더          | Drive folder     |
-| `file`           | 파일          | Other file types |
-| `drawing`        | 그림          | Google Drawings  |
-| `form`           | 설문지        | Google Forms     |
-| `site`           | 사이트        | Google Sites     |
+| `doc_type` (API)     | Type (Korean) | Description                  |
+| -------------------- | ------------- | ---------------------------- |
+| `document`           | 문서          | Google Docs                  |
+| `spreadsheet`        | 스프레드시트  | Google Sheets                |
+| `presentation`       | 프레젠테이션  | Google Slides                |
+| `folder`             | 폴더          | Drive folder                 |
+| `file`               | 파일          | Other file types             |
+| `drawing`            | 그림          | Google Drawings              |
+| `form`               | 설문지        | Google Forms                 |
+| `site`               | 사이트        | Google Sites                 |
+| **Video Formats**    |               |                              |
+| `mp4`                | 동영상(mp4)   | MP4 video files              |
+| `mpeg`               | 동영상(mpeg)  | MPEG video files             |
+| `mov`                | 동영상(mov)   | MOV video files              |
+| `avi`                | 동영상(avi)   | AVI video files              |
+| `video`              | 동영상        | Other video formats          |
+| **Image Formats**    |               |                              |
+| `png`                | 이미지(png)   | PNG images                   |
+| `jpeg`/`jpg`         | 이미지(jpeg)  | JPEG images                  |
+| **Document Formats** |               |                              |
+| `pdf`                | PDF           | PDF documents                |
+| `txt`                | 텍스트        | Text files                   |
+| `msword`             | MS Word       | Microsoft Word documents     |
+| `msexcel`            | MS Excel      | Microsoft Excel spreadsheets |
+| `mspowerpoint`       | MS PowerPoint | Microsoft PowerPoint slides  |
+| `html`               | HTML          | HTML files                   |
+
+**Special Use Cases:**
+
+- **Meeting Videos**: MP4/MPEG files uploaded after meetings
+- **Meeting Transcripts**: Google Docs with "Gemini가 작성한 회의록" in title
+- **Screenshots**: PNG/JPEG images shared for collaboration
 
 ### Common Queries
 
@@ -999,6 +1095,101 @@ WHERE mi.source_type = 'google_drive'
   AND date(ma.timestamp) >= :start_date
 GROUP BY m.name
 ORDER BY drive_activities DESC;
+
+-- Get meeting video activities
+SELECT
+    user_email,
+    doc_title,
+    action,
+    timestamp
+FROM drive_activities
+WHERE doc_type IN ('mp4', 'mpeg', 'mov', 'avi')
+  AND date(timestamp) >= :start_date
+ORDER BY timestamp DESC;
+
+-- Get meeting transcripts (Gemini-generated)
+SELECT
+    user_email,
+    doc_title,
+    action,
+    timestamp
+FROM drive_activities
+WHERE doc_title LIKE '%Gemini가 작성한 회의록%'
+  OR doc_title LIKE '%Meeting%'
+ORDER BY timestamp DESC;
+
+-- Meeting workflow analysis (video upload → transcript creation)
+SELECT
+    date(da_video.timestamp) as meeting_date,
+    da_video.doc_title as video_title,
+    da_video.user_email as uploader,
+    da_transcript.doc_title as transcript_title,
+    da_transcript.user_email as transcript_editor,
+    da_transcript.timestamp as transcript_time
+FROM drive_activities da_video
+LEFT JOIN drive_activities da_transcript
+    ON date(da_video.timestamp) = date(da_transcript.timestamp)
+    AND da_transcript.doc_title LIKE '%Gemini가 작성한 회의록%'
+WHERE da_video.doc_type IN ('mp4', 'mpeg')
+  AND da_video.action = '업로드'
+  AND date(da_video.timestamp) >= :start_date
+ORDER BY da_video.timestamp DESC;
+
+-- Get project folders and their activity
+SELECT
+    f.folder_name,
+    f.project_key,
+    COUNT(a.id) as total_activities,
+    COUNT(DISTINCT a.user_email) as unique_users,
+    MAX(a.timestamp) as last_activity
+FROM drive_folders f
+LEFT JOIN drive_activities a ON f.folder_name = a.doc_title
+WHERE f.project_key = :project_key
+  AND date(a.timestamp) >= :start_date
+GROUP BY f.folder_id
+ORDER BY total_activities DESC;
+
+-- Get folder hierarchy for a project
+WITH RECURSIVE folder_tree AS (
+    -- Base case: root folders
+    SELECT
+        folder_id,
+        folder_name,
+        parent_folder_id,
+        project_key,
+        0 as depth,
+        folder_name as path
+    FROM drive_folders
+    WHERE parent_folder_id IS NULL
+      AND project_key = :project_key
+
+    UNION ALL
+
+    -- Recursive case: child folders
+    SELECT
+        f.folder_id,
+        f.folder_name,
+        f.parent_folder_id,
+        f.project_key,
+        ft.depth + 1,
+        ft.path || '/' || f.folder_name
+    FROM drive_folders f
+    INNER JOIN folder_tree ft ON f.parent_folder_id = ft.folder_id
+)
+SELECT * FROM folder_tree ORDER BY path;
+
+-- Get folder members and their access levels
+SELECT
+    f.folder_name,
+    fm.user_email,
+    fm.access_level,
+    m.name as member_name
+FROM drive_folders f
+JOIN drive_folder_members fm ON f.folder_id = fm.folder_id
+LEFT JOIN member_identifiers mi ON fm.user_email = mi.source_user_id
+LEFT JOIN members m ON mi.member_id = m.id
+WHERE f.project_key = :project_key
+ORDER BY f.folder_name, fm.access_level;
 ```
 
 ---

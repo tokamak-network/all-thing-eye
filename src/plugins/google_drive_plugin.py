@@ -68,7 +68,24 @@ class GoogleDrivePlugin(DataSourcePlugin):
         'file': '파일',
         'drawing': '그림',
         'form': '설문지',
-        'site': '사이트'
+        'site': '사이트',
+        # Video formats
+        'mp4': '동영상(mp4)',
+        'mpeg': '동영상(mpeg)',
+        'mov': '동영상(mov)',
+        'avi': '동영상(avi)',
+        'video': '동영상',
+        # Image formats
+        'png': '이미지(png)',
+        'jpeg': '이미지(jpeg)',
+        'jpg': '이미지(jpg)',
+        # Document formats
+        'pdf': 'PDF',
+        'txt': '텍스트',
+        'msword': 'MS Word',
+        'msexcel': 'MS Excel',
+        'mspowerpoint': 'MS PowerPoint',
+        'html': 'HTML'
     }
     
     def __init__(self, config: Dict[str, Any]):
@@ -89,24 +106,37 @@ class GoogleDrivePlugin(DataSourcePlugin):
                 "google-auth-httplib2 google-api-python-client"
             )
         
-        self.config = config
+        self.config = config or {}
         self.logger = get_logger(__name__)
         
         # Set up paths
         base_path = Path(__file__).parent.parent.parent
-        self.credentials_path = base_path / config.get(
+        
+        # Get paths from config with defaults
+        credentials_path_str = self.config.get(
             'credentials_path', 
             'config/google_drive/credentials.json'
         )
-        self.token_path = base_path / config.get(
+        token_path_str = self.config.get(
             'token_path',
             'config/google_drive/token_admin.pickle'
         )
         
-        self.target_users = config.get('target_users', [])
-        self.days_to_collect = config.get('days_to_collect', 7)
+        # Convert to Path objects (handle None case)
+        if credentials_path_str:
+            self.credentials_path = base_path / credentials_path_str
+        else:
+            self.credentials_path = base_path / 'config/google_drive/credentials.json'
+            
+        if token_path_str:
+            self.token_path = base_path / token_path_str
+        else:
+            self.token_path = base_path / 'config/google_drive/token_admin.pickle'
         
-        self.service = None
+        self.target_users = self.config.get('target_users', [])
+        self.days_to_collect = self.config.get('days_to_collect', 7)
+        
+        self.service = None  # Admin SDK Reports API
     
     def get_source_name(self) -> str:
         """Return the name of this data source"""
@@ -146,6 +176,32 @@ class GoogleDrivePlugin(DataSourcePlugin):
                     first_seen TIMESTAMP,
                     last_activity TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''',
+            'drive_folders': '''
+                CREATE TABLE IF NOT EXISTS drive_folders (
+                    folder_id TEXT PRIMARY KEY,
+                    folder_name TEXT NOT NULL,
+                    parent_folder_id TEXT,
+                    project_key TEXT,
+                    is_project_root BOOLEAN DEFAULT 0,
+                    created_by TEXT,
+                    first_seen TIMESTAMP,
+                    last_activity TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (parent_folder_id) REFERENCES drive_folders(folder_id)
+                )
+            ''',
+            'drive_folder_members': '''
+                CREATE TABLE IF NOT EXISTS drive_folder_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    folder_id TEXT NOT NULL,
+                    user_email TEXT NOT NULL,
+                    access_level TEXT,
+                    added_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (folder_id) REFERENCES drive_folders(folder_id),
+                    UNIQUE(folder_id, user_email)
                 )
             '''
         }
@@ -216,7 +272,7 @@ class GoogleDrivePlugin(DataSourcePlugin):
         """
         if not self.service:
             if not self.authenticate():
-                return {'activities': []}
+                return {'activities': [], 'folders': []}
         
         # Calculate date range
         if not start_date:
@@ -295,8 +351,13 @@ class GoogleDrivePlugin(DataSourcePlugin):
         
         self.logger.info(f"✅ Collected {len(activities)} Drive activities")
         
+        # Extract folder information from activities
+        self.logger.info("\n📁 Extracting folder information from activities...")
+        folders = self._extract_folders_from_activities(activities)
+        
         return {
             'activities': activities,
+            'folders': folders,
             'start_date': start_date.isoformat(),
             'end_date': end_date.isoformat(),
             'user_count': len(users_to_query)
@@ -306,6 +367,8 @@ class GoogleDrivePlugin(DataSourcePlugin):
         """
         Map Google email addresses to member names
         
+        Only includes @tokamak.network emails (excludes personal Gmail accounts)
+        
         Returns:
             Dictionary mapping email to member name
         """
@@ -313,10 +376,13 @@ class GoogleDrivePlugin(DataSourcePlugin):
         mapping = {}
         
         for member in member_list:
-            email = member.get('email')
+            # Use googleEmail if available, fallback to email
+            google_email = member.get('googleEmail') or member.get('email')
             name = member.get('name')
-            if email and name:
-                mapping[email.lower()] = name
+            
+            # Only include @tokamak.network emails
+            if google_email and name and '@tokamak.network' in google_email.lower():
+                mapping[google_email.lower()] = name
         
         return mapping
     
@@ -333,7 +399,8 @@ class GoogleDrivePlugin(DataSourcePlugin):
         for member in member_list:
             name = member.get('name')
             email = member.get('email')
-            google_email = member.get('google_email', email)
+            # Use googleEmail from config (already has fallback to email)
+            google_email = member.get('googleEmail', email)
             
             if name:
                 details[name] = {
@@ -347,6 +414,8 @@ class GoogleDrivePlugin(DataSourcePlugin):
         """
         Extract member activities from collected data
         
+        Only includes activities from @tokamak.network emails
+        
         Args:
             data: Data returned from collect_data()
         
@@ -357,6 +426,10 @@ class GoogleDrivePlugin(DataSourcePlugin):
         
         for activity in data.get('activities', []):
             user_email = activity.get('user_email', '').lower()
+            
+            # Only include @tokamak.network emails (exclude personal Gmail, etc.)
+            if '@tokamak.network' not in user_email:
+                continue
             
             activities.append({
                 'member_identifier': user_email,
@@ -407,4 +480,62 @@ class GoogleDrivePlugin(DataSourcePlugin):
             'type': doc_type_kr,
             'id': doc_id
         }
+    
+    def _extract_folders_from_activities(self, activities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Extract unique folder information from activity logs
+        
+        Args:
+            activities: List of activity dictionaries
+            
+        Returns:
+            List of unique folder information
+        """
+        folders_dict = {}  # Use dict to deduplicate by folder_id
+        
+        for activity in activities:
+            # Only process folder-related activities
+            if activity.get('doc_type') != '폴더':
+                continue
+            
+            folder_id = activity.get('doc_id')
+            folder_name = activity.get('doc_title')
+            
+            if not folder_id or not folder_name:
+                continue
+            
+            # First time seeing this folder
+            if folder_id not in folders_dict:
+                folders_dict[folder_id] = {
+                    'folder_id': folder_id,
+                    'folder_name': folder_name,
+                    'parent_id': None,  # Not available from activity logs
+                    'project_key': None,  # Can be set manually or via query later
+                    'created_by': activity['user_email'],
+                    'created_time': activity['timestamp'].isoformat(),
+                    'modified_time': activity['timestamp'].isoformat(),
+                    'members': set()  # Use set to avoid duplicates
+                }
+            else:
+                # Update last activity time
+                folder = folders_dict[folder_id]
+                if activity['timestamp'] > datetime.fromisoformat(folder['modified_time']):
+                    folder['modified_time'] = activity['timestamp'].isoformat()
+            
+            # Track members who accessed this folder
+            user_email = activity['user_email']
+            if '@tokamak.network' in user_email:
+                folders_dict[folder_id]['members'].add(user_email)
+        
+        # Convert to list and format members
+        folders = []
+        for folder in folders_dict.values():
+            folder['members'] = [
+                {'email': email, 'role': 'user', 'permission_id': None}
+                for email in sorted(folder['members'])
+            ]
+            folders.append(folder)
+        
+        self.logger.info(f"✅ Extracted {len(folders)} unique folders from activities")
+        return folders
 

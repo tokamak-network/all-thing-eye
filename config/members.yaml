@@ -164,6 +164,21 @@
   email: "monica@tokamak.network"
   slack_id: "monica@tokamak.network"
   notion_id: "monica@tokamak.network"
+
+- name: "Irene"
+  email: "irene@tokamak.network"
+  slack_id: "irene@tokamak.network"
+  notion_id: "irene@tokamak.network"
+
+- name: "Jaden"
+  email: "jaden@tokamak.network"
+  slack_id: "jaden@tokamak.network"
+  notion_id: "jaden@tokamak.network"
+
+- name: "Rangga"
+  email: "rangga@tokamak.network"
+  slack_id: "rangga@tokamak.network"
+  notion_id: "rangga@tokamak.network"
 # Add more members here as needed
 # - name: "New Member"
 #   email: "newmember@tokamak.network"
