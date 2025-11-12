@@ -99,7 +99,7 @@ projects:
   project-eco:
     name: "Project ECO (Ecosystem Development)"
     slack_channel: "project-eco"
-    slack_channel_id: "TBD"
+    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
     lead: "Jason"
     repositories:
       - "ecosystem-hub"
@@ -108,18 +108,26 @@ projects:
     description: "Ecosystem development and community engagement"
 
   project-syb:
-    name: "Project SYB"
-    slack_channel: "project-syb"
-    slack_channel_id: "TBD"
+    name: "Project SYB (Sybil)"
+    slack_channel: "project-sybil" # Actual channel name
+    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
     lead: "Jamie"
     repositories: [] # TBD
     description: "TBD"
 
   project-trh:
     name: "Project TRH"
-    slack_channel: "project-trh"
-    slack_channel_id: "TBD"
+    slack_channel: "project_trh" # Fixed: underscore not hyphen
+    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
     lead: "Praveen"
+    repositories: [] # TBD
+    description: "TBD"
+
+  project-drb:
+    name: "Project DRB"
+    slack_channel: "project-drb"
+    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
+    lead: "TBD"
     repositories: [] # TBD
     description: "TBD"
 

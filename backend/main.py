@@ -107,6 +107,17 @@ async def root():
     }
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker/K8s"""
+    from datetime import datetime
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "0.1.0"
+    }
+
+
 # Health check
 @app.get("/health")
 async def health_check():

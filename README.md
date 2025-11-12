@@ -235,6 +235,19 @@ pytest --cov=src tests/
 
 ## 🔐 Security
 
+### Web3 Wallet Authentication
+
+The web interface uses **blockchain wallet signature-based authentication** for secure admin access:
+
+- 🔑 **MetaMask Integration**: Connect wallet and sign message (no gas fees)
+- 📋 **Whitelist-Based**: Only authorized admin addresses can access
+- ⏱️ **Session Management**: 1-hour automatic expiration
+- 🚫 **No Blockchain Transactions**: Signature-only verification
+
+**Setup Guide**: [`docs/WEB3_AUTH_SETUP.md`](docs/WEB3_AUTH_SETUP.md)
+
+### Data Security
+
 - API keys managed via environment variables
 - Sensitive data encrypted in storage
 - RBAC-based access control
@@ -245,6 +258,7 @@ pytest --cov=src tests/
 ### Setup & Configuration
 
 - [Quick Start Guide](docs/QUICK_START.md)
+- [**Web3 Authentication Setup**](docs/WEB3_AUTH_SETUP.md) 🔐 **New!**
 - [Environment Setup](docs/ENV_SETUP.md)
 - [GitHub Setup Guide](docs/GITHUB_SETUP.md)
 - [Slack Setup Guide](docs/SLACK_SETUP.md)

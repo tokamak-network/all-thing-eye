@@ -15,7 +15,10 @@
     "axios": "^1.6.2",
     "date-fns": "^3.0.6",
     "recharts": "^2.10.3",
-    "lucide-react": "^0.294.0"
+    "lucide-react": "^0.294.0",
+    "wagmi": "^2.5.7",
+    "viem": "^2.7.13",
+    "@tanstack/react-query": "^5.17.19"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",

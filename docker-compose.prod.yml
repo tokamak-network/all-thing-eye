@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: all-thing-eye-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./data/logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+    networks:
+      - all-thing-eye
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: all-thing-eye-backend
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+      - ./data/logs/backend:/app/logs
+    expose:
+      - "8000"
+    restart: unless-stopped
+    networks:
+      - all-thing-eye
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+    container_name: all-thing-eye-frontend
+    expose:
+      - "3000"
+    restart: unless-stopped
+    networks:
+      - all-thing-eye
+    depends_on:
+      - backend
+
+  # Celery Beat (데이터 수집 스케줄러)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: all-thing-eye-celery-beat
+    command: >
+      bash -c "
+      while true; do
+        echo '[$(date)] Starting daily data collection...'
+        python tests/test_github_plugin.py --last-week
+        python tests/test_slack_plugin.py --last-week
+        python tests/test_google_drive_plugin.py --days 1
+        python tests/test_notion_plugin.py --days 1
+        echo '[$(date)] Data collection completed'
+        sleep 86400
+      done
+      "
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+      - ./data/logs/celery:/app/logs
+    restart: unless-stopped
+    networks:
+      - all-thing-eye
+
+networks:
+  all-thing-eye:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
+

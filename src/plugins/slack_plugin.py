@@ -699,9 +699,22 @@ class SlackPlugin(DataSourcePlugin):
         """
         activities = []
         
+        # Build set of deleted user IDs to filter out
+        deleted_users = set()
+        for user in data.get('users', []):
+            if user.get('is_deleted', False):
+                deleted_users.add(user['id'].lower())
+        
+        if deleted_users:
+            print(f"   🗑️  Filtering out {len(deleted_users)} deleted/deactivated users")
+        
         for message in data.get('messages', []):
             user_id = message.get('user_id')
             if not user_id:
+                continue
+            
+            # Skip deleted users (퇴사자)
+            if user_id.lower() in deleted_users:
                 continue
             
             channel_id = message['channel_id']
@@ -725,6 +738,11 @@ class SlackPlugin(DataSourcePlugin):
         # Add reaction activities
         for reaction in data.get('reactions', []):
             user_id = reaction['user_id'].lower()
+            
+            # Skip deleted users (퇴사자)
+            if user_id in deleted_users:
+                continue
+            
             message_ts = reaction['message_ts']
             emoji = reaction['emoji']
             

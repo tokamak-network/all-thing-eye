@@ -4,6 +4,19 @@
 
 ---
 
+## 🔐 Web3 Authentication
+
+**⚠️ 중요: 웹 인터페이스는 지갑 서명 기반 인증을 사용합니다!**
+
+접속하려면:
+1. **MetaMask 지갑** 설치 필요
+2. **관리자 지갑 주소** 등록 필요
+3. 로그인 시 **서명 요청** (가스비 없음)
+
+**자세한 설정 방법**: [`docs/WEB3_AUTH_SETUP.md`](docs/WEB3_AUTH_SETUP.md)
+
+---
+
 ## 🎯 두 가지 실행 방법
 
 ### **방법 1: 로컬 개발 (추천, 빠름)** ⚡
@@ -19,22 +32,51 @@ cd /Users/son-yeongseong/Desktop/dev/all-thing-eye
 python -m uvicorn backend.main:app --reload --port 8000
 ```
 
-#### 2단계: Frontend 실행 (새 터미널)
+#### 2단계: 관리자 주소 설정
+
+**Option 1: 환경 변수 (권장)**
 
 ```bash
 cd /Users/son-yeongseong/Desktop/dev/all-thing-eye/frontend
 
-# 의존성 설치 (최초 1회만)
+# .env.local 파일 생성
+cat > .env.local << 'EOF'
+NEXT_PUBLIC_ADMIN_ADDRESSES=0x742d35cc6634c0532925a3b844bc9e7595f0beb,0x1234567890123456789012345678901234567890
+NEXT_PUBLIC_API_URL=http://localhost:8000
+EOF
+```
+
+**Option 2: 코드에 직접 설정**
+
+`frontend/src/lib/auth.ts` 파일의 `HARDCODED_ADMINS` 배열에 주소 추가
+
+#### 3단계: Frontend 실행 (새 터미널)
+
+```bash
+cd /Users/son-yeongseong/Desktop/dev/all-thing-eye/frontend
+
+# Web3 의존성 설치 (최초 1회만)
+npm install wagmi viem @tanstack/react-query
+
+# 기타 의존성 설치
 npm install
 
 # Frontend 개발 서버 실행
-NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
+npm run dev
 ```
 
-#### 3단계: 접속
+#### 4단계: 접속 및 로그인
 
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3000 → 자동으로 `/login` 페이지로 이동
 - **API Docs**: http://localhost:8000/api/docs
+
+**로그인 과정:**
+1. MetaMask 설치 확인
+2. "Connect MetaMask" 클릭
+3. 지갑 연결 승인
+4. "Sign Message to Authenticate" 클릭
+5. 서명 승인 (가스비 없음)
+6. 대시보드로 자동 이동
 
 ---
 
