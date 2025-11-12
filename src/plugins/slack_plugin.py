@@ -15,6 +15,7 @@ import re
 import os
 import ssl
 import certifi
+import pytz
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from .base import DataSourcePlugin
@@ -213,9 +214,9 @@ class SlackPlugin(DataSourcePlugin):
             print(f"   Period: {start_date.isoformat()} ~ {end_date.isoformat()}")
         
         try:
-            # Convert datetime to Slack timestamps
+            # Convert datetime to Slack timestamps (Unix epoch seconds)
             oldest = str(start_date.timestamp()) if start_date else "0"
-            latest = str(end_date.timestamp()) if end_date else str(datetime.now().timestamp())
+            latest = str(end_date.timestamp()) if end_date else str(datetime.now(tz=pytz.UTC).timestamp())
             
             # Step 1: Fetch and store users
             print("\n1️⃣ Fetching users...")
@@ -447,7 +448,9 @@ class SlackPlugin(DataSourcePlugin):
                     if self.include_threads and message_data['is_thread_parent']:
                         thread_messages = self._fetch_thread_replies(
                             channel_id,
-                            msg['thread_ts']
+                            msg['thread_ts'],
+                            oldest,
+                            latest
                         )
                         messages.extend(thread_messages)
                 
@@ -464,9 +467,19 @@ class SlackPlugin(DataSourcePlugin):
         
         return messages
     
-    def _fetch_thread_replies(self, channel_id: str, thread_ts: str) -> List[Dict[str, Any]]:
-        """Fetch replies in a thread"""
+    def _fetch_thread_replies(
+        self, 
+        channel_id: str, 
+        thread_ts: str,
+        oldest: str = None,
+        latest: str = None
+    ) -> List[Dict[str, Any]]:
+        """Fetch replies in a thread (with date filtering)"""
         replies = []
+        
+        # Convert oldest/latest to float for comparison
+        oldest_ts = float(oldest) if oldest else 0
+        latest_ts = float(latest) if latest else float('inf')
         
         try:
             response = self.client.conversations_replies(
@@ -483,8 +496,13 @@ class SlackPlugin(DataSourcePlugin):
                 if msg.get('subtype') in ['bot_message']:
                     continue
                 
+                # Filter by date range
+                msg_ts = float(msg['ts'])
+                if msg_ts < oldest_ts or msg_ts > latest_ts:
+                    continue  # Skip messages outside date range
+                
                 # Convert Slack timestamp to UTC datetime
-                reply_timestamp = datetime.fromtimestamp(float(msg['ts']), tz=pytz.UTC)
+                reply_timestamp = datetime.fromtimestamp(msg_ts, tz=pytz.UTC)
                 
                 reply_data = {
                     'ts': msg['ts'],
@@ -709,10 +727,15 @@ class SlackPlugin(DataSourcePlugin):
             user_id = reaction['user_id'].lower()
             message_ts = reaction['message_ts']
             emoji = reaction['emoji']
+            
+            # Slack doesn't provide reaction timestamp, use message timestamp as approximation
+            # Convert message_ts (Slack timestamp) to UTC datetime
+            reaction_timestamp = datetime.fromtimestamp(float(message_ts), tz=pytz.UTC)
+            
             activity = {
                 'member_identifier': user_id,
                 'activity_type': 'reaction',
-                'timestamp': datetime.now(),  # Slack doesn't provide reaction timestamp
+                'timestamp': reaction_timestamp,
                 'activity_id': f"slack:reaction:{message_ts}:{emoji}:{user_id}",
                 'metadata': {
                     'message_ts': message_ts,

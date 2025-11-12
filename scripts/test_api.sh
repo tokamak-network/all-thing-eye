@@ -44,6 +44,8 @@ test_endpoint "GET" "/activities/types" "Get activity types"
 test_endpoint "GET" "/projects" "Get all projects"
 test_endpoint "GET" "/export/members?format=json" "Export members (JSON)"
 test_endpoint "GET" "/export/activities?format=csv&limit=10" "Export activities (CSV)"
+test_endpoint "GET" "/exports/tables" "Get all tables list"
+test_endpoint "GET" "/exports/tables/main/members/csv" "Export table as CSV"
 
 echo ""
 echo "✅ Testing complete!"

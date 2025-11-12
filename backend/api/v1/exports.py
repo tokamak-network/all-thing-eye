@@ -20,7 +20,171 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/export/members")
+@router.get("/tables")
+async def get_tables(request: Request):
+    """
+    Get list of all available tables from all data sources
+    
+    Returns:
+        Dict with source databases and their tables
+    """
+    try:
+        db_manager = request.app.state.db_manager
+        
+        tables_by_source = {}
+        
+        # Get tables from main database
+        with db_manager.get_connection() as conn:
+            result = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            )
+            tables_by_source['main'] = [row[0] for row in result]
+        
+        # Get tables from each registered source database
+        for source in ['github', 'slack', 'google_drive', 'notion']:
+            try:
+                with db_manager.get_connection(source) as conn:
+                    result = conn.execute(
+                        text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                    )
+                    tables = [row[0] for row in result if not row[0].startswith('sqlite_')]
+                    if tables:
+                        tables_by_source[source] = tables
+            except Exception as e:
+                logger.warning(f"Could not get tables from {source}: {e}")
+                continue
+        
+        return {
+            "sources": tables_by_source,
+            "total_sources": len(tables_by_source),
+            "total_tables": sum(len(tables) for tables in tables_by_source.values())
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting tables: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get tables list")
+
+
+@router.get("/tables/{source}/{table}/csv")
+async def export_table_csv(
+    request: Request,
+    source: str,
+    table: str,
+    limit: int = Query(None, ge=1, le=100000, description="Maximum rows to export")
+):
+    """
+    Export a specific table as CSV
+    
+    Args:
+        source: Database source (main, github, slack, google_drive, notion)
+        table: Table name
+        limit: Maximum number of rows to export (optional)
+    
+    Returns:
+        CSV file download
+    """
+    try:
+        db_manager = request.app.state.db_manager
+        
+        # Validate source
+        valid_sources = ['main', 'github', 'slack', 'google_drive', 'notion']
+        if source not in valid_sources:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid source. Must be one of: {', '.join(valid_sources)}"
+            )
+        
+        # Get connection for the specified source
+        if source == 'main':
+            conn = db_manager.get_connection()
+        else:
+            try:
+                conn = db_manager.get_connection(source)
+            except Exception:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Source database '{source}' not found or not accessible"
+                )
+        
+        with conn:
+            # Check if table exists
+            result = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table"),
+                {'table': table}
+            )
+            if not result.fetchone():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Table '{table}' not found in '{source}' database"
+                )
+            
+            # Build query
+            query = f"SELECT * FROM {table}"
+            if limit:
+                query += f" LIMIT {limit}"
+            
+            # Execute query
+            result = conn.execute(text(query))
+            
+            # Get column names
+            columns = list(result.keys())
+            
+            # Fetch all rows
+            rows = result.fetchall()
+            
+            if not rows:
+                # Empty table - return empty CSV with headers
+                output = io.StringIO()
+                writer = csv.writer(output)
+                writer.writerow(columns)
+                csv_content = output.getvalue()
+            else:
+                # Convert to list of dicts
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, col in enumerate(columns):
+                        value = row[i]
+                        # Handle JSON columns
+                        if isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
+                            row_dict[col] = value
+                        else:
+                            row_dict[col] = value
+                    data.append(row_dict)
+                
+                # Write CSV
+                output = io.StringIO()
+                writer = csv.DictWriter(output, fieldnames=columns)
+                writer.writeheader()
+                writer.writerows(data)
+                csv_content = output.getvalue()
+        
+        # Generate filename
+        filename = f"{source}_{table}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        logger.info(f"Exported {len(rows)} rows from {source}.{table}")
+        
+        return StreamingResponse(
+            iter([csv_content]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting table {source}.{table}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to export table: {str(e)}"
+        )
+
+
+@router.get("/members")
 async def export_members(
     request: Request,
     format: str = Query("csv", regex="^(csv|json)$")
@@ -87,7 +251,7 @@ async def export_members(
         raise HTTPException(status_code=500, detail="Failed to export members")
 
 
-@router.get("/export/activities")
+@router.get("/activities")
 async def export_activities(
     request: Request,
     format: str = Query("csv", regex="^(csv|json)$"),
@@ -207,7 +371,7 @@ async def export_activities(
         raise HTTPException(status_code=500, detail="Failed to export activities")
 
 
-@router.get("/export/projects/{project_key}")
+@router.get("/projects/{project_key}")
 async def export_project_data(
     request: Request,
     project_key: str,

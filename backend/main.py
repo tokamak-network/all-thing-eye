@@ -147,7 +147,7 @@ app.include_router(
 
 app.include_router(
     exports.router,
-    prefix="/api/v1",
+    prefix="/api/v1/exports",
     tags=["exports"]
 )
 

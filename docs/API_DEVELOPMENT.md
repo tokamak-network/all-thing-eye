@@ -237,16 +237,55 @@ Get active members in project
 
 ### Exports API
 
+#### `GET /api/v1/exports/tables`
+Get list of all available tables from all data sources
+
+**Response:**
+```json
+{
+  "sources": {
+    "main": ["members", "member_identifiers", "member_activities"],
+    "github": ["github_commits", "github_pull_requests", "github_issues"],
+    "slack": ["slack_channels", "slack_messages", "slack_reactions"],
+    "google_drive": ["drive_activities", "drive_documents", "drive_folders"],
+    "notion": ["notion_pages", "notion_databases", "notion_comments"]
+  },
+  "total_sources": 5,
+  "total_tables": 15
+}
+```
+
+#### `GET /api/v1/exports/tables/{source}/{table}/csv`
+Export any table as CSV
+
+**Path Parameters:**
+- `source`: Database source (main, github, slack, google_drive, notion)
+- `table`: Table name
+
+**Query Parameters:**
+- `limit` (int): Maximum rows to export (1-100000, optional)
+
+**Response:** CSV file download
+
+**Example:**
+```bash
+# Export main.members table
+curl "http://localhost:8000/api/v1/exports/tables/main/members/csv" -o members.csv
+
+# Export slack messages (limit 1000 rows)
+curl "http://localhost:8000/api/v1/exports/tables/slack/slack_messages/csv?limit=1000" -o slack_messages.csv
+```
+
 #### `GET /api/v1/export/members?format=csv|json`
-Export members data
+Export members data (legacy)
 
 #### `GET /api/v1/export/activities?format=csv|json`
-Export activities with filters
+Export activities with filters (legacy)
 
 **Query Parameters:** Same as activities endpoint + `format`
 
 #### `GET /api/v1/export/projects/{project_key}?format=csv|json`
-Export project-specific data
+Export project-specific data (legacy)
 
 **Query Parameters:**
 - `format` (str): csv or json
