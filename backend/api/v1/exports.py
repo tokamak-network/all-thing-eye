@@ -6,11 +6,13 @@ Provides data export functionality (CSV, JSON)
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import text
+from pydantic import BaseModel
 import json
 import csv
 import io
+import zipfile
 from datetime import datetime
 
 from src.utils.logger import get_logger
@@ -18,6 +20,16 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+# Pydantic models
+class TableSelection(BaseModel):
+    source: str
+    table: str
+
+
+class BulkExportRequest(BaseModel):
+    tables: List[TableSelection]
 
 
 @router.get("/tables")
@@ -94,19 +106,19 @@ async def export_table_csv(
                 detail=f"Invalid source. Must be one of: {', '.join(valid_sources)}"
             )
         
-        # Get connection for the specified source
-        if source == 'main':
-            conn = db_manager.get_connection()
-        else:
-            try:
-                conn = db_manager.get_connection(source)
-            except Exception:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Source database '{source}' not found or not accessible"
-                )
+        # Get connection for the specified source and execute query
+        try:
+            if source == 'main':
+                conn_context = db_manager.get_connection()
+            else:
+                conn_context = db_manager.get_connection(source)
+        except Exception:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Source database '{source}' not found or not accessible"
+            )
         
-        with conn:
+        with conn_context as conn:
             # Check if table exists
             result = conn.execute(
                 text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table"),
@@ -158,11 +170,14 @@ async def export_table_csv(
                 writer.writeheader()
                 writer.writerows(data)
                 csv_content = output.getvalue()
+            
+            # Track row count for logging
+            row_count = len(rows)
         
         # Generate filename
         filename = f"{source}_{table}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         
-        logger.info(f"Exported {len(rows)} rows from {source}.{table}")
+        logger.info(f"Exported {row_count} rows from {source}.{table}")
         
         return StreamingResponse(
             iter([csv_content]),
@@ -471,4 +486,94 @@ async def export_project_data(
     except Exception as e:
         logger.error(f"Error exporting project data: {e}")
         raise HTTPException(status_code=500, detail="Failed to export project data")
+
+
+@router.post("/bulk")
+async def export_bulk_tables(
+    request: Request,
+    bulk_request: BulkExportRequest
+):
+    """
+    Export multiple tables as a ZIP file containing CSV files
+    
+    Args:
+        bulk_request: List of table selections (source + table name)
+        
+    Returns:
+        ZIP file containing CSV files for each selected table
+    """
+    if not bulk_request.tables:
+        raise HTTPException(status_code=400, detail="No tables selected")
+    
+    try:
+        db_manager = request.app.state.db_manager
+        
+        # Create in-memory ZIP file
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for selection in bulk_request.tables:
+                source = selection.source
+                table = selection.table
+                
+                try:
+                    # Get connection
+                    if source == 'main':
+                        conn_context = db_manager.get_connection()
+                    else:
+                        conn_context = db_manager.get_connection(source)
+                    
+                    with conn_context as conn:
+                        # Query table
+                        query = text(f"SELECT * FROM {table}")
+                        result = conn.execute(query)
+                        
+                        # Get column names
+                        columns = result.keys()
+                        rows = result.fetchall()
+                        
+                        if not rows:
+                            logger.warning(f"No data in {source}.{table}")
+                            continue
+                        
+                        # Create CSV in memory
+                        csv_buffer = io.StringIO()
+                        writer = csv.DictWriter(csv_buffer, fieldnames=columns)
+                        writer.writeheader()
+                        
+                        for row in rows:
+                            row_dict = dict(zip(columns, row))
+                            writer.writerow(row_dict)
+                        
+                        # Add to ZIP
+                        csv_content = csv_buffer.getvalue()
+                        filename = f"{source}_{table}.csv"
+                        zip_file.writestr(filename, csv_content)
+                        
+                        logger.info(f"Added {filename} to ZIP ({len(rows)} rows)")
+                
+                except Exception as e:
+                    logger.error(f"Error exporting {source}.{table}: {e}")
+                    # Continue with other tables even if one fails
+                    continue
+        
+        # Prepare ZIP for download
+        zip_buffer.seek(0)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"all_thing_eye_export_{timestamp}.zip"
+        
+        logger.info(f"Bulk export completed: {len(bulk_request.tables)} tables")
+        
+        return StreamingResponse(
+            io.BytesIO(zip_buffer.read()),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in bulk export: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create bulk export: {str(e)}")
 

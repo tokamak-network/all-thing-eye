@@ -11,6 +11,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime, timedelta
 from sqlalchemy import text
+import pytz
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -129,7 +130,7 @@ plugins:
         logger.info(f"\n📅 Collecting for {week_info['week_title']}")
         logger.info(f"   Period: {week_info['formatted_range']}")
     else:
-        end_date = datetime.now()
+        end_date = datetime.now(tz=pytz.UTC)
         start_date = end_date - timedelta(days=args.days)
         logger.info(f"\n📅 Collecting for last {args.days} days")
         logger.info(f"   From: {start_date.strftime('%Y-%m-%d')}")

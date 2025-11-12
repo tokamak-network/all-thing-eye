@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from notion_client import Client
 from notion_client.errors import APIResponseError
+import pytz
 
 from src.plugins.base import DataSourcePlugin
 from src.utils.logger import get_logger
@@ -99,7 +100,7 @@ class NotionPlugin(DataSourcePlugin):
         
         # Calculate date range
         if not end_date:
-            end_date = datetime.now()
+            end_date = datetime.now(tz=pytz.UTC)
         if not start_date:
             start_date = end_date - timedelta(days=self.days_to_collect)
         
