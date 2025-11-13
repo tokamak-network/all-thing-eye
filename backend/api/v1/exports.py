@@ -30,6 +30,8 @@ class TableSelection(BaseModel):
 
 class BulkExportRequest(BaseModel):
     tables: List[TableSelection]
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 
 @router.get("/tables")
@@ -82,7 +84,9 @@ async def export_table_csv(
     request: Request,
     source: str,
     table: str,
-    limit: int = Query(None, ge=1, le=100000, description="Maximum rows to export")
+    limit: int = Query(None, ge=1, le=100000, description="Maximum rows to export"),
+    start_date: Optional[str] = Query(None, description="Start date filter (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD)")
 ):
     """
     Export a specific table as CSV
@@ -91,6 +95,8 @@ async def export_table_csv(
         source: Database source (main, github, slack, google_drive, notion)
         table: Table name
         limit: Maximum number of rows to export (optional)
+        start_date: Filter records from this date onwards (optional)
+        end_date: Filter records up to this date (optional)
     
     Returns:
         CSV file download
@@ -130,13 +136,39 @@ async def export_table_csv(
                     detail=f"Table '{table}' not found in '{source}' database"
                 )
             
-            # Build query
+            # Check if table has timestamp column for date filtering
+            table_info = conn.execute(text(f"PRAGMA table_info({table})"))
+            columns_info = table_info.fetchall()
+            has_timestamp = any(col[1] in ['timestamp', 'posted_at', 'created_at', 'updated_at'] for col in columns_info)
+            timestamp_col = None
+            if has_timestamp:
+                for col in columns_info:
+                    if col[1] in ['timestamp', 'posted_at', 'created_at', 'updated_at']:
+                        timestamp_col = col[1]
+                        break
+            
+            # Build query with date filtering
             query = f"SELECT * FROM {table}"
+            where_clauses = []
+            query_params = {}
+            
+            if start_date and timestamp_col:
+                where_clauses.append(f"{timestamp_col} >= :start_date")
+                query_params['start_date'] = start_date
+            
+            if end_date and timestamp_col:
+                # Add time to end_date to include the entire day
+                where_clauses.append(f"{timestamp_col} <= :end_date")
+                query_params['end_date'] = f"{end_date} 23:59:59"
+            
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+            
             if limit:
                 query += f" LIMIT {limit}"
             
             # Execute query
-            result = conn.execute(text(query))
+            result = conn.execute(text(query), query_params)
             
             # Get column names
             columns = list(result.keys())
@@ -497,7 +529,7 @@ async def export_bulk_tables(
     Export multiple tables as a ZIP file containing CSV files
     
     Args:
-        bulk_request: List of table selections (source + table name)
+        bulk_request: List of table selections (source + table name) with optional date range
         
     Returns:
         ZIP file containing CSV files for each selected table
@@ -507,6 +539,8 @@ async def export_bulk_tables(
     
     try:
         db_manager = request.app.state.db_manager
+        start_date = bulk_request.start_date
+        end_date = bulk_request.end_date
         
         # Create in-memory ZIP file
         zip_buffer = io.BytesIO()
@@ -524,9 +558,33 @@ async def export_bulk_tables(
                         conn_context = db_manager.get_connection(source)
                     
                     with conn_context as conn:
+                        # Check if table has timestamp column for date filtering
+                        table_info = conn.execute(text(f"PRAGMA table_info({table})"))
+                        columns_info = table_info.fetchall()
+                        timestamp_col = None
+                        for col in columns_info:
+                            if col[1] in ['timestamp', 'posted_at', 'created_at', 'updated_at']:
+                                timestamp_col = col[1]
+                                break
+                        
+                        # Build query with date filtering
+                        query = f"SELECT * FROM {table}"
+                        where_clauses = []
+                        query_params = {}
+                        
+                        if start_date and timestamp_col:
+                            where_clauses.append(f"{timestamp_col} >= :start_date")
+                            query_params['start_date'] = start_date
+                        
+                        if end_date and timestamp_col:
+                            where_clauses.append(f"{timestamp_col} <= :end_date")
+                            query_params['end_date'] = f"{end_date} 23:59:59"
+                        
+                        if where_clauses:
+                            query += " WHERE " + " AND ".join(where_clauses)
+                        
                         # Query table
-                        query = text(f"SELECT * FROM {table}")
-                        result = conn.execute(query)
+                        result = conn.execute(text(query), query_params)
                         
                         # Get column names
                         columns = result.keys()
