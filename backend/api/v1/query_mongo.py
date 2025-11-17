@@ -6,22 +6,27 @@ Supports MongoDB query language and aggregation pipelines
 """
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import json
 from datetime import datetime
 
 from src.utils.logger import get_logger
-from src.core.mongo_manager import mongo_manager
+from src.core.mongo_manager import get_mongo_manager
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
+# Get MongoDB manager instance (will be initialized by main app)
+def get_mongo():
+    from backend.main_mongo import mongo_manager
+    return mongo_manager
+
 
 class QueryRequest(BaseModel):
     collection: str  # Collection name to query
-    filter: Optional[Dict[str, Any]] = {}  # MongoDB filter (find query)
+    filter: Dict[str, Any] = Field(default_factory=dict)  # MongoDB filter (find query)
     projection: Optional[Dict[str, Any]] = None  # Fields to return
     sort: Optional[Dict[str, int]] = None  # Sort specification
     limit: int = 1000  # Maximum documents to return
@@ -34,10 +39,126 @@ class AggregationRequest(BaseModel):
     limit: int = 10000  # Safety limit
 
 
+class DynamicQueryRequest(BaseModel):
+    collection: str
+    operation: str  # "find" or "aggregate"
+    query: Optional[Dict[str, Any]] = Field(default=None)  # For find operations
+    pipeline: Optional[List[Dict[str, Any]]] = Field(default=None)  # For aggregate operations
+    projection: Optional[Dict[str, Any]] = Field(default=None)
+    sort: Optional[Dict[str, int]] = Field(default=None)
+    limit: int = Field(default=1000)
+    skip: int = Field(default=0)
+
+
 class QueryResponse(BaseModel):
     documents: List[Dict[str, Any]]
     count: int
     collection: str
+
+
+@router.post("/execute", response_model=QueryResponse)
+async def execute_dynamic_query(
+    request: Request,
+    query_request: DynamicQueryRequest
+):
+    """
+    Execute a dynamic MongoDB query (find or aggregate)
+    
+    Args:
+        query_request: MongoDB query parameters with operation type
+    
+    Returns:
+        Query results as list of documents
+    
+    Example for find:
+        {
+            "collection": "github_commits",
+            "operation": "find",
+            "query": {"author_login": "johndoe"},
+            "projection": {"sha": 1, "message": 1},
+            "sort": {"committed_at": -1},
+            "limit": 10
+        }
+    
+    Example for aggregate:
+        {
+            "collection": "github_commits",
+            "operation": "aggregate",
+            "pipeline": [
+                {"$group": {"_id": "$author_login", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}},
+                {"$limit": 5}
+            ]
+        }
+    """
+    collection_name = query_request.collection
+    
+    # Validate collection name
+    valid_collections = [
+        'github_commits', 'github_pull_requests', 'github_issues', 'github_repositories',
+        'slack_messages', 'slack_channels',
+        'notion_pages', 'notion_databases',
+        'drive_activities', 'drive_folders'
+    ]
+    
+    if collection_name not in valid_collections:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid collection. Allowed collections: {', '.join(valid_collections)}"
+        )
+    
+    try:
+        db = get_mongo().get_database_async()
+        collection = db[collection_name]
+        
+        if query_request.operation == "find":
+            # Build find query
+            cursor = collection.find(
+                query_request.query or {},
+                query_request.projection
+            )
+            
+            if query_request.sort:
+                cursor = cursor.sort(list(query_request.sort.items()))
+            
+            cursor = cursor.skip(query_request.skip).limit(query_request.limit)
+            
+            documents = await cursor.to_list(length=query_request.limit)
+            count = len(documents)
+            
+        elif query_request.operation == "aggregate":
+            if not query_request.pipeline:
+                raise HTTPException(status_code=400, detail="Pipeline is required for aggregate operation")
+            
+            # Add safety limit to pipeline if not present
+            pipeline = query_request.pipeline.copy()
+            if not any('$limit' in stage for stage in pipeline):
+                pipeline.append({'$limit': query_request.limit})
+            
+            cursor = collection.aggregate(pipeline)
+            documents = await cursor.to_list(length=query_request.limit)
+            count = len(documents)
+            
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid operation '{query_request.operation}'. Must be 'find' or 'aggregate'"
+            )
+        
+        # Convert ObjectId to string
+        for doc in documents:
+            if '_id' in doc:
+                doc['_id'] = str(doc['_id'])
+        
+        return QueryResponse(
+            documents=documents,
+            count=count,
+            collection=collection_name
+        )
+    
+    except Exception as e:
+        logger.error(f"Query execution error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/find", response_model=QueryResponse)
@@ -93,7 +214,7 @@ async def execute_find_query(
     
     try:
         # Get MongoDB connection
-        db = mongo_manager.get_database_sync()
+        db = get_mongo().get_database_sync()
         collection = db[collection_name]
         
         # Build query
@@ -204,7 +325,7 @@ async def execute_aggregation(
     
     try:
         # Get MongoDB connection
-        db = mongo_manager.get_database_sync()
+        db = get_mongo().get_database_sync()
         collection = db[collection_name]
         
         # Execute aggregation
@@ -254,7 +375,7 @@ async def get_collections():
         List of collection names with document counts
     """
     try:
-        db = mongo_manager.get_database_sync()
+        db = get_mongo().get_database_sync()
         
         collections_info = {}
         

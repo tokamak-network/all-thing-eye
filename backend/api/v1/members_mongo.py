@@ -10,11 +10,16 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from src.utils.logger import get_logger
-from src.core.mongo_manager import mongo_manager
+from src.core.mongo_manager import get_mongo_manager
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# Get MongoDB manager instance
+def get_mongo():
+    from backend.main_mongo import mongo_manager
+    return mongo_manager
 
 
 # Response models
@@ -59,8 +64,8 @@ async def get_members(
         List of members with pagination
     """
     try:
-        db = mongo_manager.get_database_sync()
-        members_collection = db[mongo_manager._collections_config.get("members", "members")]
+        db = get_mongo().db
+        members_collection = db["members"]
         
         # Get total count
         total = members_collection.count_documents({})
@@ -102,8 +107,8 @@ async def get_member_detail(
         Detailed member information including identifiers and activity summary
     """
     try:
-        db = mongo_manager.get_database_sync()
-        members_collection = db[mongo_manager._collections_config.get("members", "members")]
+        db = get_mongo().db
+        members_collection = db["members"]
         
         # Find member by name
         member_doc = members_collection.find_one({"name": member_name})
@@ -125,8 +130,8 @@ async def get_member_detail(
         activity_summary = {}
         
         # GitHub activities
-        github_commits = db[mongo_manager._collections_config.get("github_commits", "github_commits")]
-        github_prs = db[mongo_manager._collections_config.get("github_pull_requests", "github_pull_requests")]
+        github_commits = db["github_commits"]
+        github_prs = db["github_pull_requests"]
         
         github_commit_count = github_commits.count_documents({"author_login": member_name})
         github_pr_count = github_prs.count_documents({"author": member_name})
@@ -138,7 +143,7 @@ async def get_member_detail(
             }
         
         # Slack activities
-        slack_messages = db[mongo_manager._collections_config.get("slack_messages", "slack_messages")]
+        slack_messages = db["slack_messages"]
         slack_message_count = slack_messages.count_documents({"user_name": member_name})
         
         if slack_message_count > 0:
@@ -147,7 +152,7 @@ async def get_member_detail(
             }
         
         # Notion activities
-        notion_pages = db[mongo_manager._collections_config.get("notion_pages", "notion_pages")]
+        notion_pages = db["notion_pages"]
         notion_page_count = notion_pages.count_documents({"created_by.name": member_name})
         
         if notion_page_count > 0:
@@ -189,7 +194,7 @@ async def get_member_activities(
         List of member activities from various collections
     """
     try:
-        db = mongo_manager.get_database_sync()
+        db = get_mongo().db
         activities = []
         
         # Collect from different sources based on filter
@@ -198,7 +203,7 @@ async def get_member_activities(
         for source in sources_to_query:
             if source == 'github':
                 # GitHub commits
-                commits = db[mongo_manager._collections_config.get("github_commits", "github_commits")]
+                commits = db["github_commits"]
                 for commit in commits.find({"author_login": member_name}).sort("committed_at", -1).limit(limit):
                     activities.append({
                         'source_type': 'github',
@@ -212,7 +217,7 @@ async def get_member_activities(
                     })
                 
                 # GitHub PRs
-                prs = db[mongo_manager._collections_config.get("github_pull_requests", "github_pull_requests")]
+                prs = db["github_pull_requests"]
                 for pr in prs.find({"author": member_name}).sort("created_at", -1).limit(limit):
                     activities.append({
                         'source_type': 'github',
@@ -226,7 +231,7 @@ async def get_member_activities(
                     })
             
             elif source == 'slack':
-                messages = db[mongo_manager._collections_config.get("slack_messages", "slack_messages")]
+                messages = db["slack_messages"]
                 for msg in messages.find({"user_name": member_name}).sort("posted_at", -1).limit(limit):
                     activities.append({
                         'source_type': 'slack',
@@ -239,7 +244,7 @@ async def get_member_activities(
                     })
             
             elif source == 'notion':
-                pages = db[mongo_manager._collections_config.get("notion_pages", "notion_pages")]
+                pages = db["notion_pages"]
                 for page in pages.find({"created_by.name": member_name}).sort("created_time", -1).limit(limit):
                     activities.append({
                         'source_type': 'notion',

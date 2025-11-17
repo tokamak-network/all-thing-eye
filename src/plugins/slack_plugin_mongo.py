@@ -21,7 +21,7 @@ from slack_sdk.errors import SlackApiError
 from pymongo.errors import DuplicateKeyError
 
 from src.plugins.base import DataSourcePlugin
-from src.core.mongo_manager import mongo_manager
+from src.core.mongo_manager import MongoDBManager, get_mongo_manager
 from src.models.mongo_models import SlackMessage, SlackChannel, SlackReaction, SlackLink, SlackFile
 
 
@@ -43,12 +43,13 @@ class SlackPluginMongo(DataSourcePlugin):
         'notion_database': r'https://(?:www\.)?notion\.so/(?:[^/]+/)?([a-f0-9]{32})\?v=',
     }
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], mongo_manager: MongoDBManager):
         """
         Initialize Slack plugin
         
         Args:
             config: Plugin configuration
+            mongo_manager: MongoDB manager instance
         """
         super().__init__(config)
         self.token = os.getenv('SLACK_BOT_TOKEN')
@@ -64,11 +65,12 @@ class SlackPluginMongo(DataSourcePlugin):
         self.user_name_map = {}  # Slack user ID -> name mapping
         self.channel_name_map = {}  # Channel ID -> name mapping
         
-        # MongoDB collections
-        self.db = mongo_manager.get_database_sync()
+        # MongoDB manager and collections
+        self.mongo = mongo_manager
+        self.db = self.mongo.db
         self.collections = {
-            "messages": self.db[mongo_manager._collections_config["slack_messages"]],
-            "channels": self.db[mongo_manager._collections_config["slack_channels"]],
+            "messages": self.db["slack_messages"],
+            "channels": self.db["slack_channels"],
         }
         
     def get_source_name(self) -> str:

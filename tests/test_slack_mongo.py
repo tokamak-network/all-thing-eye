@@ -5,8 +5,16 @@ Test script for Slack Plugin (MongoDB Version)
 import asyncio
 from datetime import datetime, timedelta
 import os
-from src.config import settings
-from src.core.mongo_manager import mongo_manager
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from dotenv import load_dotenv
+from src.core.config import Config
+from src.core.mongo_manager import get_mongo_manager
 from src.plugins.slack_plugin_mongo import SlackPluginMongo
 
 
@@ -19,30 +27,38 @@ async def test_slack_plugin_mongo():
     print("\n====================================================================")
     print("🧪 Loading Configuration")
     print("====================================================================")
-    settings.load_env()
     
-    # Load slack config from settings
-    slack_config = settings.plugins.slack.model_dump()
+    # Load environment variables
+    env_path = project_root / '.env'
+    load_dotenv(dotenv_path=env_path)
     
-    # Override MongoDB connection from environment
+    # Load config
+    config = Config()
+    slack_config = config.get('plugins.slack', {})
+    
+    # Get MongoDB connection info
     mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-    mongodb_database = os.getenv("MONGODB_DATABASE", "all_thing_eye")
+    mongodb_database = os.getenv("MONGODB_DATABASE", "all_thing_eye_test")
     
-    settings.mongodb.uri = mongodb_uri
-    settings.mongodb.database = mongodb_database
-    
-    print(f"✅ Loaded environment variables from: {settings.env_file}")
-    print(f"✅ MongoDB URI: {settings.mongodb.uri}")
-    print(f"✅ MongoDB Database: {settings.mongodb.database}")
+    print(f"✅ Loaded environment variables from: {env_path}")
+    print(f"✅ MongoDB URI: {mongodb_uri}")
+    print(f"✅ MongoDB Database: {mongodb_database}")
     print(f"✅ Slack Workspace: {slack_config.get('workspace')}")
     
-    # 2. Test MongoDB Connection
+    # 2. Initialize MongoDB Manager
+    mongo_config = {
+        'uri': mongodb_uri,
+        'database': mongodb_database,
+    }
+    mongo_manager = get_mongo_manager(mongo_config)
+    
+    # 3. Test MongoDB Connection
     print("\n====================================================================")
     print("🧪 Testing MongoDB Connection")
     print("====================================================================")
     try:
-        await mongo_manager.connect_async()
-        db = mongo_manager.get_database_async()
+        mongo_manager.connect_async()
+        db = mongo_manager.async_db
         server_info = await db.command("serverStatus")
         print(f"✅ MongoDB connection test successful")
         print(f"   Server version: {server_info['version']}")
@@ -53,15 +69,13 @@ async def test_slack_plugin_mongo():
     except Exception as e:
         print(f"❌ MongoDB connection test failed: {e}")
         return
-    finally:
-        await mongo_manager.disconnect_async()
     
-    # 3. Initialize Slack Plugin
+    # 4. Initialize Slack Plugin
     print("\n====================================================================")
     print("🧪 Testing Slack Plugin (MongoDB)")
     print("====================================================================")
     print("\n1️⃣ Initializing Slack Plugin...")
-    slack_plugin = SlackPluginMongo(slack_config)
+    slack_plugin = SlackPluginMongo(slack_config, mongo_manager)
     print(f"   ✅ Slack plugin initialized")
     
     # 4. Validate configuration
@@ -84,7 +98,7 @@ async def test_slack_plugin_mongo():
     print(f"   📅 Period: {start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')}")
     
     # 7. Collect data
-    collected_data = await slack_plugin.collect_data(start_date, end_date)
+    collected_data = slack_plugin.collect_data(start_date, end_date)
     
     # 8. Save data to MongoDB
     await slack_plugin.save_data(collected_data[0])
@@ -94,11 +108,13 @@ async def test_slack_plugin_mongo():
     print("\n====================================================================")
     print("🧪 Verifying MongoDB Data")
     print("====================================================================")
-    await mongo_manager.connect_async()
-    db = mongo_manager.get_database_async()
+    # Reconnect to verify data
+    mongo_manager = get_mongo_manager(mongo_config)
+    mongo_manager.connect_async()
+    db = mongo_manager.async_db
     
-    messages_collection = db[mongo_manager._collections_config["slack_messages"]]
-    channels_collection = db[mongo_manager._collections_config["slack_channels"]]
+    messages_collection = db["slack_messages"]
+    channels_collection = db["slack_channels"]
     
     total_messages = await messages_collection.count_documents({})
     total_channels = await channels_collection.count_documents({})
@@ -139,8 +155,6 @@ async def test_slack_plugin_mongo():
     print("\n====================================================================")
     print("✅ Test completed successfully!")
     print("====================================================================")
-    
-    await mongo_manager.disconnect_async()
 
 
 if __name__ == "__main__":

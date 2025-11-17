@@ -15,7 +15,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.plugins.base import DataSourcePlugin
 from src.utils.logger import get_logger
-from src.core.mongo_manager import mongo_manager
+from src.core.mongo_manager import MongoDBManager
 from src.models.mongo_models import DriveActivity, DriveDocument, DriveFolder
 
 # Google API imports (lazy load to avoid import errors if not installed)

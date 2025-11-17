@@ -9,7 +9,12 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from src.utils.logger import get_logger
-from src.core.mongo_manager import mongo_manager
+from src.core.mongo_manager import get_mongo_manager
+
+# Get MongoDB manager instance
+def get_mongo():
+    from backend.main_mongo import mongo_manager
+    return mongo_manager
 
 logger = get_logger(__name__)
 

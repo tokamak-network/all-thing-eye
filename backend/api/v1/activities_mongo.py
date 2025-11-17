@@ -10,7 +10,12 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from src.utils.logger import get_logger
-from src.core.mongo_manager import mongo_manager
+from src.core.mongo_manager import get_mongo_manager
+
+# Get MongoDB manager instance
+def get_mongo():
+    from backend.main_mongo import mongo_manager
+    return mongo_manager
 
 logger = get_logger(__name__)
 
@@ -51,7 +56,7 @@ async def get_activities(
         Paginated list of activities from various collections
     """
     try:
-        db = mongo_manager.get_database_sync()
+        db = get_mongo().db
         activities = []
         
         # Determine which sources to query
@@ -68,7 +73,7 @@ async def get_activities(
             if source == 'github':
                 # GitHub commits
                 if not activity_type or activity_type == 'commit':
-                    commits = db[mongo_manager._collections_config.get("github_commits", "github_commits")]
+                    commits = db["github_commits"]
                     query = {}
                     if member_name:
                         query['author_login'] = member_name
@@ -93,7 +98,7 @@ async def get_activities(
                 
                 # GitHub PRs
                 if not activity_type or activity_type == 'pull_request':
-                    prs = db[mongo_manager._collections_config.get("github_pull_requests", "github_pull_requests")]
+                    prs = db["github_pull_requests"]
                     query = {}
                     if member_name:
                         query['author'] = member_name
@@ -116,7 +121,7 @@ async def get_activities(
                         ))
             
             elif source == 'slack':
-                messages = db[mongo_manager._collections_config.get("slack_messages", "slack_messages")]
+                messages = db["slack_messages"]
                 query = {}
                 if member_name:
                     query['user_name'] = member_name
@@ -139,7 +144,7 @@ async def get_activities(
                     ))
             
             elif source == 'notion':
-                pages = db[mongo_manager._collections_config.get("notion_pages", "notion_pages")]
+                pages = db["notion_pages"]
                 query = {}
                 if member_name:
                     query['created_by.name'] = member_name
@@ -160,7 +165,7 @@ async def get_activities(
                     ))
             
             elif source == 'drive':
-                drive_activities = db[mongo_manager._collections_config.get("drive_activities", "drive_activities")]
+                drive_activities = db["drive_activities"]
                 query = {}
                 if member_name:
                     query['user_email'] = {"$regex": member_name, "$options": "i"}
@@ -221,7 +226,7 @@ async def get_activities_summary(
         Summary statistics grouped by source and activity type
     """
     try:
-        db = mongo_manager.get_database_sync()
+        db = get_mongo().db
         summary = {}
         
         # Build date filter
@@ -241,7 +246,7 @@ async def get_activities_summary(
             
             if source == 'github':
                 # Commits
-                commits = db[mongo_manager._collections_config.get("github_commits", "github_commits")]
+                commits = db["github_commits"]
                 query = {}
                 if date_filter:
                     query['committed_at'] = date_filter
@@ -264,7 +269,7 @@ async def get_activities_summary(
                     }
                 
                 # PRs
-                prs = db[mongo_manager._collections_config.get("github_pull_requests", "github_pull_requests")]
+                prs = db["github_pull_requests"]
                 pr_count = prs.count_documents(query if date_filter else {})
                 if pr_count > 0:
                     source_summary['total_activities'] += pr_count
@@ -273,7 +278,7 @@ async def get_activities_summary(
                     }
             
             elif source == 'slack':
-                messages = db[mongo_manager._collections_config.get("slack_messages", "slack_messages")]
+                messages = db["slack_messages"]
                 query = {}
                 if date_filter:
                     query['posted_at'] = date_filter
@@ -296,7 +301,7 @@ async def get_activities_summary(
                     }
             
             elif source == 'notion':
-                pages = db[mongo_manager._collections_config.get("notion_pages", "notion_pages")]
+                pages = db["notion_pages"]
                 query = {}
                 if date_filter:
                     query['created_time'] = date_filter
@@ -309,7 +314,7 @@ async def get_activities_summary(
                     }
             
             elif source == 'drive':
-                drive_activities = db[mongo_manager._collections_config.get("drive_activities", "drive_activities")]
+                drive_activities = db["drive_activities"]
                 query = {}
                 if date_filter:
                     query['timestamp'] = date_filter

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import sys
+import os
 from pathlib import Path
 
 # Add project root to path
@@ -16,16 +17,21 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.config import Config
-from src.core.mongo_manager import mongo_manager
+from src.core.mongo_manager import get_mongo_manager
 from src.utils.logger import get_logger
 from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo
 
 logger = get_logger(__name__)
 
+# Global mongo_manager instance
+mongo_manager = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle handler for startup and shutdown"""
+    global mongo_manager
+    
     # Startup
     print("🚀 Starting All-Thing-Eye API (MongoDB)...")
     
@@ -35,7 +41,12 @@ async def lifespan(app: FastAPI):
     
     # Initialize MongoDB
     print("🍃 Connecting to MongoDB...")
-    mongo_manager.connect_sync()
+    mongo_config = {
+        'uri': config.get('mongodb.uri', os.getenv('MONGODB_URI', 'mongodb://localhost:27017')),
+        'database': config.get('mongodb.database', os.getenv('MONGODB_DATABASE', 'all_thing_eye'))
+    }
+    mongo_manager = get_mongo_manager(mongo_config)
+    mongo_manager.connect_async()  # This is synchronous despite the name
     app.state.mongo_manager = mongo_manager
     
     print("✅ API startup complete")
@@ -44,7 +55,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("🔒 Shutting down All-Thing-Eye API...")
-    mongo_manager.disconnect_sync()
+    mongo_manager.close()
     logger.info("✅ API shutdown complete")
 
 
@@ -60,22 +71,14 @@ app = FastAPI(
 )
 
 
-# CORS Middleware
-config = Config()
-cors_config = config.get('api', {}).get('cors', {})
-
-if cors_config.get('enabled', True):
-    origins = cors_config.get('origins', 'http://localhost:3000')
-    if isinstance(origins, str):
-        origins = [o.strip() for o in origins.split(',')]
-    
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=cors_config.get('allow_credentials', True),
-        allow_methods=cors_config.get('allow_methods', ["*"]),
-        allow_headers=cors_config.get('allow_headers', ["*"]),
-    )
+# CORS Middleware - Allow all origins for development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=False,  # Must be False when allow_origins is ["*"]
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Root endpoint
@@ -96,7 +99,7 @@ async def health_check():
     """Health check endpoint"""
     try:
         # Check MongoDB connection
-        db = mongo_manager.get_database_sync()
+        db = mongo_manager.db
         db.command("ping")
         
         # Get collection counts
@@ -112,6 +115,32 @@ async def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=503, detail="Service unavailable")
+
+
+@app.get("/test/commits")
+async def test_commits_query():
+    """Simple test endpoint to check MongoDB commit aggregation"""
+    try:
+        db = mongo_manager.get_database_async()
+        commits_col = db['github_commits']
+        
+        # Aggregation: Count commits by author
+        pipeline = [
+            {"$group": {"_id": "$author_login", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 5}
+        ]
+        
+        cursor = commits_col.aggregate(pipeline)
+        results = await cursor.to_list(length=10)
+        
+        return {
+            "status": "success",
+            "data": results,
+            "total": len(results)
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 # Include API routers (MongoDB versions)

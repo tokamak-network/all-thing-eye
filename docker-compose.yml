@@ -1,148 +1,89 @@
-# All-Thing-Eye Docker Compose Configuration
-
-version: '3.8'
+version: "3.8"
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: allthingeye-postgres
+  # MongoDB Database
+  mongodb:
+    image: mongo:8.0
+    container_name: all-thing-eye-mongodb
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-allthingeye}
-      POSTGRES_USER: ${POSTGRES_USER:-allthingeye}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: all_thing_eye
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-allthingeye}"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Backend API
+  # FastAPI Backend
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: allthingeye-backend
+    container_name: all-thing-eye-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     environment:
-      # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-allthingeye}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-allthingeye}
-      
-      # Application
-      APP_ENV: ${APP_ENV:-production}
-      APP_DEBUG: ${APP_DEBUG:-false}
-      
-      # API
-      API_HOST: 0.0.0.0
-      API_PORT: 8000
-      API_WORKERS: ${API_WORKERS:-4}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      
-      # GitHub
-      GITHUB_ENABLED: ${GITHUB_ENABLED:-true}
+      # MongoDB connection
+      MONGODB_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-changeme}@mongodb:27017/all_thing_eye?authSource=admin
+      MONGODB_DATABASE: all_thing_eye
+
+      # GitHub Plugin
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       GITHUB_ORG: ${GITHUB_ORG}
-      
-      # Slack
-      SLACK_ENABLED: ${SLACK_ENABLED:-true}
+
+      # Slack Plugin
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
-      SLACK_WORKSPACE: ${SLACK_WORKSPACE}
-      
-      # Notion
-      NOTION_ENABLED: ${NOTION_ENABLED:-false}
+      SLACK_USER_TOKEN: ${SLACK_USER_TOKEN}
+
+      # Notion Plugin
       NOTION_TOKEN: ${NOTION_TOKEN}
-      
-      # Security
-      SECRET_KEY: ${SECRET_KEY}
-      
-      # Logging
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # Google Drive Plugin
+      GOOGLE_APPLICATION_CREDENTIALS: /app/config/google-credentials.json
+      GOOGLE_ADMIN_EMAIL: ${GOOGLE_ADMIN_EMAIL}
+    ports:
+      - "8000:8000"
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./output:/app/output
+      - ./backend:/app/backend
+      - ./src:/app/src
       - ./config:/app/config
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    networks:
+      - app-network
+    command: uvicorn backend.main_mongo:app --host 0.0.0.0 --port 8000 --reload
 
-  # Redis (for caching and Celery)
-  redis:
-    image: redis:7-alpine
-    container_name: allthingeye-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Frontend (Next.js)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: http://backend:8000
-    container_name: allthingeye-frontend
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
-      NODE_ENV: production
-    depends_on:
-      - backend
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Nginx (reverse proxy and static file serving)
-  nginx:
-    image: nginx:alpine
-    container_name: allthingeye-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - backend
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # Next.js Frontend (Optional)
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: all-thing-eye-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NEXT_PUBLIC_API_URL: http://backend:8000
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - app-network
 
 volumes:
-  postgres_data:
+  mongodb_data:
     driver: local
-  redis_data:
+  mongodb_config:
     driver: local
 
 networks:
-  default:
-    name: allthingeye-network
+  app-network:
     driver: bridge
-
