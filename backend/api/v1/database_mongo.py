@@ -1,0 +1,386 @@
+"""
+Database Viewer API endpoints for MongoDB
+
+Provides schema inspection and data exploration functionality
+"""
+
+from fastapi import APIRouter, HTTPException, Request, Query
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from bson import ObjectId
+
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter()
+
+
+def get_mongo():
+    """Get MongoDB manager from main_mongo.py"""
+    from backend.main_mongo import mongo_manager
+    return mongo_manager
+
+
+@router.get("/collections")
+async def get_collections(request: Request):
+    """
+    Get list of all MongoDB collections with basic stats
+    
+    Returns:
+        List of collections with document counts
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Get all collection names
+        collection_names = await db.list_collection_names()
+        
+        # Get stats for each collection
+        collections_info = []
+        for name in collection_names:
+            try:
+                collection = db[name]
+                count = await collection.count_documents({})
+                
+                # Get collection stats
+                stats = await db.command("collStats", name)
+                
+                collections_info.append({
+                    "name": name,
+                    "count": count,
+                    "size": stats.get("size", 0),
+                    "avgObjSize": stats.get("avgObjSize", 0),
+                    "storageSize": stats.get("storageSize", 0),
+                    "indexes": stats.get("nindexes", 0),
+                })
+            except Exception as e:
+                logger.warning(f"Failed to get stats for collection {name}: {e}")
+                collections_info.append({
+                    "name": name,
+                    "count": 0,
+                    "size": 0,
+                    "avgObjSize": 0,
+                    "storageSize": 0,
+                    "indexes": 0,
+                })
+        
+        # Sort by document count (descending)
+        collections_info.sort(key=lambda x: x["count"], reverse=True)
+        
+        return {
+            "collections": collections_info,
+            "total_collections": len(collections_info),
+            "total_documents": sum(c["count"] for c in collections_info),
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting collections: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get collections list")
+
+
+@router.get("/collections/{collection_name}/schema")
+async def get_collection_schema(request: Request, collection_name: str):
+    """
+    Analyze collection schema by sampling documents
+    
+    Args:
+        collection_name: Name of the collection
+        
+    Returns:
+        Schema information with field types and examples
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Verify collection exists
+        collection_names = await db.list_collection_names()
+        if collection_name not in collection_names:
+            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+        
+        collection = db[collection_name]
+        
+        # Sample documents to infer schema (take 100 documents)
+        sample_docs = await collection.find({}).limit(100).to_list(length=100)
+        
+        if not sample_docs:
+            return {
+                "collection": collection_name,
+                "schema": {},
+                "sample_count": 0,
+                "message": "Collection is empty"
+            }
+        
+        # Analyze fields
+        field_info = {}
+        
+        for doc in sample_docs:
+            for field, value in doc.items():
+                if field not in field_info:
+                    field_info[field] = {
+                        "types": set(),
+                        "null_count": 0,
+                        "total_count": 0,
+                        "example_values": []
+                    }
+                
+                field_info[field]["total_count"] += 1
+                
+                if value is None:
+                    field_info[field]["null_count"] += 1
+                    field_info[field]["types"].add("null")
+                else:
+                    # Get type
+                    value_type = type(value).__name__
+                    
+                    # Special handling for ObjectId
+                    if isinstance(value, ObjectId):
+                        value_type = "ObjectId"
+                    elif isinstance(value, datetime):
+                        value_type = "datetime"
+                    elif isinstance(value, dict):
+                        value_type = "object"
+                    elif isinstance(value, list):
+                        value_type = "array"
+                    
+                    field_info[field]["types"].add(value_type)
+                    
+                    # Store example values (max 3)
+                    if len(field_info[field]["example_values"]) < 3:
+                        # Convert special types to string for JSON serialization
+                        if isinstance(value, ObjectId):
+                            example = str(value)
+                        elif isinstance(value, datetime):
+                            example = value.isoformat()
+                        elif isinstance(value, (dict, list)):
+                            example = str(value)[:100] + "..." if len(str(value)) > 100 else str(value)
+                        else:
+                            example = value
+                        
+                        field_info[field]["example_values"].append(example)
+        
+        # Convert sets to lists for JSON serialization
+        schema = {}
+        for field, info in field_info.items():
+            schema[field] = {
+                "types": list(info["types"]),
+                "nullable": info["null_count"] > 0,
+                "null_percentage": round(info["null_count"] / info["total_count"] * 100, 2),
+                "occurrence": info["total_count"],
+                "occurrence_percentage": round(info["total_count"] / len(sample_docs) * 100, 2),
+                "examples": info["example_values"]
+            }
+        
+        return {
+            "collection": collection_name,
+            "schema": schema,
+            "sample_count": len(sample_docs),
+            "total_fields": len(schema)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting schema for {collection_name}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get collection schema: {str(e)}")
+
+
+@router.get("/collections/{collection_name}/documents")
+async def get_collection_documents(
+    request: Request,
+    collection_name: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(30, ge=1, le=100, description="Documents per page"),
+    search: Optional[str] = Query(None, description="Search query (JSON format)")
+):
+    """
+    Get paginated documents from a collection with optional search
+    
+    Args:
+        collection_name: Name of the collection
+        page: Page number (1-indexed)
+        limit: Documents per page (max 100)
+        search: Optional search query in JSON format
+        
+    Returns:
+        Paginated documents from the collection
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Verify collection exists
+        collection_names = await db.list_collection_names()
+        if collection_name not in collection_names:
+            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+        
+        collection = db[collection_name]
+        
+        # Parse search query
+        query = {}
+        if search:
+            try:
+                import json
+                query = json.loads(search)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON search query")
+        
+        # Get total count
+        total_count = await collection.count_documents(query)
+        
+        # Calculate pagination
+        skip = (page - 1) * limit
+        total_pages = (total_count + limit - 1) // limit  # Ceiling division
+        
+        # Get documents
+        documents = await collection.find(query).skip(skip).limit(limit).to_list(length=limit)
+        
+        # Convert ObjectId and datetime to string for JSON serialization
+        def serialize_value(value):
+            if isinstance(value, ObjectId):
+                return str(value)
+            elif isinstance(value, datetime):
+                return value.isoformat()
+            elif isinstance(value, dict):
+                return {k: serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [serialize_value(item) for item in value]
+            return value
+        
+        for doc in documents:
+            for key, value in list(doc.items()):
+                doc[key] = serialize_value(value)
+        
+        return {
+            "collection": collection_name,
+            "documents": documents,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting documents from {collection_name}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get documents: {str(e)}")
+
+
+@router.get("/collections/{collection_name}/sample")
+async def get_collection_sample(
+    request: Request,
+    collection_name: str,
+    limit: int = Query(10, ge=1, le=100, description="Number of documents to return")
+):
+    """
+    Get sample documents from a collection (legacy endpoint)
+    
+    Args:
+        collection_name: Name of the collection
+        limit: Number of documents to return (max 100)
+        
+    Returns:
+        Sample documents from the collection
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Verify collection exists
+        collection_names = await db.list_collection_names()
+        if collection_name not in collection_names:
+            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+        
+        collection = db[collection_name]
+        
+        # Get sample documents
+        documents = await collection.find({}).limit(limit).to_list(length=limit)
+        
+        # Convert ObjectId and datetime to string for JSON serialization
+        def serialize_value(value):
+            if isinstance(value, ObjectId):
+                return str(value)
+            elif isinstance(value, datetime):
+                return value.isoformat()
+            elif isinstance(value, dict):
+                return {k: serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [serialize_value(item) for item in value]
+            return value
+        
+        for doc in documents:
+            for key, value in list(doc.items()):
+                doc[key] = serialize_value(value)
+        
+        return {
+            "collection": collection_name,
+            "documents": documents,
+            "count": len(documents),
+            "limit": limit
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sample from {collection_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get sample documents: {str(e)}")
+
+
+@router.get("/collections/{collection_name}/stats")
+async def get_collection_stats(request: Request, collection_name: str):
+    """
+    Get detailed statistics for a collection
+    
+    Args:
+        collection_name: Name of the collection
+        
+    Returns:
+        Detailed collection statistics
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Verify collection exists
+        collection_names = await db.list_collection_names()
+        if collection_name not in collection_names:
+            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+        
+        collection = db[collection_name]
+        
+        # Get collection stats
+        stats = await db.command("collStats", collection_name)
+        
+        # Get indexes
+        indexes = await collection.index_information()
+        
+        return {
+            "collection": collection_name,
+            "stats": {
+                "count": stats.get("count", 0),
+                "size": stats.get("size", 0),
+                "avgObjSize": stats.get("avgObjSize", 0),
+                "storageSize": stats.get("storageSize", 0),
+                "nindexes": stats.get("nindexes", 0),
+                "totalIndexSize": stats.get("totalIndexSize", 0),
+            },
+            "indexes": indexes
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting stats for {collection_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get collection stats: {str(e)}")
+
