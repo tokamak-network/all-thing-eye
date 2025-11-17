@@ -18,7 +18,7 @@ sys.path.insert(0, str(project_root))
 from src.core.config import Config
 from src.core.database import DatabaseManager
 from src.utils.logger import get_logger
-from backend.api.v1 import members, activities, projects, exports
+from backend.api.v1 import members, activities, projects, exports, query
 
 logger = get_logger(__name__)
 
@@ -160,6 +160,12 @@ app.include_router(
     exports.router,
     prefix="/api/v1/exports",
     tags=["exports"]
+)
+
+app.include_router(
+    query.router,
+    prefix="/api/v1/query",
+    tags=["query"]
 )
 
 
