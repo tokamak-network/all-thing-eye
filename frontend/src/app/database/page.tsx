@@ -68,6 +68,18 @@ export default function DatabasePage() {
   const [documentsPerPage, setDocumentsPerPage] = useState(30);
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set());
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    new Set(["members", "github", "slack", "notion", "drive"])
+  );
+  const [expandedCollections, setExpandedCollections] = useState<Set<string>>(
+    new Set()
+  );
+  const [collectionPreviews, setCollectionPreviews] = useState<
+    Record<string, { schema: any; samples: any[]; latest: any }>
+  >({});
+  const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(
+    new Set()
+  );
 
   useEffect(() => {
     loadCollections();
@@ -187,6 +199,119 @@ export default function DatabasePage() {
 
   const collapseAll = () => {
     setExpandedPaths(new Set());
+  };
+
+  const toggleGroup = (group: string) => {
+    setExpandedGroups((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(group)) {
+        newSet.delete(group);
+      } else {
+        newSet.add(group);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleCollection = async (collectionName: string) => {
+    const isExpanded = expandedCollections.has(collectionName);
+
+    setExpandedCollections((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(collectionName)) {
+        newSet.delete(collectionName);
+      } else {
+        newSet.add(collectionName);
+      }
+      return newSet;
+    });
+
+    // Load preview data if not already loaded and expanding
+    if (!isExpanded && !collectionPreviews[collectionName]) {
+      setLoadingPreviews((prev) => new Set(prev).add(collectionName));
+
+      try {
+        console.log(`🔍 Loading preview for: ${collectionName}`);
+
+        const [schema, documents] = await Promise.all([
+          api.getCollectionSchema(collectionName),
+          api.getCollectionDocuments(collectionName, 1, 1), // Get most recent 1 doc
+        ]);
+
+        console.log(`✅ Schema loaded:`, schema);
+        console.log(`✅ Documents loaded:`, documents);
+        console.log(`✅ Latest document:`, documents.documents?.[0]);
+
+        const latestDoc =
+          documents.documents && documents.documents.length > 0
+            ? documents.documents[0]
+            : null;
+
+        setCollectionPreviews((prev) => ({
+          ...prev,
+          [collectionName]: {
+            schema: schema,
+            samples: documents.documents || [],
+            latest: latestDoc,
+          },
+        }));
+
+        console.log(`✅ Preview set for ${collectionName}:`, {
+          hasSchema: !!schema,
+          hasSamples: !!(documents.documents && documents.documents.length > 0),
+          hasLatest: !!latestDoc,
+          latestDoc: latestDoc,
+        });
+      } catch (error) {
+        console.error(
+          `❌ Failed to load collection preview for ${collectionName}:`,
+          error
+        );
+      } finally {
+        setLoadingPreviews((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(collectionName);
+          return newSet;
+        });
+      }
+    }
+  };
+
+  const getCollectionGroup = (
+    collectionName: string
+  ): { group: string; color: string; icon: string } => {
+    if (collectionName.startsWith("member")) {
+      return { group: "members", color: "blue", icon: "👥" };
+    } else if (collectionName.startsWith("github")) {
+      return { group: "github", color: "green", icon: "🐙" };
+    } else if (collectionName.startsWith("slack")) {
+      return { group: "slack", color: "purple", icon: "💬" };
+    } else if (collectionName.startsWith("notion")) {
+      return { group: "notion", color: "orange", icon: "📝" };
+    } else if (collectionName.startsWith("drive")) {
+      return { group: "drive", color: "yellow", icon: "📁" };
+    }
+    return { group: "other", color: "gray", icon: "📦" };
+  };
+
+  const groupedCollections = () => {
+    if (!collections) return {};
+
+    const groups: Record<string, Collection[]> = {
+      members: [],
+      github: [],
+      slack: [],
+      notion: [],
+      drive: [],
+      other: [],
+    };
+
+    collections.collections.forEach((collection) => {
+      const { group } = getCollectionGroup(collection.name);
+      groups[group].push(collection);
+    });
+
+    return groups;
   };
 
   const formatBytes = (bytes: number): string => {
@@ -494,15 +619,401 @@ export default function DatabasePage() {
           {/* Collection Details */}
           <div className="col-span-10">
             {!selectedCollection ? (
-              <div className="bg-white rounded-lg shadow p-12 text-center">
-                <div className="text-6xl mb-4">📊</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Select a Collection
-                </h3>
-                <p className="text-gray-600">
-                  Click on a collection from the list to browse its documents
-                  and schema
-                </p>
+              <div className="bg-white rounded-lg shadow">
+                {/* Database Overview */}
+                <div className="p-6 border-b border-gray-200">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    📊 Database Overview
+                  </h2>
+                  <p className="text-gray-600">
+                    Visual map of your MongoDB collections and schema structure
+                  </p>
+                </div>
+
+                <div className="p-6">
+                  {/* Collections Grid */}
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    {collections?.collections.map((collection) => (
+                      <div
+                        key={collection.name}
+                        onClick={() => handleCollectionClick(collection.name)}
+                        className="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer"
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <span className="text-3xl">📦</span>
+                          <span className="text-xs text-gray-500">
+                            {collection.indexes} indexes
+                          </span>
+                        </div>
+                        <h3 className="font-mono font-semibold text-gray-900 mb-2 text-sm truncate">
+                          {collection.name}
+                        </h3>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-600">Documents:</span>
+                            <span className="font-semibold text-blue-600">
+                              {collection.count.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-600">Size:</span>
+                            <span className="font-semibold text-green-600">
+                              {formatBytes(collection.size)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-600">Avg Doc:</span>
+                            <span className="font-semibold text-purple-600">
+                              {formatBytes(collection.avgObjSize)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Firebase-style Collection Tree */}
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      🔗 Database Structure (Firebase Style)
+                    </h3>
+                    <div className="font-mono text-sm space-y-1">
+                      {Object.entries(groupedCollections()).map(
+                        ([groupName, groupCollections]) => {
+                          if (groupCollections.length === 0) return null;
+
+                          const { icon, color } = getCollectionGroup(
+                            groupCollections[0].name
+                          );
+                          const isExpanded = expandedGroups.has(groupName);
+
+                          const colorClasses = {
+                            blue: "bg-blue-50 hover:bg-blue-100 text-blue-900",
+                            green:
+                              "bg-green-50 hover:bg-green-100 text-green-900",
+                            purple:
+                              "bg-purple-50 hover:bg-purple-100 text-purple-900",
+                            orange:
+                              "bg-orange-50 hover:bg-orange-100 text-orange-900",
+                            yellow:
+                              "bg-yellow-50 hover:bg-yellow-100 text-yellow-900",
+                            gray: "bg-gray-50 hover:bg-gray-100 text-gray-900",
+                          };
+
+                          const borderClasses = {
+                            blue: "border-blue-200",
+                            green: "border-green-200",
+                            purple: "border-purple-200",
+                            orange: "border-orange-200",
+                            yellow: "border-yellow-200",
+                            gray: "border-gray-200",
+                          };
+
+                          const textClasses = {
+                            blue: "text-blue-700",
+                            green: "text-green-700",
+                            purple: "text-purple-700",
+                            orange: "text-orange-700",
+                            yellow: "text-yellow-700",
+                            gray: "text-gray-700",
+                          };
+
+                          const totalDocs = groupCollections.reduce(
+                            (sum, col) => sum + col.count,
+                            0
+                          );
+
+                          return (
+                            <div key={groupName}>
+                              {/* Group Header */}
+                              <div
+                                onClick={() => toggleGroup(groupName)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer border ${
+                                  colorClasses[
+                                    color as keyof typeof colorClasses
+                                  ]
+                                } ${
+                                  borderClasses[
+                                    color as keyof typeof borderClasses
+                                  ]
+                                }`}
+                              >
+                                <button className="text-gray-500 hover:text-gray-700 w-4">
+                                  {isExpanded ? "▼" : "▶"}
+                                </button>
+                                <span className="text-lg">{icon}</span>
+                                <span className="font-semibold capitalize">
+                                  {groupName}
+                                </span>
+                                <span
+                                  className={`text-xs ml-auto ${
+                                    textClasses[
+                                      color as keyof typeof textClasses
+                                    ]
+                                  }`}
+                                >
+                                  {groupCollections.length} collections,{" "}
+                                  {totalDocs.toLocaleString()} docs
+                                </span>
+                              </div>
+
+                              {/* Group Collections */}
+                              {isExpanded && (
+                                <div className="ml-6 mt-1 space-y-1">
+                                  {groupCollections.map((collection) => {
+                                    const isCollectionExpanded =
+                                      expandedCollections.has(collection.name);
+                                    const preview =
+                                      collectionPreviews[collection.name];
+
+                                    return (
+                                      <div key={collection.name}>
+                                        {/* Collection Header */}
+                                        <div
+                                          onClick={() =>
+                                            toggleCollection(collection.name)
+                                          }
+                                          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-white cursor-pointer border border-transparent hover:border-gray-200 transition-all"
+                                        >
+                                          <button className="text-gray-400 hover:text-gray-700 w-4">
+                                            {isCollectionExpanded ? "▼" : "▶"}
+                                          </button>
+                                          <span className="text-gray-700">
+                                            {collection.name}
+                                          </span>
+                                          <span className="text-xs text-gray-500 ml-auto">
+                                            {collection.count.toLocaleString()}{" "}
+                                            docs •{" "}
+                                            {formatBytes(collection.size)}
+                                          </span>
+                                        </div>
+
+                                        {/* Collection Preview */}
+                                        {isCollectionExpanded && (
+                                          <div className="ml-8 mt-2 mb-3 space-y-3 bg-white rounded-lg p-4 border border-gray-200">
+                                            {/* Loading State */}
+                                            {loadingPreviews.has(
+                                              collection.name
+                                            ) && (
+                                              <div className="flex items-center justify-center py-8 text-gray-500">
+                                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
+                                                <span>Loading preview...</span>
+                                              </div>
+                                            )}
+
+                                            {/* Latest Document */}
+                                            {!loadingPreviews.has(
+                                              collection.name
+                                            ) &&
+                                              preview?.latest && (
+                                                <div>
+                                                  <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                                    <span>
+                                                      📄 Latest Document
+                                                    </span>
+                                                    <span className="text-gray-500 font-normal">
+                                                      (Most Recent)
+                                                    </span>
+                                                  </h4>
+                                                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+                                                    <div className="space-y-2 text-xs">
+                                                      {Object.entries(
+                                                        preview.latest
+                                                      )
+                                                        .slice(0, 8)
+                                                        .map(([key, value]) => {
+                                                          // Get field schema info
+                                                          const fieldSchema =
+                                                            preview.schema?.fields?.find(
+                                                              (f: any) =>
+                                                                f.field === key
+                                                            );
+
+                                                          return (
+                                                            <div
+                                                              key={key}
+                                                              className="flex items-start gap-3 bg-white rounded px-3 py-2 border border-blue-100"
+                                                            >
+                                                              <div className="flex-shrink-0 min-w-[120px]">
+                                                                <span className="font-mono font-semibold text-gray-800">
+                                                                  {key}
+                                                                </span>
+                                                                {fieldSchema && (
+                                                                  <div className="text-[10px] text-blue-600 mt-0.5">
+                                                                    {
+                                                                      fieldSchema
+                                                                        .types[0]
+                                                                    }
+                                                                  </div>
+                                                                )}
+                                                              </div>
+                                                              <div className="flex-1 min-w-0">
+                                                                <div className="font-mono text-gray-700 break-all">
+                                                                  {typeof value ===
+                                                                  "object"
+                                                                    ? JSON.stringify(
+                                                                        value
+                                                                      )
+                                                                    : String(
+                                                                        value
+                                                                      )}
+                                                                </div>
+                                                              </div>
+                                                            </div>
+                                                          );
+                                                        })}
+                                                      {Object.keys(
+                                                        preview.latest
+                                                      ).length > 8 && (
+                                                        <div className="text-gray-500 italic text-center py-1">
+                                                          +
+                                                          {Object.keys(
+                                                            preview.latest
+                                                          ).length - 8}{" "}
+                                                          more fields...
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              )}
+
+                                            {/* Schema Summary */}
+                                            {!loadingPreviews.has(
+                                              collection.name
+                                            ) &&
+                                              preview?.schema?.fields && (
+                                                <div>
+                                                  <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                                                    📋 Schema Summary
+                                                  </h4>
+                                                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                                      <div className="flex flex-col items-center p-2 bg-white rounded">
+                                                        <span className="text-gray-600">
+                                                          Total Fields
+                                                        </span>
+                                                        <span className="text-lg font-bold text-blue-600">
+                                                          {
+                                                            preview.schema
+                                                              .fields.length
+                                                          }
+                                                        </span>
+                                                      </div>
+                                                      <div className="flex flex-col items-center p-2 bg-white rounded">
+                                                        <span className="text-gray-600">
+                                                          Sample Size
+                                                        </span>
+                                                        <span className="text-lg font-bold text-green-600">
+                                                          {preview.schema
+                                                            .sample_size || 0}
+                                                        </span>
+                                                      </div>
+                                                      <div className="flex flex-col items-center p-2 bg-white rounded">
+                                                        <span className="text-gray-600">
+                                                          Analyzed
+                                                        </span>
+                                                        <span className="text-lg font-bold text-purple-600">
+                                                          {preview.schema
+                                                            .analyzed_at
+                                                            ? new Date(
+                                                                preview.schema.analyzed_at
+                                                              ).toLocaleDateString()
+                                                            : "N/A"}
+                                                        </span>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              )}
+
+                                            {!loadingPreviews.has(
+                                              collection.name
+                                            ) &&
+                                              !preview?.latest &&
+                                              preview && (
+                                                <div className="text-center text-gray-500 text-xs py-4">
+                                                  No documents found in this
+                                                  collection
+                                                </div>
+                                              )}
+
+                                            {/* View Full Collection Button */}
+                                            {!loadingPreviews.has(
+                                              collection.name
+                                            ) && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleCollectionClick(
+                                                    collection.name
+                                                  );
+                                                }}
+                                                className="w-full text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded px-3 py-2 border border-blue-200 transition-colors font-semibold"
+                                              >
+                                                View Full Collection →
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
+
+                    <div className="mt-4 text-xs text-gray-600 space-y-1">
+                      <div>
+                        <strong>💡 Navigation:</strong>
+                      </div>
+                      <ul className="ml-4 space-y-1">
+                        <li>• Click group headers to expand/collapse groups</li>
+                        <li>
+                          • Click collection names (▶) to view inline schema &
+                          samples
+                        </li>
+                        <li>
+                          • Click &quot;View Full Collection&quot; to explore
+                          all documents
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Tips */}
+                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-blue-900 mb-2">
+                      💡 Quick Tips
+                    </h4>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>
+                        • <strong>Firebase-style navigation:</strong> Click ▶/▼
+                        to expand collections inline
+                      </li>
+                      <li>
+                        • <strong>Inline preview:</strong> See schema and sample
+                        documents without leaving the overview
+                      </li>
+                      <li>
+                        • <strong>Full exploration:</strong> Use &quot;View Full
+                        Collection&quot; button to see all documents with tabs
+                      </li>
+                      <li>
+                        • <strong>Color coding:</strong> Members (blue), GitHub
+                        (green), Slack (purple), Notion (orange), Drive (yellow)
+                      </li>
+                      <li>
+                        • <strong>Quick stats:</strong> Collection cards show
+                        document count, size, and index count
+                      </li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             ) : detailLoading && !documentsData ? (
               <div className="bg-white rounded-lg shadow p-12 text-center">
