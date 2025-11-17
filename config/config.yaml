@@ -9,10 +9,62 @@ app:
 
 # Database
 database:
+  # Legacy SQL Database (for migration reference only)
   main_db: ${DATABASE_URL:sqlite:///data/databases/main.db}
   echo: false # SQL 로깅
   pool_size: 10
   max_overflow: 20
+
+# MongoDB Configuration
+mongodb:
+  # Connection URI format: mongodb://[username:password@]host[:port][/database][?options]
+  uri: ${MONGODB_URI:mongodb://localhost:27017}
+  database: ${MONGODB_DATABASE:all_thing_eye}
+  
+  # Connection Pool Settings
+  max_pool_size: 100
+  min_pool_size: 10
+  max_idle_time_ms: 45000
+  wait_queue_timeout_ms: 5000
+  
+  # Write Concern (data durability)
+  write_concern:
+    w: "majority"  # Wait for majority of replica set
+    j: true        # Wait for journal commit
+    wtimeout: 5000 # Timeout in ms
+  
+  # Read Preference
+  read_preference: "primaryPreferred"  # primary, primaryPreferred, secondary, secondaryPreferred, nearest
+  
+  # Collections (databases within MongoDB)
+  collections:
+    # Main collections
+    members: "members"
+    member_identifiers: "member_identifiers"
+    member_activities: "member_activities"
+    data_collections: "data_collections"
+    
+    # Plugin-specific collections
+    github_commits: "github_commits"
+    github_pull_requests: "github_pull_requests"
+    github_issues: "github_issues"
+    github_repositories: "github_repositories"
+    
+    slack_messages: "slack_messages"
+    slack_reactions: "slack_reactions"
+    slack_channels: "slack_channels"
+    slack_users: "slack_users"
+    
+    notion_pages: "notion_pages"
+    notion_comments: "notion_comments"
+    notion_databases: "notion_databases"
+    
+    drive_activities: "drive_activities"
+    drive_folders: "drive_folders"
+    drive_documents: "drive_documents"
+  
+  # Indexing
+  auto_create_indexes: true
 
 # Data Sources (Plugins)
 plugins:
