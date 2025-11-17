@@ -16,6 +16,7 @@ from datetime import datetime
 from bson import ObjectId
 
 from src.utils.logger import get_logger
+from src.utils.toon_encoder import encode_toon
 
 logger = get_logger(__name__)
 
@@ -37,6 +38,7 @@ class BulkExportRequest(BaseModel):
     tables: List[TableSelection]
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    format: str = 'csv'  # 'csv', 'json', or 'toon'
 
 
 def get_mongo():
@@ -231,6 +233,148 @@ async def export_collection_csv(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to export collection: {str(e)}"
+        )
+
+
+@router.get("/tables/{source}/{collection}/toon")
+async def export_collection_toon(
+    request: Request,
+    source: str,
+    collection: str,
+    limit: int = Query(None, ge=1, le=100000, description="Maximum documents to export"),
+    start_date: Optional[str] = Query(None, description="Start date filter (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD)"),
+    delimiter: str = Query(',', description="Delimiter for array values (comma, tab, pipe)")
+):
+    """
+    Export a specific collection as TOON format
+    
+    TOON (Token-Oriented Object Notation) is optimized for LLM prompts:
+    - 20-40% fewer tokens than JSON
+    - Explicit structure with array lengths and field headers
+    - Human-readable and self-documenting
+    
+    Args:
+        source: Database source (main, github, slack, google_drive, notion)
+        collection: Collection name
+        limit: Maximum number of documents to export (optional)
+        start_date: Filter records from this date onwards (optional)
+        end_date: Filter records up to this date (optional)
+        delimiter: Delimiter for array values (',' | '\t' | '|')
+    
+    Returns:
+        TOON file download
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Validate source
+        if source not in COLLECTION_MAP:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid source. Must be one of: {', '.join(COLLECTION_MAP.keys())}"
+            )
+        
+        # Validate collection exists
+        all_collections = await db.list_collection_names()
+        if collection not in all_collections:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Collection '{collection}' not found"
+            )
+        
+        # Normalize delimiter
+        delimiter_map = {'comma': ',', 'tab': '\t', 'pipe': '|', ',': ',', '\t': '\t', '|': '|'}
+        actual_delimiter = delimiter_map.get(delimiter.lower(), ',')
+        
+        # Build query filter (same as CSV export)
+        query_filter = {}
+        
+        # Date filtering
+        if start_date or end_date:
+            timestamp_fields = ['timestamp', 'posted_at', 'created_at', 'updated_at', 'committed_at']
+            timestamp_field = None
+            
+            sample_doc = await db[collection].find_one({})
+            if sample_doc:
+                for field in timestamp_fields:
+                    if field in sample_doc:
+                        timestamp_field = field
+                        break
+            
+            if timestamp_field:
+                date_filter = {}
+                if start_date:
+                    date_filter['$gte'] = datetime.fromisoformat(start_date)
+                if end_date:
+                    end_datetime = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
+                    date_filter['$lte'] = end_datetime
+                
+                if date_filter:
+                    query_filter[timestamp_field] = date_filter
+        
+        # Query MongoDB
+        cursor = db[collection].find(query_filter)
+        if limit:
+            cursor = cursor.limit(limit)
+        
+        documents = await cursor.to_list(length=limit or 10000)
+        
+        if not documents:
+            # Empty collection
+            toon_content = f"{collection}[0]:"
+            row_count = 0
+        else:
+            # Convert documents to TOON-friendly format
+            rows = []
+            
+            for doc in documents:
+                # Convert ObjectId to string
+                if '_id' in doc:
+                    doc['_id'] = str(doc['_id'])
+                
+                # Convert other special types
+                clean_doc = {}
+                for key, value in doc.items():
+                    if isinstance(value, ObjectId):
+                        clean_doc[key] = str(value)
+                    elif isinstance(value, datetime):
+                        clean_doc[key] = value.isoformat()
+                    else:
+                        clean_doc[key] = value
+                
+                rows.append(clean_doc)
+            
+            # Wrap in collection name for TOON
+            toon_data = {collection: rows}
+            
+            # Encode to TOON format
+            toon_content = encode_toon(toon_data, indent=2, delimiter=actual_delimiter)
+            row_count = len(rows)
+        
+        # Generate filename
+        filename = f"{source}_{collection}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.toon"
+        
+        logger.info(f"Exported {row_count} documents from {source}.{collection} as TOON")
+        
+        return StreamingResponse(
+            iter([toon_content]),
+            media_type="text/plain",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting collection {source}.{collection} as TOON: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to export collection as TOON: {str(e)}"
         )
 
 
@@ -541,13 +685,18 @@ async def export_bulk_collections(
     bulk_request: BulkExportRequest
 ):
     """
-    Export multiple collections as a ZIP file containing CSV files
+    Export multiple collections as a ZIP file
+    
+    Supports multiple export formats:
+    - CSV: Traditional comma-separated values (default)
+    - JSON: Structured JSON format
+    - TOON: Token-Oriented Object Notation (LLM-optimized, 20-40% fewer tokens)
     
     Args:
-        bulk_request: List of collection selections (source + collection name) with optional date range
+        bulk_request: List of collection selections with optional date range and format
         
     Returns:
-        ZIP file containing CSV files for each selected collection
+        ZIP file containing files for each selected collection in the specified format
     """
     if not bulk_request.tables:
         raise HTTPException(status_code=400, detail="No collections selected")
@@ -602,44 +751,61 @@ async def export_bulk_collections(
                         logger.warning(f"No data in {source}.{collection}")
                         continue
                     
-                    # Convert to CSV
+                    # Prepare documents (common processing)
                     rows = []
-                    all_keys = set()
                     
                     for doc in documents:
                         # Convert ObjectId to string
                         if '_id' in doc:
                             doc['_id'] = str(doc['_id'])
                         
-                        # Flatten document
-                        flat_doc = {}
+                        # Convert special types
+                        clean_doc = {}
                         for key, value in doc.items():
-                            if isinstance(value, (dict, list)):
-                                flat_doc[key] = json.dumps(value, default=str, ensure_ascii=False)
-                            elif isinstance(value, ObjectId):
-                                flat_doc[key] = str(value)
+                            if isinstance(value, ObjectId):
+                                clean_doc[key] = str(value)
                             elif isinstance(value, datetime):
-                                flat_doc[key] = value.isoformat()
+                                clean_doc[key] = value.isoformat()
+                            elif bulk_request.format == 'csv' and isinstance(value, (dict, list)):
+                                # Flatten for CSV
+                                clean_doc[key] = json.dumps(value, default=str, ensure_ascii=False)
                             else:
-                                flat_doc[key] = value
-                            
-                            all_keys.add(key)
+                                clean_doc[key] = value
                         
-                        rows.append(flat_doc)
+                        rows.append(clean_doc)
                     
-                    # Write CSV
-                    csv_buffer = io.StringIO()
-                    fieldnames = sorted(list(all_keys))
-                    writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(rows)
+                    # Export based on format
+                    if bulk_request.format == 'toon':
+                        # TOON format
+                        toon_data = {collection: rows}
+                        content = encode_toon(toon_data, indent=2, delimiter=',')
+                        filename = f"{source}_{collection}.toon"
+                        zip_file.writestr(filename, content)
+                        logger.info(f"Added {filename} to ZIP ({len(rows)} documents, TOON format)")
                     
-                    # Add to ZIP
-                    csv_content = csv_buffer.getvalue()
-                    filename = f"{source}_{collection}.csv"
-                    zip_file.writestr(filename, csv_content)
+                    elif bulk_request.format == 'json':
+                        # JSON format
+                        json_content = json.dumps(rows, indent=2, default=str, ensure_ascii=False)
+                        filename = f"{source}_{collection}.json"
+                        zip_file.writestr(filename, json_content)
+                        logger.info(f"Added {filename} to ZIP ({len(rows)} documents, JSON format)")
                     
-                    logger.info(f"Added {filename} to ZIP ({len(rows)} documents)")
+                    else:  # Default: CSV
+                        # CSV format
+                        all_keys = set()
+                        for row in rows:
+                            all_keys.update(row.keys())
+                        
+                        csv_buffer = io.StringIO()
+                        fieldnames = sorted(list(all_keys))
+                        writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(rows)
+                        
+                        csv_content = csv_buffer.getvalue()
+                        filename = f"{source}_{collection}.csv"
+                        zip_file.writestr(filename, csv_content)
+                        logger.info(f"Added {filename} to ZIP ({len(rows)} documents, CSV format)")
                 
                 except Exception as e:
                     logger.error(f"Error exporting {source}.{collection}: {e}")
