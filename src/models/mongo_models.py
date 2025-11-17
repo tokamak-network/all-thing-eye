@@ -424,13 +424,157 @@ class DriveActivity(BaseModel):
         json_encoders = {ObjectId: str}
 
 
+class DriveFile(BaseModel):
+    """Google Drive file document"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    file_id: str = Field(..., unique=True)
+    name: str
+    owner: str
+    mime_type: str
+    created_time: datetime
+    modified_time: datetime
+    size: Optional[int] = None
+    parents: List[str] = Field(default_factory=list)
+    permissions: List[Dict[str, Any]] = Field(default_factory=list)
+    collected_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
 class DriveFolder(BaseModel):
-    """Google Drive folder document"""
+    """Google Drive folder document (alias for DriveFile)"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     drive_id: str
     name: str
     owner: str
     created_time: datetime
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+# Alias for backward compatibility
+DriveDocument = DriveFile
+
+
+# =============================================================================
+# Notion Models
+# =============================================================================
+
+class NotionUser(BaseModel):
+    """Notion user information (embedded)"""
+    id: str
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    type: Optional[str] = None  # person, bot
+    email: Optional[str] = None
+
+
+class NotionBlock(BaseModel):
+    """Notion block information (embedded)"""
+    id: str
+    type: str
+    has_children: bool = False
+    created_time: Optional[datetime] = None
+    last_edited_time: Optional[datetime] = None
+
+
+class NotionPage(BaseModel):
+    """Notion page document"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    page_id: str = Field(..., unique=True)
+    title: Optional[str] = None
+    url: str
+    
+    # Parent information
+    parent_type: Optional[str] = None  # database_id, page_id, workspace
+    parent_id: Optional[str] = None
+    
+    # User information (denormalized)
+    created_by: Optional[NotionUser] = None
+    last_edited_by: Optional[NotionUser] = None
+    
+    # Timestamps
+    created_time: datetime
+    last_edited_time: datetime
+    
+    # Properties (raw JSON from Notion API)
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Comments
+    comments: List[Dict[str, Any]] = Field(default_factory=list)
+    comments_count: int = 0
+    
+    # Metadata
+    is_archived: bool = False
+    collected_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+class NotionDatabase(BaseModel):
+    """Notion database document"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    database_id: str = Field(..., unique=True)
+    title: Optional[str] = None
+    description: Optional[str] = None
+    url: str
+    
+    # Parent information
+    parent_type: Optional[str] = None
+    parent_id: Optional[str] = None
+    
+    # User information (denormalized)
+    created_by: Optional[NotionUser] = None
+    last_edited_by: Optional[NotionUser] = None
+    
+    # Timestamps
+    created_time: datetime
+    last_edited_time: datetime
+    
+    # Properties schema
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Metadata
+    is_archived: bool = False
+    collected_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+class NotionComment(BaseModel):
+    """Notion comment document"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    comment_id: str = Field(..., unique=True)
+    
+    # Parent page
+    page_id: str
+    discussion_id: Optional[str] = None
+    
+    # Comment content
+    rich_text: List[Dict[str, Any]] = Field(default_factory=list)
+    plain_text: Optional[str] = None
+    
+    # User information (denormalized)
+    created_by: Optional[NotionUser] = None
+    
+    # Timestamp
+    created_time: datetime
+    last_edited_time: Optional[datetime] = None
+    
+    # Metadata
+    collected_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
         populate_by_name = True

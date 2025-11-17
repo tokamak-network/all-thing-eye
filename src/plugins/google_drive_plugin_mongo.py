@@ -89,7 +89,7 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
         'html': 'HTML'
     }
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], mongo_manager=None):
         """
         Initialize Google Drive plugin
         
@@ -99,6 +99,7 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
                 - token_path: Path to token_admin.pickle
                 - target_users: List of user emails to track (optional, defaults to all)
                 - days_to_collect: Number of days to collect (default: 7)
+            mongo_manager: MongoDB manager instance
         """
         if not GOOGLE_APIS_AVAILABLE:
             raise ImportError(
@@ -108,6 +109,7 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
             )
         
         self.config = config or {}
+        self.mongo = mongo_manager
         self.logger = get_logger(__name__)
         
         # Set up paths
@@ -138,12 +140,15 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
         self.service = None
         
         # MongoDB collections
-        self.db = mongo_manager.get_database_sync()
-        self.collections = {
-            "activities": self.db[mongo_manager._collections_config["drive_activities"]],
-            "documents": self.db[mongo_manager._collections_config["drive_documents"]],
-            "folders": self.db[mongo_manager._collections_config["drive_folders"]],
-        }
+        if mongo_manager:
+            self.db = mongo_manager.db
+            self.collections = {
+                "activities": self.db["drive_activities"],
+                "files": self.db["drive_files"],
+            }
+        else:
+            self.db = None
+            self.collections = {}
     
     def get_source_name(self) -> str:
         """Return the name of this data source"""
@@ -403,8 +408,17 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
         
         # Save activities
         activities_to_save = []
+        import hashlib
+        
         for activity in collected_data.get('activities', []):
+            # Generate unique activity_id using hash of raw_event
+            # This ensures each unique activity (even with same timestamp/user/doc) gets a unique ID
+            raw_event_str = activity.get('raw_event', '')
+            activity_hash = hashlib.md5(raw_event_str.encode()).hexdigest()[:16]
+            activity_id = f"{activity['timestamp'].isoformat()}_{activity_hash}"
+            
             activity_doc = {
+                'activity_id': activity_id,
                 'timestamp': activity['timestamp'],
                 'user_email': activity['user_email'],
                 'action': activity['action'],
@@ -412,17 +426,30 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
                 'doc_title': activity['doc_title'],
                 'doc_type': activity['doc_type'],
                 'doc_id': activity['doc_id'],
-                'raw_event': activity.get('raw_event', ''),
+                'raw_event': raw_event_str,
                 'collected_at': datetime.utcnow()
             }
             activities_to_save.append(activity_doc)
         
         if activities_to_save:
             try:
-                self.collections["activities"].insert_many(activities_to_save, ordered=False)
-                print(f"   ✅ Saved {len(activities_to_save)} activities")
-            except DuplicateKeyError:
-                print(f"   ℹ️  Some activities already exist, skipping duplicates.")
+                # Save in batches to avoid timeout with large datasets
+                batch_size = 1000
+                total = len(activities_to_save)
+                saved_count = 0
+                
+                for i in range(0, total, batch_size):
+                    batch = activities_to_save[i:i+batch_size]
+                    try:
+                        self.collections["activities"].insert_many(batch, ordered=False)
+                        saved_count += len(batch)
+                        if (i + batch_size) % 10000 == 0:
+                            print(f"   📊 Progress: {saved_count}/{total} activities saved...")
+                    except DuplicateKeyError:
+                        # Some documents already exist, continue
+                        pass
+                
+                print(f"   ✅ Saved {saved_count} activities")
             except Exception as e:
                 print(f"   ❌ Error saving activities: {e}")
         
@@ -444,13 +471,31 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
         
         if folders_to_save:
             try:
+                # Save folders/files in batches
+                saved_count = 0
                 for folder_doc in folders_to_save:
-                    self.collections["folders"].replace_one(
-                        {'folder_id': folder_doc['folder_id']},
-                        folder_doc,
-                        upsert=True
-                    )
-                print(f"   ✅ Saved {len(folders_to_save)} folders")
+                    try:
+                        self.collections["files"].replace_one(
+                            {'file_id': folder_doc['folder_id']},  # Use file_id for consistency
+                            {
+                                'file_id': folder_doc['folder_id'],
+                                'name': folder_doc['folder_name'],
+                                'owner': folder_doc['created_by'],
+                                'mime_type': 'application/vnd.google-apps.folder',
+                                'created_time': folder_doc['created_time'],
+                                'modified_time': folder_doc['modified_time'],
+                                'parents': [folder_doc.get('parent_id')] if folder_doc.get('parent_id') else [],
+                                'permissions': folder_doc.get('members', []),
+                                'collected_at': datetime.utcnow()
+                            },
+                            upsert=True
+                        )
+                        saved_count += 1
+                    except Exception:
+                        # Skip if error on individual folder
+                        pass
+                
+                print(f"   ✅ Saved {saved_count} folders/files")
             except Exception as e:
                 print(f"   ❌ Error saving folders: {e}")
     

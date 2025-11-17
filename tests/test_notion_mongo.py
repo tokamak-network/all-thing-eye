@@ -5,8 +5,16 @@ Test script for Notion Plugin (MongoDB Version)
 import asyncio
 from datetime import datetime, timedelta
 import os
-from src.config import settings
-from src.core.mongo_manager import mongo_manager
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from dotenv import load_dotenv
+from src.core.config import Config
+from src.core.mongo_manager import get_mongo_manager
 from src.plugins.notion_plugin_mongo import NotionPluginMongo
 
 
@@ -19,30 +27,41 @@ async def test_notion_plugin_mongo():
     print("\n====================================================================")
     print("🧪 Loading Configuration")
     print("====================================================================")
-    settings.load_env()
+    
+    # Load environment variables
+    env_path = project_root / '.env'
+    load_dotenv(dotenv_path=env_path)
+    
+    # Initialize config
+    config = Config()
+    
+    # Get MongoDB configuration
+    mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+    mongodb_database = os.getenv("MONGODB_DATABASE", "all_thing_eye_test")
+    
+    print(f"✅ MongoDB URI: {mongodb_uri}")
+    print(f"✅ MongoDB Database: {mongodb_database}")
     
     # Load notion config
-    notion_config = settings.plugins.notion.model_dump()
+    notion_config = config.get('plugins.notion', {})
+    if not notion_config:
+        print("❌ Notion plugin not configured")
+        return
     
-    # Override MongoDB connection from environment
-    mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-    mongodb_database = os.getenv("MONGODB_DATABASE", "all_thing_eye")
+    print(f"✅ Notion Token: {'*' * 20}...{os.getenv('NOTION_API_TOKEN', '')[-10:]}")
     
-    settings.mongodb.uri = mongodb_uri
-    settings.mongodb.database = mongodb_database
-    
-    print(f"✅ Loaded environment variables from: {settings.env_file}")
-    print(f"✅ MongoDB URI: {settings.mongodb.uri}")
-    print(f"✅ MongoDB Database: {settings.mongodb.database}")
-    print(f"✅ Notion Workspace: {notion_config.get('workspace_id', 'Default')}")
-    
-    # 2. Test MongoDB Connection
+    # 2. Initialize MongoDB Manager
     print("\n====================================================================")
     print("🧪 Testing MongoDB Connection")
     print("====================================================================")
     try:
-        await mongo_manager.connect_async()
-        db = mongo_manager.get_database_async()
+        mongo_config = {
+            'uri': mongodb_uri,
+            'database': mongodb_database,
+        }
+        mongo_manager = get_mongo_manager(mongo_config)
+        mongo_manager.connect_async()
+        db = mongo_manager.async_db
         server_info = await db.command("serverStatus")
         print(f"✅ MongoDB connection test successful")
         print(f"   Server version: {server_info['version']}")
@@ -53,15 +72,13 @@ async def test_notion_plugin_mongo():
     except Exception as e:
         print(f"❌ MongoDB connection test failed: {e}")
         return
-    finally:
-        await mongo_manager.disconnect_async()
     
     # 3. Initialize Notion Plugin
     print("\n====================================================================")
     print("🧪 Testing Notion Plugin (MongoDB)")
     print("====================================================================")
     print("\n1️⃣ Initializing Notion Plugin...")
-    notion_plugin = NotionPluginMongo(notion_config)
+    notion_plugin = NotionPluginMongo(notion_config, mongo_manager)
     print(f"   ✅ Notion plugin initialized")
     
     # 4. Validate configuration
@@ -78,13 +95,14 @@ async def test_notion_plugin_mongo():
         return
     
     # 6. Define collection period (last 7 days)
-    end_date = datetime.utcnow()
+    from datetime import timezone
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=7)
     print(f"\n4️⃣ Collecting data...")
     print(f"   📅 Period: {start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')}")
     
     # 7. Collect data
-    collected_data = await notion_plugin.collect_data(start_date, end_date)
+    collected_data = notion_plugin.collect_data(start_date, end_date)
     
     # 8. Save data to MongoDB
     await notion_plugin.save_data(collected_data[0])
@@ -94,11 +112,10 @@ async def test_notion_plugin_mongo():
     print("\n====================================================================")
     print("🧪 Verifying MongoDB Data")
     print("====================================================================")
-    await mongo_manager.connect_async()
-    db = mongo_manager.get_database_async()
+    db = mongo_manager.async_db
     
-    pages_collection = db[mongo_manager._collections_config["notion_pages"]]
-    databases_collection = db[mongo_manager._collections_config["notion_databases"]]
+    pages_collection = db["notion_pages"]
+    databases_collection = db["notion_databases"]
     
     total_pages = await pages_collection.count_documents({})
     total_databases = await databases_collection.count_documents({})
@@ -142,7 +159,7 @@ async def test_notion_plugin_mongo():
     print("✅ Test completed successfully!")
     print("====================================================================")
     
-    await mongo_manager.disconnect_async()
+    mongo_manager.close()
 
 
 if __name__ == "__main__":

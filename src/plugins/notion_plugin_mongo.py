@@ -24,7 +24,7 @@ from src.models.mongo_models import NotionPage, NotionDatabase, NotionUser, Noti
 class NotionPluginMongo(DataSourcePlugin):
     """Plugin for collecting Notion workspace activity data (MongoDB version)"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], mongo_manager=None):
         """
         Initialize Notion plugin
         
@@ -33,8 +33,10 @@ class NotionPluginMongo(DataSourcePlugin):
                 - token: Notion Integration Token
                 - workspace_id: Workspace ID (optional)
                 - days_to_collect: Number of days to collect (default: 7)
+            mongo_manager: MongoDB manager instance
         """
         self.config = config if config else {}
+        self.mongo = mongo_manager
         self.token = self.config.get('token', '')
         self.workspace_id = self.config.get('workspace_id')
         self.days_to_collect = self.config.get('days_to_collect', 7)
@@ -43,12 +45,17 @@ class NotionPluginMongo(DataSourcePlugin):
         self.logger = get_logger(__name__)
         
         # MongoDB collections
-        self.db = mongo_manager.get_database_sync()
-        self.collections = {
-            "pages": self.db[mongo_manager._collections_config["notion_pages"]],
-            "databases": self.db[mongo_manager._collections_config["notion_databases"]],
-            "users": self.db[mongo_manager._collections_config.get("notion_users", "notion_users")],
-        }
+        if mongo_manager:
+            self.db = mongo_manager.db
+            self.collections = {
+                "pages": self.db["notion_pages"],
+                "databases": self.db["notion_databases"],
+                "comments": self.db["notion_comments"],
+                "users": self.db["notion_users"],  # Add users collection
+            }
+        else:
+            self.db = None
+            self.collections = {}
     
     def get_source_name(self) -> str:
         """Return the name of this data source"""
@@ -317,7 +324,7 @@ class NotionPluginMongo(DataSourcePlugin):
                     }
                     comments.append(comment_block)
                 
-                page['blocks'] = comments
+                page['comments'] = comments  # Fixed: use 'comments' instead of 'blocks'
                 page['comments_count'] = len(comments)
                     
             except APIResponseError:
@@ -354,11 +361,15 @@ class NotionPluginMongo(DataSourcePlugin):
         # Save users
         users_to_save = []
         for user in collected_data.get('users', []):
+            # Skip users without valid ID
+            if not user.get('id'):
+                continue
+                
             user_doc = {
                 'user_id': user['id'],
-                'name': user['name'],
+                'name': user.get('name', ''),
                 'email': user.get('email', ''),
-                'type': user['type']
+                'type': user.get('type', 'person')
             }
             users_to_save.append(user_doc)
         
@@ -377,57 +388,79 @@ class NotionPluginMongo(DataSourcePlugin):
         # Save pages
         pages_to_save = []
         for page in collected_data.get('pages', []):
+            # Skip pages without valid notion_id
+            if not page.get('notion_id'):
+                continue
+                
             page_doc = {
-                'notion_id': page['notion_id'],
-                'title': page['title'],
+                'page_id': page['notion_id'],  # Use page_id to match Pydantic model
+                'title': page.get('title', ''),
+                'url': page.get('url', ''),
                 'created_time': page['created_time'],
                 'last_edited_time': page['last_edited_time'],
-                'created_by': page['created_by'],
-                'last_edited_by': page['last_edited_by'],
-                'parent': page['parent'],
-                'properties': page['properties'],
-                'blocks': page.get('blocks', []),
+                'created_by': page.get('created_by'),
+                'last_edited_by': page.get('last_edited_by'),
+                'parent_type': page.get('parent', {}).get('type'),
+                'parent_id': page.get('parent', {}).get('id') if page.get('parent', {}).get('type') != 'workspace' else None,
+                'properties': page.get('properties', {}),
+                'comments': page.get('comments', []),
                 'comments_count': page.get('comments_count', 0),
+                'is_archived': page.get('is_archived', False),
                 'collected_at': datetime.utcnow()
             }
             pages_to_save.append(page_doc)
         
         if pages_to_save:
             try:
+                saved_count = 0
                 for page_doc in pages_to_save:
-                    self.collections["pages"].replace_one(
-                        {'notion_id': page_doc['notion_id']},
+                    result = self.collections["pages"].replace_one(
+                        {'page_id': page_doc['page_id']},
                         page_doc,
                         upsert=True
                     )
-                print(f"   ✅ Saved {len(pages_to_save)} pages")
+                    if result.modified_count > 0 or result.upserted_id:
+                        saved_count += 1
+                print(f"   ✅ Saved/Updated {saved_count} pages")
             except Exception as e:
                 print(f"   ❌ Error saving pages: {e}")
         
         # Save databases
         dbs_to_save = []
         for db in collected_data.get('databases', []):
+            # Skip databases without valid notion_id
+            if not db.get('notion_id'):
+                continue
+                
             db_doc = {
-                'notion_id': db['notion_id'],
-                'title': db['title'],
+                'database_id': db['notion_id'],  # Use database_id to match Pydantic model
+                'title': db.get('title', ''),
+                'description': db.get('description', ''),
+                'url': db.get('url', ''),
                 'created_time': db['created_time'],
                 'last_edited_time': db['last_edited_time'],
-                'created_by': db['created_by'],
-                'last_edited_by': db['last_edited_by'],
-                'properties': db['properties'],
+                'created_by': db.get('created_by'),
+                'last_edited_by': db.get('last_edited_by'),
+                'parent_type': db.get('parent', {}).get('type'),
+                'parent_id': db.get('parent', {}).get('id') if db.get('parent', {}).get('type') != 'workspace' else None,
+                'properties': db.get('properties', {}),
+                'is_archived': db.get('is_archived', False),
                 'collected_at': datetime.utcnow()
             }
             dbs_to_save.append(db_doc)
         
         if dbs_to_save:
             try:
+                saved_count = 0
                 for db_doc in dbs_to_save:
-                    self.collections["databases"].replace_one(
-                        {'notion_id': db_doc['notion_id']},
+                    result = self.collections["databases"].replace_one(
+                        {'database_id': db_doc['database_id']},
                         db_doc,
                         upsert=True
                     )
-                print(f"   ✅ Saved {len(dbs_to_save)} databases")
+                    if result.modified_count > 0 or result.upserted_id:
+                        saved_count += 1
+                print(f"   ✅ Saved/Updated {saved_count} databases")
             except Exception as e:
                 print(f"   ❌ Error saving databases: {e}")
     
