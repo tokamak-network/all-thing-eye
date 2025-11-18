@@ -226,11 +226,11 @@ class GitHubPluginMongo(DataSourcePlugin):
                     {'sha': commit_data['sha']},
                     {
                         '$set': {
-                            'repository_name': commit_data.get('repository_name'),
-                            'author_login': commit_data.get('author_login'),
+                            'repository': commit_data.get('repository_name'),  # Changed from repository_name
+                            'author_name': commit_data.get('author_login'),  # Changed from author_login
                             'author_email': commit_data.get('author_email', ''),
                             'message': commit_data.get('message'),
-                            'committed_at': datetime.fromisoformat(commit_data['committed_at'].replace('Z', '+00:00')),
+                            'date': datetime.fromisoformat(commit_data['committed_at'].replace('Z', '+00:00')),  # Changed from committed_at
                             'additions': commit_data.get('additions', 0),
                             'deletions': commit_data.get('deletions', 0),
                             'total_changes': commit_data.get('additions', 0) + commit_data.get('deletions', 0),
@@ -264,14 +264,14 @@ class GitHubPluginMongo(DataSourcePlugin):
                 # Insert or update PR
                 self.prs_col.update_one(
                     {
-                        'repository_name': pr_data['repository_name'],
+                        'repository': pr_data['repository_name'],  # Changed from repository_name
                         'number': pr_data['number']
                     },
                     {
                         '$set': {
                             'title': pr_data.get('title'),
                             'state': pr_data.get('state'),
-                            'author_login': pr_data.get('author_login'),
+                            'author': pr_data.get('author_login'),  # Changed from author_login
                             'created_at': created_at,
                             'updated_at': datetime.utcnow(),
                             'merged_at': merged_at,
@@ -310,14 +310,14 @@ class GitHubPluginMongo(DataSourcePlugin):
                 # Insert or update issue
                 self.issues_col.update_one(
                     {
-                        'repository_name': issue_data['repository_name'],
+                        'repository': issue_data['repository_name'],  # Changed from repository_name
                         'number': issue_data['number']
                     },
                     {
                         '$set': {
                             'title': issue_data.get('title'),
                             'state': issue_data.get('state'),
-                            'author_login': issue_data.get('author_login'),
+                            'author': issue_data.get('author_login'),  # Changed from author_login
                             'created_at': created_at,
                             'updated_at': datetime.utcnow(),
                             'closed_at': closed_at,
