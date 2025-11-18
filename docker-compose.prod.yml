@@ -59,7 +59,7 @@ services:
       TZ: Asia/Seoul
       
       # MongoDB Connection
-      MONGODB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE:-all_thing_eye}?authSource=admin
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
       MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
       
       # GitHub Plugin
@@ -127,7 +127,7 @@ services:
       TZ: Asia/Seoul
       
       # MongoDB Connection
-      MONGODB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE:-all_thing_eye}?authSource=admin
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
       MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
       
       # API Tokens
