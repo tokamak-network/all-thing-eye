@@ -246,6 +246,34 @@ The web interface uses **blockchain wallet signature-based authentication** for 
 
 **Setup Guide**: [`docs/WEB3_AUTH_SETUP.md`](docs/WEB3_AUTH_SETUP.md)
 
+### Admin Management
+
+Easily manage admin wallet addresses with the built-in management script:
+
+```bash
+# List current admins
+./scripts/manage_admins.sh list
+
+# Add new admin
+./scripts/manage_admins.sh add 0xYourWalletAddress
+
+# Remove admin
+./scripts/manage_admins.sh remove 0xWalletAddress
+```
+
+**Features:**
+
+- ✅ Automatic address validation
+- ✅ Duplicate detection
+- ✅ Automatic `.env` backup before changes
+- ✅ Interactive service restart
+- ✅ Color-coded output
+
+**Documentation**:
+
+- Full Guide: [`docs/ADMIN_MANAGEMENT.md`](docs/ADMIN_MANAGEMENT.md)
+- Quick Reference: [`docs/ADMIN_QUICK_REFERENCE.md`](docs/ADMIN_QUICK_REFERENCE.md)
+
 ### Data Security
 
 - API keys managed via environment variables
@@ -258,11 +286,13 @@ The web interface uses **blockchain wallet signature-based authentication** for 
 ### Setup & Configuration
 
 - [Quick Start Guide](docs/QUICK_START.md)
-- [**Web3 Authentication Setup**](docs/WEB3_AUTH_SETUP.md) 🔐 **New!**
+- [**Web3 Authentication Setup**](docs/WEB3_AUTH_SETUP.md) 🔐
+- [**Admin Management Guide**](docs/ADMIN_MANAGEMENT.md) 👥 **New!**
+- [**Admin Quick Reference**](docs/ADMIN_QUICK_REFERENCE.md) ⚡ **New!**
 - [Environment Setup](docs/ENV_SETUP.md)
 - [GitHub Setup Guide](docs/GITHUB_SETUP.md)
 - [Slack Setup Guide](docs/SLACK_SETUP.md)
-- [**Google Drive Setup Guide**](docs/GOOGLE_DRIVE_SETUP.md) ⭐ New!
+- [**Google Drive Setup Guide**](docs/GOOGLE_DRIVE_SETUP.md) ⭐
 - [Member Management](docs/MEMBER_MANAGEMENT.md)
 
 ### Architecture & Development
@@ -278,6 +308,12 @@ The web interface uses **blockchain wallet signature-based authentication** for 
 - [Weekly Data Collection](docs/WEEKLY_COLLECTION.md)
 - [Query & AI Formatter](docs/QUERY_AND_AI.md)
 - [**Report Guidelines**](docs/REPORT_GUIDELINES.md) ⭐ **Essential for Reports!**
+
+### Deployment
+
+- [**AWS Deployment Guide**](docs/AWS_DEPLOYMENT_GUIDE.md) ☁️ **New!**
+- [**Deployment Quick Start**](DEPLOYMENT_QUICKSTART.md) ⚡ **New!**
+- [**Deployment Summary**](docs/DEPLOYMENT_SUMMARY.md) 📋 **New!**
 
 ## 🤝 Contributing
 
