@@ -407,7 +407,9 @@ class NotionPluginMongo(DataSourcePlugin):
                 continue
                 
             page_doc = {
+                'id': page.get('id') or page['notion_id'],  # Required for unique index
                 'page_id': page['notion_id'],  # Use page_id to match Pydantic model
+                'notion_id': page['notion_id'],  # Keep notion_id for compatibility
                 'title': page.get('title', ''),
                 'url': page.get('url', ''),
                 'created_time': page['created_time'],
@@ -447,7 +449,9 @@ class NotionPluginMongo(DataSourcePlugin):
                 continue
                 
             db_doc = {
+                'id': db.get('id') or db['notion_id'],  # Required for unique index
                 'database_id': db['notion_id'],  # Use database_id to match Pydantic model
+                'notion_id': db['notion_id'],  # Keep notion_id for compatibility
                 'title': db.get('title', ''),
                 'description': db.get('description', ''),
                 'url': db.get('url', ''),
