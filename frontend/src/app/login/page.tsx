@@ -28,13 +28,6 @@ export default function LoginPage() {
     }
   }, [router]);
 
-  // Auto-authenticate when wallet is connected
-  useEffect(() => {
-    if (isConnected && address && !isSessionValid()) {
-      handleAuthenticate();
-    }
-  }, [isConnected, address]);
-
   const handleAuthenticate = async () => {
     if (!address) {
       setError("Please connect your wallet first");
