@@ -218,6 +218,12 @@ class NotionPluginMongo(DataSourcePlugin):
                 response = self.client.search(**query)
                 
                 for page in response.get('results', []):
+                    # Skip pages without id
+                    page_id = page.get('id')
+                    if not page_id:
+                        self.logger.warning(f"⚠️  Skipping page without id: {page}")
+                        continue
+                    
                     last_edited = datetime.fromisoformat(
                         page['last_edited_time'].replace('Z', '+00:00')
                     )
@@ -227,8 +233,8 @@ class NotionPluginMongo(DataSourcePlugin):
                         break
                     
                     page_data = {
-                        'id': page['id'],  # Use 'id' instead of 'notion_id'
-                        'notion_id': page['id'],
+                        'id': page_id,
+                        'notion_id': page_id,
                         'title': self._extract_title(page.get('properties', {})),
                         'created_time': datetime.fromisoformat(page.get('created_time', '').replace('Z', '+00:00')),
                         'last_edited_time': last_edited,
@@ -277,6 +283,12 @@ class NotionPluginMongo(DataSourcePlugin):
                 response = self.client.search(**query)
                 
                 for db in response.get('results', []):
+                    # Skip databases without id
+                    db_id = db.get('id')
+                    if not db_id:
+                        self.logger.warning(f"⚠️  Skipping database without id: {db}")
+                        continue
+                    
                     last_edited = datetime.fromisoformat(
                         db['last_edited_time'].replace('Z', '+00:00')
                     )
@@ -286,8 +298,8 @@ class NotionPluginMongo(DataSourcePlugin):
                         break
                     
                     db_data = {
-                        'id': db['id'],  # Use 'id' instead of 'notion_id'
-                        'notion_id': db['id'],
+                        'id': db_id,
+                        'notion_id': db_id,
                         'title': self._extract_title(db.get('properties', {})),
                         'created_time': datetime.fromisoformat(db.get('created_time', '').replace('Z', '+00:00')),
                         'last_edited_time': last_edited,
