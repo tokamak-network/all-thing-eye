@@ -61,11 +61,12 @@ async def get_last_collected_times(request: Request):
                     logger.warning(f"Error checking {coll_name}: {e}")
                     continue
             
-            last_collected[source] = latest_time.isoformat() if latest_time else None
+            # Add 'Z' suffix to indicate UTC timezone
+            last_collected[source] = latest_time.isoformat() + 'Z' if latest_time else None
         
         return {
             "last_collected": last_collected,
-            "checked_at": datetime.utcnow().isoformat()
+            "checked_at": datetime.utcnow().isoformat() + 'Z'
         }
         
     except Exception as e:
