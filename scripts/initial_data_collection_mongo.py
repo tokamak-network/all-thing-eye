@@ -168,10 +168,15 @@ async def collect_google_drive(mongo_manager: MongoDBManager, days: int = 14):
             logger.error("   ❌ Google Drive authentication failed")
             return
         
-        logger.info(f"   📅 Collecting last {days} days of data")
+        # Calculate date range
+        from datetime import timezone
+        end_date = datetime.now(timezone.utc).replace(tzinfo=None)
+        start_date = end_date - timedelta(days=days)
+        
+        logger.info(f"   📅 Date range: {start_date.date()} to {end_date.date()}")
         
         # Collect data
-        data = plugin.collect_data(days=days)
+        data = plugin.collect_data(start_date=start_date, end_date=end_date)
         
         # Save to MongoDB
         await plugin.save_data(data)
