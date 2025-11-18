@@ -227,6 +227,7 @@ class NotionPluginMongo(DataSourcePlugin):
                         break
                     
                     page_data = {
+                        'id': page['id'],  # Use 'id' instead of 'notion_id'
                         'notion_id': page['id'],
                         'title': self._extract_title(page.get('properties', {})),
                         'created_time': datetime.fromisoformat(page.get('created_time', '').replace('Z', '+00:00')),
@@ -285,6 +286,7 @@ class NotionPluginMongo(DataSourcePlugin):
                         break
                     
                     db_data = {
+                        'id': db['id'],  # Use 'id' instead of 'notion_id'
                         'notion_id': db['id'],
                         'title': self._extract_title(db.get('properties', {})),
                         'created_time': datetime.fromisoformat(db.get('created_time', '').replace('Z', '+00:00')),
