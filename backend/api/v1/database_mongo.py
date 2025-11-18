@@ -22,6 +22,57 @@ def get_mongo():
     return mongo_manager
 
 
+@router.get("/last-collected")
+async def get_last_collected_times(request: Request):
+    """
+    Get the last data collection time for each data source
+    
+    Returns:
+        Dictionary with last collection times per source
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        sources = {
+            "github": ["github_commits", "github_pull_requests", "github_issues"],
+            "slack": ["slack_messages"],
+            "notion": ["notion_pages"],
+            "drive": ["drive_activities"]
+        }
+        
+        last_collected = {}
+        
+        for source, collections in sources.items():
+            latest_time = None
+            for coll_name in collections:
+                try:
+                    collection = db[coll_name]
+                    # Find the most recent collected_at
+                    result = await collection.find_one(
+                        {"collected_at": {"$exists": True}},
+                        sort=[("collected_at", -1)]
+                    )
+                    if result and "collected_at" in result:
+                        coll_time = result["collected_at"]
+                        if latest_time is None or coll_time > latest_time:
+                            latest_time = coll_time
+                except Exception as e:
+                    logger.warning(f"Error checking {coll_name}: {e}")
+                    continue
+            
+            last_collected[source] = latest_time.isoformat() if latest_time else None
+        
+        return {
+            "last_collected": last_collected,
+            "checked_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting last collected times: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/collections")
 async def get_collections(request: Request):
     """

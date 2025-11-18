@@ -80,9 +80,13 @@ export default function DatabasePage() {
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(
     new Set()
   );
+  const [lastCollected, setLastCollected] = useState<
+    Record<string, string | null>
+  >({});
 
   useEffect(() => {
     loadCollections();
+    loadLastCollected();
   }, []);
 
   const loadCollections = async () => {
@@ -96,6 +100,15 @@ export default function DatabasePage() {
       setError("Failed to load database collections. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLastCollected = async () => {
+    try {
+      const data = await api.getLastCollected();
+      setLastCollected(data.last_collected || {});
+    } catch (err) {
+      console.error("Failed to load last collected times:", err);
     }
   };
 
@@ -576,6 +589,88 @@ export default function DatabasePage() {
           </div>
         </div>
 
+        {/* Last Collection Times */}
+        {Object.keys(lastCollected).length > 0 && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow p-4 mb-6 border border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <span className="text-lg">⏰</span>
+                Last Data Collection
+              </h3>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              {Object.entries(lastCollected).map(([source, time]) => {
+                const sourceIcons: Record<string, string> = {
+                  github: "🐙",
+                  slack: "💬",
+                  notion: "📝",
+                  drive: "📁",
+                };
+
+                const sourceColors: Record<string, string> = {
+                  github: "text-green-700 bg-green-100",
+                  slack: "text-purple-700 bg-purple-100",
+                  notion: "text-orange-700 bg-orange-100",
+                  drive: "text-yellow-700 bg-yellow-100",
+                };
+
+                const getTimeAgo = (isoTime: string | null) => {
+                  if (!isoTime) return "Never collected";
+                  const date = new Date(isoTime);
+                  const now = new Date();
+                  const diffMs = now.getTime() - date.getTime();
+                  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                  const diffDays = Math.floor(diffHours / 24);
+
+                  if (diffDays > 1) return `${diffDays} days ago`;
+                  if (diffHours > 1) return `${diffHours} hours ago`;
+                  if (diffHours === 1) return "1 hour ago";
+                  return "Just now";
+                };
+
+                const getStatus = (isoTime: string | null) => {
+                  if (!isoTime)
+                    return { text: "No data", color: "text-gray-500" };
+                  const date = new Date(isoTime);
+                  const now = new Date();
+                  const diffMs = now.getTime() - date.getTime();
+                  const diffHours = diffMs / (1000 * 60 * 60);
+
+                  if (diffHours < 24)
+                    return { text: "✓ Fresh", color: "text-green-600" };
+                  if (diffHours < 48)
+                    return { text: "⚠ 1 day old", color: "text-yellow-600" };
+                  return { text: "⚠ Stale", color: "text-red-600" };
+                };
+
+                const status = getStatus(time);
+
+                return (
+                  <div
+                    key={source}
+                    className={`rounded-lg p-3 ${
+                      sourceColors[source] || "bg-gray-100"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base">{sourceIcons[source]}</span>
+                      <span className="font-semibold capitalize text-sm">
+                        {source}
+                      </span>
+                    </div>
+                    <div className="text-xs font-medium mb-1">
+                      {getTimeAgo(time)}
+                    </div>
+                    <div className={`text-xs font-semibold ${status.color}`}>
+                      {status.text}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Error Message */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
@@ -585,39 +680,93 @@ export default function DatabasePage() {
 
         <div className="grid grid-cols-12 gap-4">
           {/* Collections List */}
-          <div className="col-span-2">
+          <div className="col-span-3">
             <div className="bg-white rounded-lg shadow">
               <div className="p-4 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">
                   Collections
                 </h2>
               </div>
-              <div className="divide-y divide-gray-200 max-h-[calc(100vh-320px)] overflow-y-auto">
-                {collections.collections.map((collection) => (
-                  <button
-                    key={collection.name}
-                    onClick={() => handleCollectionClick(collection.name)}
-                    className={`w-full text-left p-3 hover:bg-gray-50 transition-colors ${
-                      selectedCollection === collection.name
-                        ? "bg-blue-50 border-l-4 border-blue-600"
-                        : ""
-                    }`}
-                  >
-                    <div className="font-medium text-gray-900 mb-1 break-words text-sm">
-                      {collection.name}
-                    </div>
-                    <div className="flex flex-col gap-0.5 text-xs text-gray-600">
-                      <span>📄 {collection.count.toLocaleString()}</span>
-                      <span>💾 {formatBytes(collection.size)}</span>
-                    </div>
-                  </button>
-                ))}
+              <div className="max-h-[800px] overflow-y-auto">
+                {Object.entries(groupedCollections()).map(
+                  ([groupName, groupCollections]) => {
+                    if (groupCollections.length === 0) return null;
+
+                    const { icon, color } = getCollectionGroup(
+                      groupCollections[0].name
+                    );
+                    const isGroupExpanded = expandedGroups.has(groupName);
+
+                    const groupColors = {
+                      blue: "bg-blue-100 text-blue-800 border-blue-200",
+                      green: "bg-green-100 text-green-800 border-green-200",
+                      purple: "bg-purple-100 text-purple-800 border-purple-200",
+                      orange: "bg-orange-100 text-orange-800 border-orange-200",
+                      yellow: "bg-yellow-100 text-yellow-800 border-yellow-200",
+                      gray: "bg-gray-100 text-gray-800 border-gray-200",
+                    };
+
+                    return (
+                      <div key={groupName} className="border-b border-gray-200">
+                        {/* Group Header */}
+                        <button
+                          onClick={() => toggleGroup(groupName)}
+                          className={`w-full text-left p-3 hover:bg-gray-50 transition-colors border-l-4 ${
+                            groupColors[color as keyof typeof groupColors]
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">
+                              {isGroupExpanded ? "▼" : "▶"}
+                            </span>
+                            <span className="text-base">{icon}</span>
+                            <span className="font-semibold capitalize text-sm">
+                              {groupName}
+                            </span>
+                            <span className="ml-auto text-xs text-gray-500">
+                              {groupCollections.length}
+                            </span>
+                          </div>
+                        </button>
+
+                        {/* Group Collections */}
+                        {isGroupExpanded && (
+                          <div className="bg-gray-50">
+                            {groupCollections.map((collection) => (
+                              <button
+                                key={collection.name}
+                                onClick={() =>
+                                  handleCollectionClick(collection.name)
+                                }
+                                className={`w-full text-left pl-8 pr-3 py-2 hover:bg-gray-100 transition-colors ${
+                                  selectedCollection === collection.name
+                                    ? "bg-blue-50 border-l-4 border-blue-600"
+                                    : "border-l-4 border-transparent"
+                                }`}
+                              >
+                                <div className="font-medium text-gray-900 mb-1 text-sm">
+                                  {collection.name}
+                                </div>
+                                <div className="flex flex-col gap-0.5 text-xs text-gray-600">
+                                  <span>
+                                    📄 {collection.count.toLocaleString()}
+                                  </span>
+                                  <span>💾 {formatBytes(collection.size)}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                )}
               </div>
             </div>
           </div>
 
           {/* Collection Details */}
-          <div className="col-span-10">
+          <div className="col-span-9">
             {!selectedCollection ? (
               <div className="bg-white rounded-lg shadow">
                 {/* Database Overview */}
@@ -631,51 +780,10 @@ export default function DatabasePage() {
                 </div>
 
                 <div className="p-6">
-                  {/* Collections Grid */}
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    {collections?.collections.map((collection) => (
-                      <div
-                        key={collection.name}
-                        onClick={() => handleCollectionClick(collection.name)}
-                        className="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <span className="text-3xl">📦</span>
-                          <span className="text-xs text-gray-500">
-                            {collection.indexes} indexes
-                          </span>
-                        </div>
-                        <h3 className="font-mono font-semibold text-gray-900 mb-2 text-sm truncate">
-                          {collection.name}
-                        </h3>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Documents:</span>
-                            <span className="font-semibold text-blue-600">
-                              {collection.count.toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Size:</span>
-                            <span className="font-semibold text-green-600">
-                              {formatBytes(collection.size)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Avg Doc:</span>
-                            <span className="font-semibold text-purple-600">
-                              {formatBytes(collection.avgObjSize)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
                   {/* Firebase-style Collection Tree */}
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 mb-6">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                      🔗 Database Structure (Firebase Style)
+                      🔗 Database Structure
                     </h3>
                     <div className="font-mono text-sm space-y-1">
                       {Object.entries(groupedCollections()).map(
@@ -985,15 +1093,56 @@ export default function DatabasePage() {
                     </div>
                   </div>
 
+                  {/* Collections Grid */}
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    {collections?.collections.map((collection) => (
+                      <div
+                        key={collection.name}
+                        onClick={() => handleCollectionClick(collection.name)}
+                        className="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer"
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <span className="text-3xl">📦</span>
+                          <span className="text-xs text-gray-500">
+                            {collection.indexes} indexes
+                          </span>
+                        </div>
+                        <h3 className="font-mono font-semibold text-gray-900 mb-2 text-sm truncate">
+                          {collection.name}
+                        </h3>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-600">Documents:</span>
+                            <span className="font-semibold text-blue-600">
+                              {collection.count.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-600">Size:</span>
+                            <span className="font-semibold text-green-600">
+                              {formatBytes(collection.size)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-600">Avg Doc:</span>
+                            <span className="font-semibold text-purple-600">
+                              {formatBytes(collection.avgObjSize)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                   {/* Tips */}
-                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h4 className="font-semibold text-blue-900 mb-2">
                       💡 Quick Tips
                     </h4>
                     <ul className="text-sm text-blue-800 space-y-1">
                       <li>
-                        • <strong>Firebase-style navigation:</strong> Click ▶/▼
-                        to expand collections inline
+                        • <strong>navigation:</strong> Click ▶/▼ to expand
+                        collections inline
                       </li>
                       <li>
                         • <strong>Inline preview:</strong> See schema and sample
@@ -1260,8 +1409,8 @@ export default function DatabasePage() {
                       {/* Tree Controls */}
                       <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200">
                         <div className="text-sm text-gray-600">
-                          Firebase-style Tree View of{" "}
-                          {documentsData.documents.length} documents
+                          Tree View of {documentsData.documents.length}{" "}
+                          documents
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -1456,47 +1605,6 @@ export default function DatabasePage() {
               </div>
             )}
           </div>
-        </div>
-
-        {/* Info Box */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="font-medium text-blue-900 mb-2">
-            💡 Database Viewer Features
-          </h3>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>
-              • <strong>Browse Documents:</strong> Navigate through all
-              documents with pagination (30 per page)
-            </li>
-            <li>
-              • <strong>Tree View:</strong> Firebase-style hierarchical JSON
-              viewer with expand/collapse controls (NEW! 🔥)
-            </li>
-            <li>
-              • <strong>Expand/Collapse:</strong> Click arrows (▶/▼) to expand
-              or collapse nodes in tree view
-            </li>
-            <li>
-              • <strong>Expand All / Collapse All:</strong> Quickly expand or
-              collapse all nodes at once
-            </li>
-            <li>
-              • <strong>Schema Analysis:</strong> View field types, nullability,
-              and occurrence percentages
-            </li>
-            <li>
-              • <strong>Type Highlighting:</strong> Different colors for
-              strings, numbers, dates, ObjectIds, etc.
-            </li>
-            <li>
-              • <strong>Fast Navigation:</strong> Jump to first/last page or
-              navigate page by page
-            </li>
-            <li>
-              • <strong>Real-time Data:</strong> Always shows current data from
-              MongoDB
-            </li>
-          </ul>
         </div>
       </div>
     </div>

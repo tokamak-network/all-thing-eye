@@ -19,12 +19,11 @@ export default function Navigation() {
 
   const navItems = [
     { href: "/", label: "Dashboard" },
-    { href: "/members", label: "Members" },
-    { href: "/activities", label: "Activities" },
-    { href: "/projects", label: "Projects" },
     { href: "/database", label: "🗄️ Database" },
     { href: "/exports", label: "📥 Exports" },
     { href: "/custom-export", label: "🎨 Custom Export" },
+    { href: "/activities", label: "Activities" },
+    { href: "/members", label: "Members" },
   ];
 
   const isActive = (href: string) => {
