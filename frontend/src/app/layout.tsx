@@ -1,11 +1,8 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
 import Navigation from '@/components/Navigation'
 import { Web3Provider } from '@/components/Web3Provider'
 import { AuthGuard } from '@/components/AuthGuard'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'All-Thing-Eye | Team Activity Analytics',
@@ -19,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className="font-sans">
         <Web3Provider>
           <AuthGuard>
             <div className="min-h-screen bg-gray-50">
