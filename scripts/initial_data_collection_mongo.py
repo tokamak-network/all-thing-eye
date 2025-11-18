@@ -205,9 +205,16 @@ async def main():
     logger.info("=" * 80)
     
     # Initialize MongoDB connection
-    config = Config()
-    mongo_manager = get_mongo_manager(config.mongodb)
+    import os
+    mongodb_config = {
+        'uri': os.getenv('MONGODB_URI', 'mongodb://localhost:27017'),
+        'database': os.getenv('MONGODB_DATABASE', 'all_thing_eye')
+    }
+    mongo_manager = get_mongo_manager(mongodb_config)
     mongo_manager.connect_async()  # Synchronous call
+    
+    # Load Config for plugin configurations
+    config = Config()
     
     try:
         # Determine which sources to collect

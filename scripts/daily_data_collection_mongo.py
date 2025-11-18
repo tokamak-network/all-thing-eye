@@ -249,9 +249,16 @@ async def main():
         start_utc, end_utc = get_previous_day_range_kst()
     
     # Initialize MongoDB connection
-    config = Config()
-    mongo_manager = get_mongo_manager(config.mongodb)
+    import os
+    mongodb_config = {
+        'uri': os.getenv('MONGODB_URI', 'mongodb://localhost:27017'),
+        'database': os.getenv('MONGODB_DATABASE', 'all_thing_eye')
+    }
+    mongo_manager = get_mongo_manager(mongodb_config)
     mongo_manager.connect_async()
+    
+    # Load Config for plugin configurations
+    config = Config()
     
     try:
         # Determine which sources to collect
