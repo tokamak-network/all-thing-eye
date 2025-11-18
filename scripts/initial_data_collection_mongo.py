@@ -205,7 +205,8 @@ async def main():
     logger.info("=" * 80)
     
     # Initialize MongoDB connection
-    mongo_manager = get_mongo_manager()
+    config = Config()
+    mongo_manager = get_mongo_manager(config.mongodb)
     mongo_manager.connect_async()  # Synchronous call
     
     try:

@@ -249,7 +249,8 @@ async def main():
         start_utc, end_utc = get_previous_day_range_kst()
     
     # Initialize MongoDB connection
-    mongo_manager = get_mongo_manager()
+    config = Config()
+    mongo_manager = get_mongo_manager(config.mongodb)
     mongo_manager.connect_async()
     
     try:
