@@ -59,11 +59,11 @@ async def collect_github(mongo_manager: MongoDBManager, days: int = 14):
         
         logger.info(f"   📅 Date range: {start_date.date()} to {end_date.date()}")
         
-        # Collect data
+        # Collect data (GitHub plugin saves data internally)
         data = plugin.collect_data(start_date=start_date, end_date=end_date)
         
-        # Save to MongoDB
-        await plugin.save_data(data)
+        # Note: GitHub plugin saves data internally during collect_data
+        # No need to call save_data separately
         
         logger.info(f"   ✅ GitHub: Collection completed")
         
@@ -95,11 +95,12 @@ async def collect_slack(mongo_manager: MongoDBManager, days: int = 14):
         
         logger.info(f"   📅 Date range: {start_date.date()} to {end_date.date()}")
         
-        # Collect data
-        data = plugin.collect_data(start_date=start_date, end_date=end_date)
+        # Collect data (returns a list with one dict)
+        data_list = plugin.collect_data(start_date=start_date, end_date=end_date)
         
-        # Save to MongoDB
-        await plugin.save_data(data)
+        # Save to MongoDB (extract the dict from the list)
+        if data_list:
+            await plugin.save_data(data_list[0])
         
         logger.info(f"   ✅ Slack: Collection completed")
         
@@ -125,14 +126,19 @@ async def collect_notion(mongo_manager: MongoDBManager, days: int = 14):
             logger.error("   ❌ Notion authentication failed")
             return
         
-        # Calculate date range
-        end_date = datetime.utcnow()
+        # Calculate date range (use timezone-aware datetime)
+        from datetime import timezone
+        end_date = datetime.now(timezone.utc).replace(tzinfo=None)
         start_date = end_date - timedelta(days=days)
+        
+        # Make start_date timezone-aware for Notion API comparison
+        start_date_tz = start_date.replace(tzinfo=timezone.utc)
+        end_date_tz = end_date.replace(tzinfo=timezone.utc)
         
         logger.info(f"   📅 Date range: {start_date.date()} to {end_date.date()}")
         
         # Collect data
-        data = plugin.collect_data(start_date=start_date, end_date=end_date)
+        data = plugin.collect_data(start_date=start_date_tz, end_date=end_date_tz)
         
         # Save to MongoDB
         await plugin.save_data(data)

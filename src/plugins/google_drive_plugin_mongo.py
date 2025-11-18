@@ -130,9 +130,14 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
             self.credentials_path = base_path / 'config/google_drive/credentials.json'
             
         if token_path_str:
-            self.token_path = base_path / token_path_str
+            # If absolute path or starts with /tmp, use as-is
+            if token_path_str.startswith('/'):
+                self.token_path = Path(token_path_str)
+            else:
+                self.token_path = base_path / token_path_str
         else:
-            self.token_path = base_path / 'config/google_drive/token_admin.pickle'
+            # Default to /tmp for Docker compatibility (read-only filesystem)
+            self.token_path = Path('/tmp/token_admin.pickle')
         
         self.target_users = self.config.get('target_users', [])
         self.days_to_collect = self.config.get('days_to_collect', 7)
