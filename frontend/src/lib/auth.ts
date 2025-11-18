@@ -1,0 +1,133 @@
+/**
+ * Web3 Wallet-based Admin Authentication
+ *
+ * Verifies admin access using Ethereum wallet signatures
+ */
+
+// Admin wallet addresses (화이트리스트)
+// 환경 변수로 관리하거나 여기에 직접 추가
+export const ADMIN_ADDRESSES = (process.env.NEXT_PUBLIC_ADMIN_ADDRESSES || "")
+  .split(",")
+  .map((addr) => addr.trim().toLowerCase())
+  .filter((addr) => addr.length > 0);
+
+// Fallback: 환경 변수가 없으면 여기서 관리
+const HARDCODED_ADMINS = [
+  // TODO: 실제 관리자 지갑 주소로 변경하세요!
+  // 예시:
+  "0x1234567890123456789012345678901234567890",
+  // 여기에 추가 관리자 주소를 넣으세요
+].map((addr) => addr.toLowerCase());
+
+export const ALLOWED_ADMINS =
+  ADMIN_ADDRESSES.length > 0 ? ADMIN_ADDRESSES : HARDCODED_ADMINS;
+
+/**
+ * Check if an address is an admin
+ */
+export function isAdmin(address: string | undefined): boolean {
+  if (!address) return false;
+  return ALLOWED_ADMINS.includes(address.toLowerCase());
+}
+
+/**
+ * Generate a message to sign
+ */
+export function generateSignMessage(address: string): string {
+  const timestamp = Date.now();
+  return `Sign this message to authenticate as admin\n\nAddress: ${address}\nTimestamp: ${timestamp}\n\nThis signature will not trigger any blockchain transaction or cost any gas fees.`;
+}
+
+/**
+ * Verify signature (client-side check)
+ * Server-side verification should be done in production
+ */
+export async function verifySignature(
+  address: string,
+  signature: string,
+  message: string
+): Promise<boolean> {
+  try {
+    const { verifyMessage } = await import("viem");
+    const isValid = await verifyMessage({
+      address: address as `0x${string}`,
+      message,
+      signature: signature as `0x${string}`,
+    });
+    return isValid && isAdmin(address);
+  } catch (error) {
+    console.error("Signature verification failed:", error);
+    return false;
+  }
+}
+
+/**
+ * Session storage keys
+ */
+export const AUTH_STORAGE = {
+  ADDRESS: "auth_wallet_address",
+  SIGNATURE: "auth_signature",
+  MESSAGE: "auth_message",
+  TIMESTAMP: "auth_timestamp",
+} as const;
+
+/**
+ * Session duration (1 hour)
+ */
+export const SESSION_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+
+/**
+ * Check if session is valid
+ */
+export function isSessionValid(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const timestamp = localStorage.getItem(AUTH_STORAGE.TIMESTAMP);
+  if (!timestamp) return false;
+
+  const sessionAge = Date.now() - parseInt(timestamp);
+  return sessionAge < SESSION_DURATION;
+}
+
+/**
+ * Save auth session
+ */
+export function saveAuthSession(
+  address: string,
+  signature: string,
+  message: string
+): void {
+  if (typeof window === "undefined") return;
+
+  localStorage.setItem(AUTH_STORAGE.ADDRESS, address);
+  localStorage.setItem(AUTH_STORAGE.SIGNATURE, signature);
+  localStorage.setItem(AUTH_STORAGE.MESSAGE, message);
+  localStorage.setItem(AUTH_STORAGE.TIMESTAMP, Date.now().toString());
+}
+
+/**
+ * Clear auth session
+ */
+export function clearAuthSession(): void {
+  if (typeof window === "undefined") return;
+
+  Object.values(AUTH_STORAGE).forEach((key) => {
+    localStorage.removeItem(key);
+  });
+}
+
+/**
+ * Get current auth session
+ */
+export function getAuthSession() {
+  if (typeof window === "undefined") return null;
+
+  const address = localStorage.getItem(AUTH_STORAGE.ADDRESS);
+  const signature = localStorage.getItem(AUTH_STORAGE.SIGNATURE);
+  const message = localStorage.getItem(AUTH_STORAGE.MESSAGE);
+  const timestamp = localStorage.getItem(AUTH_STORAGE.TIMESTAMP);
+
+  if (!address || !signature || !message || !timestamp) return null;
+
+  return { address, signature, message, timestamp: parseInt(timestamp) };
+}
