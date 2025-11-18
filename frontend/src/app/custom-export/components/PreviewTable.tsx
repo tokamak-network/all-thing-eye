@@ -256,7 +256,7 @@ export default function PreviewTable({ selectedFields }: PreviewTableProps) {
               Live Preview
             </span>
           </div>
-          <div>Click "Export as CSV" to download full dataset</div>
+          <div>Click &quot;Export as CSV&quot; to download full dataset</div>
         </div>
       </div>
     </div>

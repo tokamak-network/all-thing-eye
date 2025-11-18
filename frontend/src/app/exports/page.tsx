@@ -490,7 +490,7 @@ export default function ExportsPage() {
             </li>
             <li>
               • <strong>Select All Tables in Source:</strong> Click the checkbox
-              next to a source name (e.g., "github") to select all tables under
+              next to a source name (e.g., &quot;github&quot;) to select all tables under
               it
             </li>
             <li>
@@ -508,7 +508,7 @@ export default function ExportsPage() {
             </li>
             <li>
               • <strong>Bulk Download:</strong> Select multiple tables and click
-              "Download Selected as ZIP" to get all tables in one file
+              &quot;Download Selected as ZIP&quot; to get all tables in one file
             </li>
             <li>
               • CSV files can be opened in Excel, Google Sheets, or any
