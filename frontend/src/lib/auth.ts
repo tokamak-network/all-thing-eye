@@ -15,7 +15,7 @@ export const ADMIN_ADDRESSES = (process.env.NEXT_PUBLIC_ADMIN_ADDRESSES || "")
 const HARDCODED_ADMINS = [
   // TODO: 실제 관리자 지갑 주소로 변경하세요!
   // 예시:
-  "0x1234567890123456789012345678901234567890",
+  "0xF9Fa94D45C49e879E46Ea783fc133F41709f3bc7",
   // 여기에 추가 관리자 주소를 넣으세요
 ].map((addr) => addr.toLowerCase());
 
