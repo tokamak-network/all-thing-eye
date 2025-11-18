@@ -1,10 +1,35 @@
 version: '3.8'
 
 services:
+  # MongoDB Database (Production)
+  mongodb:
+    image: mongo:8.0
+    container_name: all-thing-eye-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
+      TZ: Asia/Seoul
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - ./data/logs/mongodb:/var/log/mongodb
+    networks:
+      - all-thing-eye
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Note: Port 27017 is not exposed externally for security
+    # Use MongoDB Atlas for production or configure secure access
+
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
     container_name: all-thing-eye-nginx
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
@@ -13,34 +38,63 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./data/logs/nginx:/var/log/nginx
     depends_on:
-      - backend
-      - frontend
-    restart: unless-stopped
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
     networks:
       - all-thing-eye
+    environment:
+      TZ: Asia/Seoul
 
-  # FastAPI Backend
+  # FastAPI Backend (MongoDB)
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: all-thing-eye-backend
-    env_file:
-      - .env
+    restart: unless-stopped
+    environment:
+      # Timezone
+      TZ: Asia/Seoul
+      
+      # MongoDB Connection
+      MONGODB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE:-all_thing_eye}?authSource=admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
+      
+      # GitHub Plugin
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_ORG: ${GITHUB_ORG}
+      
+      # Slack Plugin
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_USER_TOKEN: ${SLACK_USER_TOKEN}
+      
+      # Notion Plugin
+      NOTION_TOKEN: ${NOTION_TOKEN}
+      
+      # Google Drive Plugin
+      GOOGLE_APPLICATION_CREDENTIALS: /app/config/google_drive/credentials.json
+      GOOGLE_ADMIN_EMAIL: ${GOOGLE_ADMIN_EMAIL}
+      
+      # Admin Addresses (comma-separated)
+      ADMIN_ADDRESSES: ${ADMIN_ADDRESSES}
     volumes:
-      - ./data:/app/data
       - ./config:/app/config:ro
       - ./data/logs/backend:/app/logs
     expose:
       - "8000"
-    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - all-thing-eye
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   # Next.js Frontend
   frontend:
@@ -48,49 +102,98 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: all-thing-eye-frontend
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     expose:
       - "3000"
-    restart: unless-stopped
-    networks:
-      - all-thing-eye
     depends_on:
       - backend
+    networks:
+      - all-thing-eye
 
-  # Celery Beat (데이터 수집 스케줄러)
-  celery-beat:
+  # Data Collection Scheduler (Cron-like service)
+  data-collector:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: all-thing-eye-celery-beat
-    command: >
-      bash -c "
-      while true; do
-        echo '[$(date)] Starting daily data collection...'
-        python tests/test_github_plugin.py --last-week
-        python tests/test_slack_plugin.py --last-week
-        python tests/test_google_drive_plugin.py --days 1
-        python tests/test_notion_plugin.py --days 1
-        echo '[$(date)] Data collection completed'
-        sleep 86400
-      done
-      "
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-      - ./config:/app/config:ro
-      - ./data/logs/celery:/app/logs
+    container_name: all-thing-eye-data-collector
     restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+      
+      # MongoDB Connection
+      MONGODB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${MONGODB_DATABASE:-all_thing_eye}?authSource=admin
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
+      
+      # API Tokens
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_ORG: ${GITHUB_ORG}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_USER_TOKEN: ${SLACK_USER_TOKEN}
+      NOTION_TOKEN: ${NOTION_TOKEN}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/config/google_drive/credentials.json
+      GOOGLE_ADMIN_EMAIL: ${GOOGLE_ADMIN_EMAIL}
+    volumes:
+      - ./config:/app/config:ro
+      - ./data/logs/collector:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - all-thing-eye
+    command: >
+      bash -c "
+        echo '[INFO] Data Collector starting...'
+        echo '[INFO] Timezone: $(date +%Z)'
+        echo '[INFO] Current time: $(date)'
+        echo '[INFO] Waiting 60 seconds for backend to initialize...'
+        sleep 60
+        
+        echo '[INFO] Running initial data collection (2 weeks)...'
+        python scripts/initial_data_collection_mongo.py --days 14
+        
+        echo '[INFO] Building member index...'
+        python scripts/build_member_index_mongo.py
+        
+        echo '[INFO] Initial setup complete. Starting daily collection scheduler...'
+        
+        while true; do
+          # Calculate seconds until next midnight KST
+          CURRENT_HOUR=\$(TZ=Asia/Seoul date +%H)
+          CURRENT_MIN=\$(TZ=Asia/Seoul date +%M)
+          CURRENT_SEC=\$(TZ=Asia/Seoul date +%S)
+          
+          SECONDS_TODAY=\$((CURRENT_HOUR * 3600 + CURRENT_MIN * 60 + CURRENT_SEC))
+          SECONDS_UNTIL_MIDNIGHT=\$((86400 - SECONDS_TODAY))
+          
+          echo \"[INFO] Current time: \$(TZ=Asia/Seoul date)\"
+          echo \"[INFO] Next collection in \$SECONDS_UNTIL_MIDNIGHT seconds (\$((\$SECONDS_UNTIL_MIDNIGHT / 3600)) hours \$((\$SECONDS_UNTIL_MIDNIGHT % 3600 / 60)) minutes)\"
+          
+          # Sleep until midnight
+          sleep \$SECONDS_UNTIL_MIDNIGHT
+          
+          # Run daily collection
+          echo \"[INFO] ====== Starting daily data collection ======\"
+          echo \"[INFO] Time: \$(TZ=Asia/Seoul date)\"
+          python scripts/daily_data_collection_mongo.py
+          echo \"[INFO] ====== Daily collection completed ======\"
+          
+          # Sleep 1 minute to avoid duplicate runs
+          sleep 60
+        done
+      "
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
 
 networks:
   all-thing-eye:
     driver: bridge
-
-volumes:
-  data:
-    driver: local
-

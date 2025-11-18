@@ -57,17 +57,17 @@ deploy_init() {
     log_info "⏳ Waiting for backend to be ready..."
     sleep 10
     
-    # Collect initial data
-    log_info "📊 Collecting initial data..."
-    docker-compose -f $COMPOSE_FILE exec -T backend bash -c "
-        python tests/test_github_plugin.py --last-week
-        python tests/test_slack_plugin.py --last-week
-        python tests/test_google_drive_plugin.py --days 7
-        python tests/test_notion_plugin.py --days 7
-    "
+    # Note: Initial data collection is handled by data-collector service
+    log_info "⏳ Initial data collection will start automatically..."
+    log_info "   Monitor with: ./scripts/deploy.sh logs data-collector"
     
     log_info "✅ Initial deployment completed!"
     log_info "📍 Application is running at: http://$(curl -s ifconfig.me)"
+    log_info ""
+    log_info "Next steps:"
+    log_info "  1. Monitor data collection: ./scripts/deploy.sh logs data-collector"
+    log_info "  2. Check service status: ./scripts/deploy.sh status"
+    log_info "  3. View web interface: http://$(curl -s ifconfig.me)"
 }
 
 # Update deployment
@@ -118,13 +118,18 @@ deploy_status() {
     docker-compose -f $COMPOSE_FILE ps
 }
 
-# Backup database
+# Backup database (MongoDB)
 deploy_backup() {
-    log_info "💾 Creating database backup..."
+    log_info "💾 Creating MongoDB backup..."
     BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
     mkdir -p $BACKUP_DIR
-    cp -r data/databases/* $BACKUP_DIR/
+    
+    # For local MongoDB in docker-compose
+    docker exec -it all-thing-eye-mongodb mongodump --out /data/backup
+    docker cp all-thing-eye-mongodb:/data/backup $BACKUP_DIR/
+    
     log_info "✅ Backup created: $BACKUP_DIR"
+    log_info "   Note: For MongoDB Atlas, use automated backups in dashboard"
 }
 
 # Main
