@@ -220,9 +220,11 @@ class GitHubPluginMongo(DataSourcePlugin):
                             'changes': f.get('changes', 0),
                             'status': f.get('status')
                         }
-                        # Include patch/diff if available
+                        # Parse patch/diff if available
                         if 'patch' in f and f['patch']:
-                            file_data['patch'] = f['patch']
+                            parsed = self._parse_patch(f['patch'])
+                            file_data['added_lines'] = parsed['added_lines']
+                            file_data['deleted_lines'] = parsed['deleted_lines']
                         files.append(file_data)
                 
                 # Insert or update commit
@@ -994,4 +996,39 @@ class GitHubPluginMongo(DataSourcePlugin):
                 time.sleep(2 ** (attempt - 1))
         
         return []
+    
+    @staticmethod
+    def _parse_patch(patch: Optional[str]) -> Dict[str, List[str]]:
+        """
+        Parse patch string and extract added/deleted lines
+        
+        Args:
+            patch: Unified diff patch string
+            
+        Returns:
+            Dict with 'added_lines' and 'deleted_lines' lists
+        """
+        if not patch:
+            return {'added_lines': [], 'deleted_lines': []}
+        
+        lines = patch.split('\n')
+        added_lines = []
+        deleted_lines = []
+        
+        for line in lines:
+            # Skip file headers and line number info
+            if line.startswith('---') or line.startswith('+++') or line.startswith('@@'):
+                continue
+            
+            # Deleted line (starts with -)
+            if line.startswith('-'):
+                deleted_lines.append(line[1:])  # Remove the '-' prefix
+            # Added line (starts with +)
+            elif line.startswith('+'):
+                added_lines.append(line[1:])  # Remove the '+' prefix
+        
+        return {
+            'added_lines': added_lines,
+            'deleted_lines': deleted_lines
+        }
 
