@@ -213,13 +213,17 @@ class GitHubPluginMongo(DataSourcePlugin):
                 files = []
                 if 'files' in commit_data:
                     for f in commit_data['files']:
-                        files.append({
+                        file_data = {
                             'filename': f.get('filename'),
                             'additions': f.get('additions', 0),
                             'deletions': f.get('deletions', 0),
                             'changes': f.get('changes', 0),
                             'status': f.get('status')
-                        })
+                        }
+                        # Include patch/diff if available
+                        if 'patch' in f and f['patch']:
+                            file_data['patch'] = f['patch']
+                        files.append(file_data)
                 
                 # Insert or update commit
                 self.commits_col.update_one(
