@@ -40,6 +40,13 @@ env/
 *~
 .DS_Store
 
+# Serena MCP
+.serena/
+
+# Temporary scripts
+add_jwt_auth.py
+test_jwt_local.sh
+
 # Environment Variables
 .env
 .env.*
