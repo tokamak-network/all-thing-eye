@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 from src.core.config import Config
 from src.core.mongo_manager import get_mongo_manager
 from src.utils.logger import get_logger
-from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, exports_mongo, database_mongo
+from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, exports_mongo, database_mongo, auth
 
 logger = get_logger(__name__)
 
@@ -144,6 +144,15 @@ async def test_commits_query():
 
 
 # Include API routers (MongoDB versions)
+
+# Authentication (no JWT required)
+app.include_router(
+    auth.router,
+    prefix="/api/v1/auth",
+    tags=["authentication"]
+)
+
+# Protected routes (JWT required)
 app.include_router(
     query_mongo.router,
     prefix="/api/v1/query",

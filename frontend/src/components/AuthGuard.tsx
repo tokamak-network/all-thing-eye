@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { isSessionValid, getAuthSession, clearAuthSession } from '@/lib/auth';
+import { isTokenValid, clearToken, getTokenTimeRemaining } from '@/lib/jwt';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -19,15 +20,29 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     // Check authentication
     const checkAuth = () => {
-      const valid = isSessionValid();
+      // Check JWT token first (primary authentication)
+      const jwtValid = isTokenValid();
+      
+      // Fallback to old session check for backwards compatibility
+      const sessionValid = isSessionValid();
       const session = getAuthSession();
 
-      if (!valid || !session) {
-        // Clear invalid session
+      if (!jwtValid && (!sessionValid || !session)) {
+        // Clear invalid authentication
+        clearToken();
         clearAuthSession();
+        
+        console.log('🔒 Authentication invalid, redirecting to login');
+        
         // Redirect to login
         router.push('/login');
       } else {
+        // Log token expiry time
+        if (jwtValid) {
+          const remaining = getTokenTimeRemaining();
+          console.log(`✅ JWT token valid (expires in ${remaining} seconds)`);
+        }
+        
         setIsAuthenticated(true);
         setIsLoading(false);
       }

@@ -4,13 +4,14 @@ Members API endpoints (MongoDB Version)
 Provides member information and statistics from MongoDB
 """
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
 from src.utils.logger import get_logger
 from src.core.mongo_manager import get_mongo_manager
+from backend.middleware.jwt_auth import require_admin
 
 logger = get_logger(__name__)
 
@@ -51,7 +52,8 @@ class MemberListResponse(BaseModel):
 async def get_members(
     request: Request,
     limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    _admin: str = Depends(require_admin)
 ):
     """
     Get list of all members from MongoDB
@@ -95,7 +97,8 @@ async def get_members(
 @router.get("/members/{member_name}", response_model=MemberDetailResponse)
 async def get_member_detail(
     request: Request,
-    member_name: str
+    member_name: str,
+    _admin: str = Depends(require_admin)
 ):
     """
     Get detailed information for a specific member
@@ -179,7 +182,8 @@ async def get_member_activities(
     member_name: str,
     source_type: Optional[str] = Query(None, description="Filter by source (github, slack, notion, google_drive)"),
     limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    _admin: str = Depends(require_admin)
 ):
     """
     Get activities for a specific member across all sources

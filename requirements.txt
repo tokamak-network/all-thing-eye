@@ -60,4 +60,8 @@ isort==5.12.0
 
 # Security
 cryptography==41.0.7
+python-jose[cryptography]==3.3.0  # JWT tokens
+passlib[bcrypt]==1.7.4            # Password hashing
+eth-account==0.10.0               # Ethereum signature verification
+web3==6.11.3                      # Ethereum utilities
 

@@ -4,7 +4,7 @@ Exports API endpoints for MongoDB
 Provides data export functionality (CSV, JSON)
 """
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel
@@ -17,6 +17,7 @@ from bson import ObjectId
 
 from src.utils.logger import get_logger
 from src.utils.toon_encoder import encode_toon
+from backend.middleware.jwt_auth import require_admin
 
 logger = get_logger(__name__)
 

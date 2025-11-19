@@ -3,6 +3,7 @@
  */
 
 import axios, { AxiosInstance } from "axios";
+import { getToken, getAuthHeader, isTokenValid, clearToken } from "./jwt";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -18,10 +19,35 @@ class ApiClient {
       timeout: 30000,
     });
 
+    // Request interceptor to add JWT token
+    this.client.interceptors.request.use(
+      (config) => {
+        // Add JWT token to all requests (except /auth/login)
+        if (!config.url?.includes('/auth/login')) {
+          const authHeader = getAuthHeader();
+          if (authHeader) {
+            config.headers.Authorization = authHeader;
+          }
+        }
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
+
     // Response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
+        // Handle 401 Unauthorized - clear token and redirect to login
+        if (error.response?.status === 401) {
+          console.warn('🔒 Authentication failed - clearing token');
+          clearToken();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        }
         console.error("API Error:", error.response?.data || error.message);
         return Promise.reject(error);
       }
@@ -218,6 +244,31 @@ class ApiClient {
 
   async getLastCollected() {
     const response = await this.client.get("/database/last-collected");
+    return response.data;
+  }
+
+  // Authentication API
+  async login(address: string, message: string, signature: string) {
+    const response = await this.client.post("/auth/login", {
+      address,
+      message,
+      signature,
+    });
+    return response.data;
+  }
+
+  async verifyToken(token: string) {
+    const response = await this.client.post("/auth/verify", { token });
+    return response.data;
+  }
+
+  async getAdmins() {
+    const response = await this.client.get("/auth/admins");
+    return response.data;
+  }
+
+  async checkAdmin(address: string) {
+    const response = await this.client.get(`/auth/check-admin/${address}`);
     return response.data;
   }
 

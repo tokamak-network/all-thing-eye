@@ -10,6 +10,8 @@ import {
   isSessionValid,
   ALLOWED_ADMINS,
 } from "@/lib/auth";
+import { storeToken, isTokenValid } from "@/lib/jwt";
+import { api } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,7 +25,7 @@ export default function LoginPage() {
 
   // Check if already authenticated
   useEffect(() => {
-    if (isSessionValid()) {
+    if (isTokenValid()) {
       router.push("/");
     }
   }, [router]);
@@ -34,7 +36,7 @@ export default function LoginPage() {
       return;
     }
 
-    // Check if admin
+    // Check if admin (frontend validation)
     if (!isAdmin(address)) {
       setError(
         `Access denied. Your address (${address.slice(0, 6)}...${address.slice(
@@ -52,11 +54,23 @@ export default function LoginPage() {
       // Generate message to sign
       const message = generateSignMessage(address);
 
-      // Request signature
+      // Request signature from wallet
       const signature = await signMessageAsync({ message });
 
-      // Save session
+      // Send signature to backend to get JWT token
+      const tokenData = await api.login(address, message, signature);
+
+      // Store JWT token
+      storeToken(tokenData);
+
+      // Also save old auth session for backwards compatibility
       saveAuthSession(address, signature, message);
+
+      console.log("✅ Authentication successful", {
+        address: tokenData.address,
+        is_admin: tokenData.is_admin,
+        expires_in: tokenData.expires_in,
+      });
 
       // Redirect to dashboard
       router.push("/");
@@ -66,6 +80,10 @@ export default function LoginPage() {
         setError(
           "Signature rejected. Please sign the message to authenticate."
         );
+      } else if (err.response?.status === 403) {
+        setError("Admin privileges required. Your address is not authorized.");
+      } else if (err.response?.status === 401) {
+        setError("Invalid signature. Please try again.");
       } else {
         setError("Authentication failed. Please try again.");
       }

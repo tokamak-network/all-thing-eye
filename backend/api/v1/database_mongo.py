@@ -4,12 +4,13 @@ Database Viewer API endpoints for MongoDB
 Provides schema inspection and data exploration functionality
 """
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from bson import ObjectId
 
 from src.utils.logger import get_logger
+from backend.middleware.jwt_auth import require_admin
 
 logger = get_logger(__name__)
 
@@ -23,7 +24,7 @@ def get_mongo():
 
 
 @router.get("/last-collected")
-async def get_last_collected_times(request: Request):
+async def get_last_collected_times(request: Request, _admin: str = Depends(require_admin)):
     """
     Get the last data collection time for each data source
     
@@ -75,7 +76,7 @@ async def get_last_collected_times(request: Request):
 
 
 @router.get("/collections")
-async def get_collections(request: Request):
+async def get_collections(request: Request, _admin: str = Depends(require_admin)):
     """
     Get list of all MongoDB collections with basic stats
     
@@ -133,7 +134,7 @@ async def get_collections(request: Request):
 
 
 @router.get("/collections/{collection_name}/schema")
-async def get_collection_schema(request: Request, collection_name: str):
+async def get_collection_schema(request: Request, collection_name: str, _admin: str = Depends(require_admin)):
     """
     Analyze collection schema by sampling documents
     
@@ -247,7 +248,8 @@ async def get_collection_documents(
     collection_name: str,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(30, ge=1, le=100, description="Documents per page"),
-    search: Optional[str] = Query(None, description="Search query (JSON format)")
+    search: Optional[str] = Query(None, description="Search query (JSON format)"),
+    _admin: str = Depends(require_admin)
 ):
     """
     Get paginated documents from a collection with optional search
@@ -333,7 +335,8 @@ async def get_collection_documents(
 async def get_collection_sample(
     request: Request,
     collection_name: str,
-    limit: int = Query(10, ge=1, le=100, description="Number of documents to return")
+    limit: int = Query(10, ge=1, le=100, description="Number of documents to return"),
+    _admin: str = Depends(require_admin)
 ):
     """
     Get sample documents from a collection (legacy endpoint)
@@ -390,7 +393,7 @@ async def get_collection_sample(
 
 
 @router.get("/collections/{collection_name}/stats")
-async def get_collection_stats(request: Request, collection_name: str):
+async def get_collection_stats(request: Request, collection_name: str, _admin: str = Depends(require_admin)):
     """
     Get detailed statistics for a collection
     
