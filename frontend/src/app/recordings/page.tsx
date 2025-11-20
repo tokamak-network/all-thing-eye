@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { apiClient } from '@/lib/api-client';
+import { useState, useEffect } from "react";
+import { api as apiClient } from "@/lib/api";
 
 interface Recording {
   _id: string;
@@ -21,7 +21,8 @@ interface RecordingDetail extends Recording {
 
 export default function RecordingsPage() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
-  const [selectedRecording, setSelectedRecording] = useState<RecordingDetail | null>(null);
+  const [selectedRecording, setSelectedRecording] =
+    useState<RecordingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,10 +31,10 @@ export default function RecordingsPage() {
   useEffect(() => {
     const fetchRecordings = async () => {
       try {
-        const response = await apiClient.get('/database/recordings?limit=50');
-        setRecordings(response.data.recordings);
+        const response = await apiClient.get("/database/recordings?limit=50");
+        setRecordings(response.recordings);
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to fetch recordings');
+        setError(err.response?.data?.detail || "Failed to fetch recordings");
       } finally {
         setLoading(false);
       }
@@ -45,24 +46,26 @@ export default function RecordingsPage() {
   const handleViewDetail = async (recordingId: string) => {
     setDetailLoading(true);
     setShowTranscript(true);
-    
+
     try {
-      const response = await apiClient.get(`/database/recordings/${recordingId}`);
-      setSelectedRecording(response.data);
+      const response = await apiClient.get(
+        `/database/recordings/${recordingId}`
+      );
+      setSelectedRecording(response);
     } catch (err: any) {
-      alert('Failed to load recording details');
+      alert("Failed to load recording details");
     } finally {
       setDetailLoading(false);
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -115,7 +118,9 @@ export default function RecordingsPage() {
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           <div className="flex items-center gap-4">
             <div>
-              <div className="text-2xl font-bold text-blue-600">{recordings.length}</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {recordings.length}
+              </div>
               <div className="text-xs text-gray-600">Total Recordings</div>
             </div>
           </div>
@@ -191,11 +196,12 @@ export default function RecordingsPage() {
               <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">
-                    {selectedRecording?.name || 'Loading...'}
+                    {selectedRecording?.name || "Loading..."}
                   </h2>
                   {selectedRecording && (
                     <p className="text-sm text-gray-500 mt-1">
-                      By {selectedRecording.created_by} • {formatDate(selectedRecording.createdTime)}
+                      By {selectedRecording.created_by} •{" "}
+                      {formatDate(selectedRecording.createdTime)}
                     </p>
                   )}
                 </div>
@@ -206,8 +212,18 @@ export default function RecordingsPage() {
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -225,7 +241,9 @@ export default function RecordingsPage() {
                     </pre>
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-center">No content available</p>
+                  <p className="text-gray-500 text-center">
+                    No content available
+                  </p>
                 )}
               </div>
 
@@ -249,4 +267,3 @@ export default function RecordingsPage() {
     </div>
   );
 }
-
