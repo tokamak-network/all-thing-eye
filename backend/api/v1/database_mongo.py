@@ -78,20 +78,20 @@ async def get_last_collected_times(request: Request, _admin: str = Depends(requi
 @router.get("/collections")
 async def get_collections(request: Request, _admin: str = Depends(require_admin)):
     """
-    Get list of all MongoDB collections with basic stats
+    Get list of all MongoDB collections with basic stats (including shared database)
     
     Returns:
-        List of collections with document counts
+        List of collections with document counts from both main and shared databases
     """
     try:
         mongo = get_mongo()
         db = mongo.async_db
+        shared_db = mongo.shared_async_db
         
-        # Get all collection names
-        collection_names = await db.list_collection_names()
-        
-        # Get stats for each collection
         collections_info = []
+        
+        # Get main database collections
+        collection_names = await db.list_collection_names()
         for name in collection_names:
             try:
                 collection = db[name]
@@ -107,6 +107,7 @@ async def get_collections(request: Request, _admin: str = Depends(require_admin)
                     "avgObjSize": stats.get("avgObjSize", 0),
                     "storageSize": stats.get("storageSize", 0),
                     "indexes": stats.get("nindexes", 0),
+                    "database": "main"
                 })
             except Exception as e:
                 logger.warning(f"Failed to get stats for collection {name}: {e}")
@@ -117,7 +118,42 @@ async def get_collections(request: Request, _admin: str = Depends(require_admin)
                     "avgObjSize": 0,
                     "storageSize": 0,
                     "indexes": 0,
+                    "database": "main"
                 })
+        
+        # Get shared database collections
+        try:
+            shared_collection_names = await shared_db.list_collection_names()
+            for name in shared_collection_names:
+                try:
+                    collection = shared_db[name]
+                    count = await collection.count_documents({})
+                    
+                    # Get collection stats
+                    stats = await shared_db.command("collStats", name)
+                    
+                    collections_info.append({
+                        "name": f"shared.{name}",  # Prefix with database name
+                        "count": count,
+                        "size": stats.get("size", 0),
+                        "avgObjSize": stats.get("avgObjSize", 0),
+                        "storageSize": stats.get("storageSize", 0),
+                        "indexes": stats.get("nindexes", 0),
+                        "database": "shared"
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to get stats for shared collection {name}: {e}")
+                    collections_info.append({
+                        "name": f"shared.{name}",
+                        "count": 0,
+                        "size": 0,
+                        "avgObjSize": 0,
+                        "storageSize": 0,
+                        "indexes": 0,
+                        "database": "shared"
+                    })
+        except Exception as e:
+            logger.warning(f"Failed to access shared database: {e}")
         
         # Sort by document count (descending)
         collections_info.sort(key=lambda x: x["count"], reverse=True)
@@ -139,21 +175,29 @@ async def get_collection_schema(request: Request, collection_name: str, _admin: 
     Analyze collection schema by sampling documents
     
     Args:
-        collection_name: Name of the collection
+        collection_name: Name of the collection (use "shared.collection_name" for shared DB)
         
     Returns:
         Schema information with field types and examples
     """
     try:
         mongo = get_mongo()
-        db = mongo.async_db
+        
+        # Check if it's a shared collection
+        is_shared = collection_name.startswith("shared.")
+        if is_shared:
+            db = mongo.shared_async_db
+            actual_name = collection_name.replace("shared.", "", 1)
+        else:
+            db = mongo.async_db
+            actual_name = collection_name
         
         # Verify collection exists
         collection_names = await db.list_collection_names()
-        if collection_name not in collection_names:
+        if actual_name not in collection_names:
             raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
         
-        collection = db[collection_name]
+        collection = db[actual_name]
         
         # Sample documents to infer schema (take 100 documents)
         sample_docs = await collection.find({}).limit(100).to_list(length=100)
@@ -255,7 +299,7 @@ async def get_collection_documents(
     Get paginated documents from a collection with optional search
     
     Args:
-        collection_name: Name of the collection
+        collection_name: Name of the collection (use "shared.collection_name" for shared DB)
         page: Page number (1-indexed)
         limit: Documents per page (max 100)
         search: Optional search query in JSON format
@@ -265,14 +309,22 @@ async def get_collection_documents(
     """
     try:
         mongo = get_mongo()
-        db = mongo.async_db
+        
+        # Check if it's a shared collection
+        is_shared = collection_name.startswith("shared.")
+        if is_shared:
+            db = mongo.shared_async_db
+            actual_name = collection_name.replace("shared.", "", 1)
+        else:
+            db = mongo.async_db
+            actual_name = collection_name
         
         # Verify collection exists
         collection_names = await db.list_collection_names()
-        if collection_name not in collection_names:
+        if actual_name not in collection_names:
             raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
         
-        collection = db[collection_name]
+        collection = db[actual_name]
         
         # Parse search query
         query = {}
@@ -438,4 +490,112 @@ async def get_collection_stats(request: Request, collection_name: str, _admin: s
     except Exception as e:
         logger.error(f"Error getting stats for {collection_name}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get collection stats: {str(e)}")
+
+
+@router.get("/recordings")
+async def get_recordings(
+    request: Request,
+    limit: int = Query(20, ge=1, le=100, description="Number of recordings"),
+    skip: int = Query(0, ge=0, description="Number of recordings to skip"),
+    _admin: str = Depends(require_admin)
+):
+    """
+    Get meeting recordings from shared database
+    
+    Args:
+        limit: Number of recordings to return (max 100)
+        skip: Number of recordings to skip (for pagination)
+        
+    Returns:
+        List of recordings with metadata (without full content)
+    """
+    try:
+        mongo = get_mongo()
+        shared_db = mongo.shared_async_db
+        
+        # Get recordings (exclude large content field)
+        recordings = await shared_db.recordings.find(
+            {},
+            {"content": 0}  # Exclude content for list view
+        ).sort("modifiedTime", -1).skip(skip).limit(limit).to_list(length=limit)
+        
+        # Convert ObjectId to string
+        def serialize_value(value):
+            if isinstance(value, ObjectId):
+                return str(value)
+            elif isinstance(value, datetime):
+                return value.isoformat()
+            elif isinstance(value, dict):
+                return {k: serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [serialize_value(item) for item in value]
+            return value
+        
+        for rec in recordings:
+            for key, value in list(rec.items()):
+                rec[key] = serialize_value(value)
+        
+        # Get total count
+        total = await shared_db.recordings.count_documents({})
+        
+        return {
+            "recordings": recordings,
+            "total": total,
+            "limit": limit,
+            "skip": skip,
+            "has_more": (skip + limit) < total
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting recordings: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get recordings: {str(e)}")
+
+
+@router.get("/recordings/{recording_id}")
+async def get_recording_detail(
+    request: Request,
+    recording_id: str,
+    _admin: str = Depends(require_admin)
+):
+    """
+    Get full recording details including transcript
+    
+    Args:
+        recording_id: Google Drive file ID of the recording
+        
+    Returns:
+        Full recording document with transcript
+    """
+    try:
+        mongo = get_mongo()
+        shared_db = mongo.shared_async_db
+        
+        # Find recording by Google Drive ID
+        recording = await shared_db.recordings.find_one({"id": recording_id})
+        
+        if not recording:
+            raise HTTPException(status_code=404, detail="Recording not found")
+        
+        # Convert ObjectId to string
+        def serialize_value(value):
+            if isinstance(value, ObjectId):
+                return str(value)
+            elif isinstance(value, datetime):
+                return value.isoformat()
+            elif isinstance(value, dict):
+                return {k: serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [serialize_value(item) for item in value]
+            return value
+        
+        for key, value in list(recording.items()):
+            recording[key] = serialize_value(value)
+        
+        return recording
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting recording detail: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get recording: {str(e)}")
 

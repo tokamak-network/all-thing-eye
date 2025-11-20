@@ -39,6 +39,9 @@ class MongoDBManager:
         self.uri = config.get('uri', 'mongodb://localhost:27017')
         self.database_name = config.get('database', 'all_thing_eye')
         
+        # Shared database URI (for recordings from Google Drive)
+        self.shared_uri = os.getenv('MONGODB_SHARED_URI', self.uri)
+        
         # Connection pool settings
         self.max_pool_size = config.get('max_pool_size', 100)
         self.min_pool_size = config.get('min_pool_size', 10)
@@ -65,6 +68,12 @@ class MongoDBManager:
         # Async client (for FastAPI endpoints)
         self._async_client: Optional[AsyncIOMotorClient] = None
         self._async_db: Optional[Database] = None
+        
+        # Shared database clients (for recordings)
+        self._shared_sync_client: Optional[MongoClient] = None
+        self._shared_sync_db: Optional[Database] = None
+        self._shared_async_client: Optional[AsyncIOMotorClient] = None
+        self._shared_async_db: Optional[Database] = None
         
         logger.info(f"MongoDB Manager initialized for database: {self.database_name}")
     
@@ -153,6 +162,77 @@ class MongoDBManager:
         if self._async_db is None:
             self.connect_async()
         return self._async_db
+    
+    def connect_shared_sync(self) -> MongoClient:
+        """
+        Create synchronous connection to shared MongoDB database
+        
+        Returns:
+            MongoClient instance for shared database
+        """
+        if self._shared_sync_client is None:
+            try:
+                self._shared_sync_client = MongoClient(
+                    self.shared_uri,
+                    maxPoolSize=self.max_pool_size,
+                    minPoolSize=self.min_pool_size,
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=10000,
+                    socketTimeoutMS=30000,
+                )
+                
+                # Test connection
+                self._shared_sync_client.admin.command('ping')
+                logger.info("✅ Synchronous shared MongoDB connection established")
+                
+                self._shared_sync_db = self._shared_sync_client['shared']
+                
+            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+                logger.error(f"❌ Failed to connect to shared MongoDB: {e}")
+                raise
+        
+        return self._shared_sync_client
+    
+    def connect_shared_async(self) -> AsyncIOMotorClient:
+        """
+        Create asynchronous connection to shared MongoDB database
+        
+        Returns:
+            AsyncIOMotorClient instance for shared database
+        """
+        if self._shared_async_client is None:
+            try:
+                self._shared_async_client = AsyncIOMotorClient(
+                    self.shared_uri,
+                    maxPoolSize=self.max_pool_size,
+                    minPoolSize=self.min_pool_size,
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=10000,
+                    socketTimeoutMS=30000,
+                )
+                
+                logger.info("✅ Asynchronous shared MongoDB connection established")
+                self._shared_async_db = self._shared_async_client['shared']
+                
+            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+                logger.error(f"❌ Failed to connect to shared MongoDB (async): {e}")
+                raise
+        
+        return self._shared_async_client
+    
+    @property
+    def shared_db(self) -> Database:
+        """Get synchronous shared database instance"""
+        if self._shared_sync_db is None:
+            self.connect_shared_sync()
+        return self._shared_sync_db
+    
+    @property
+    def shared_async_db(self) -> Database:
+        """Get asynchronous shared database instance"""
+        if self._shared_async_db is None:
+            self.connect_shared_async()
+        return self._shared_async_db
     
     def get_collection(self, collection_name: str) -> Collection:
         """
@@ -280,6 +360,14 @@ class MongoDBManager:
         if self._async_client:
             self._async_client.close()
             logger.info("🔒 Closed asynchronous MongoDB connection")
+        
+        if self._shared_sync_client:
+            self._shared_sync_client.close()
+            logger.info("🔒 Closed shared synchronous MongoDB connection")
+        
+        if self._shared_async_client:
+            self._shared_async_client.close()
+            logger.info("🔒 Closed shared asynchronous MongoDB connection")
     
     def test_connection(self) -> bool:
         """
