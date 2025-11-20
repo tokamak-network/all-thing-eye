@@ -102,8 +102,8 @@ plugins:
     enabled: true
     # OAuth2 credentials path (place credentials.json in config/google_drive/)
     credentials_path: "config/google_drive/credentials.json"
-    # Token will be stored in /tmp for Docker compatibility (read-only filesystem)
-    token_path: "/tmp/token_admin.pickle"
+    # Token path - updated to use persistent config directory
+    token_path: "/app/config/google_drive/token_admin.pickle"
     # Target users to track (empty = all users in organization)
     target_users: [] # e.g., ['george@tokamak.network', 'kevin@tokamak.network']
     days_to_collect: 7 # Default collection period
