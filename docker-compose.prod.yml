@@ -1,29 +1,8 @@
 version: '3.8'
 
 services:
-  # MongoDB Database (Production)
-  mongodb:
-    image: mongo:8.0
-    container_name: all-thing-eye-mongodb
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
-      TZ: Asia/Seoul
-    volumes:
-      - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
-      - ./data/logs/mongodb:/var/log/mongodb
-    networks:
-      - all-thing-eye
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    # Note: Port 27017 is not exposed externally for security
-    # Use MongoDB Atlas for production or configure secure access
+  # MongoDB is now hosted externally (MongoDB Atlas or remote server)
+  # Configure MONGODB_URI in .env file
 
   # Nginx Reverse Proxy
   nginx:
@@ -85,9 +64,7 @@ services:
       - ./data/logs/backend:/app/logs
     expose:
       - "8000"
-    depends_on:
-      mongodb:
-        condition: service_healthy
+    # MongoDB is now remote - no local dependency
     networks:
       - all-thing-eye
     healthcheck:
@@ -142,9 +119,7 @@ services:
     volumes:
       - ./config:/app/config:ro
       - ./data/logs/collector:/app/logs
-    depends_on:
-      mongodb:
-        condition: service_healthy
+    # MongoDB is now remote - no local dependency
     networks:
       - all-thing-eye
     command: >
@@ -189,11 +164,7 @@ services:
         done
       "
 
-volumes:
-  mongodb_data:
-    driver: local
-  mongodb_config:
-    driver: local
+# No local volumes needed - MongoDB is remote
 
 networks:
   all-thing-eye:
