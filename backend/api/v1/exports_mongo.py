@@ -55,7 +55,8 @@ COLLECTION_MAP = {
                'github_pull_requests', 'github_issues'],
     'slack': ['slack_channels', 'slack_messages'],
     'notion': ['notion_pages', 'notion_databases', 'notion_comments'],
-    'google_drive': ['drive_files', 'drive_activities']
+    'google_drive': ['drive_files', 'drive_activities'],
+    'shared': ['recordings']
 }
 
 
@@ -69,16 +70,24 @@ async def get_tables(request: Request):
     """
     try:
         mongo = get_mongo()
-        db = mongo.async_db  # Use async_db for asynchronous operations
+        db = mongo.async_db  # Main database
+        shared_db = mongo.async_shared_db  # Shared database
         
-        # Get all collection names from MongoDB
-        all_collections = await db.list_collection_names()
+        # Get collection names from both databases
+        main_collections = await db.list_collection_names()
+        shared_collections = await shared_db.list_collection_names()
         
         # Organize by source
         collections_by_source = {}
         
         for source, expected_collections in COLLECTION_MAP.items():
-            existing = [col for col in expected_collections if col in all_collections]
+            if source == 'shared':
+                # Check shared database
+                existing = [col for col in expected_collections if col in shared_collections]
+            else:
+                # Check main database
+                existing = [col for col in expected_collections if col in main_collections]
+            
             if existing:
                 collections_by_source[source] = existing
         
@@ -117,7 +126,12 @@ async def export_collection_csv(
     """
     try:
         mongo = get_mongo()
-        db = mongo.async_db  # Use async_db for asynchronous operations
+        
+        # Select database based on source
+        if source == 'shared':
+            db = mongo.async_shared_db
+        else:
+            db = mongo.async_db
         
         # Validate source
         if source not in COLLECTION_MAP:
@@ -268,7 +282,12 @@ async def export_collection_toon(
     """
     try:
         mongo = get_mongo()
-        db = mongo.async_db
+        
+        # Select database based on source
+        if source == 'shared':
+            db = mongo.async_shared_db
+        else:
+            db = mongo.async_db
         
         # Validate source
         if source not in COLLECTION_MAP:
@@ -704,7 +723,6 @@ async def export_bulk_collections(
     
     try:
         mongo = get_mongo()
-        db = mongo.async_db  # Use async_db for asynchronous operations
         start_date = bulk_request.start_date
         end_date = bulk_request.end_date
         
@@ -717,6 +735,12 @@ async def export_bulk_collections(
                 collection = selection.get_collection_name()
                 
                 try:
+                    # Select database based on source
+                    if source == 'shared':
+                        db = mongo.async_shared_db
+                    else:
+                        db = mongo.async_db
+                    
                     # Build query filter
                     query_filter = {}
                     
