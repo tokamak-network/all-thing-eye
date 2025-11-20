@@ -19,7 +19,11 @@ database:
 mongodb:
   # Connection URI format: mongodb://[username:password@]host[:port][/database][?options]
   uri: ${MONGODB_URI:mongodb://localhost:27017}
-  database: ${MONGODB_DATABASE:all_thing_eye}
+  database: ${MONGODB_DATABASE:ati}
+  
+  # Shared Database (for recordings and other shared data)
+  shared_uri: ${MONGODB_SHARED_URI:}  # If empty, uses same as main URI
+  shared_database: ${MONGODB_SHARED_DATABASE:shared}
   
   # Connection Pool Settings
   max_pool_size: 100
