@@ -30,7 +30,7 @@ export interface MemberDetail extends Member {
 }
 
 export interface Activity {
-  id: number;
+  id: string;
   member_id: number;
   member_name: string;
   source_type: string;
