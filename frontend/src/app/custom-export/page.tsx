@@ -86,18 +86,20 @@ export default function CustomExportPage() {
         </div>
       </div>
 
-      {/* Coming Soon Notice */}
-      <div className="max-w-7xl mx-auto mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      {/* TBD Notice */}
+      <div className="max-w-7xl mx-auto mt-6 bg-blue-50 border-2 border-blue-300 rounded-lg p-6">
         <div className="flex items-start">
-          <span className="text-2xl mr-3">🚧</span>
+          <span className="text-3xl mr-4">🔨</span>
           <div>
-            <h3 className="font-semibold text-yellow-900 mb-1">
-              UI Prototype - Functionality Coming Soon
+            <h3 className="text-lg font-bold text-blue-900 mb-2">
+              🚧 To Be Developed (TBD)
             </h3>
-            <p className="text-sm text-yellow-800">
-              This is a visual prototype. The actual data export functionality
-              will be implemented in Phase 2. Currently showing mock data for
-              demonstration purposes.
+            <p className="text-sm text-blue-800 mb-2">
+              This feature is currently under development and will be available in a future release.
+            </p>
+            <p className="text-sm text-blue-700">
+              <strong>What's Coming:</strong> Advanced custom data export builder with AI-powered field selection, 
+              multi-source data integration, and template saving functionality.
             </p>
           </div>
         </div>
