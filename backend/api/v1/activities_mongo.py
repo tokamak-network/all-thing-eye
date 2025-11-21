@@ -60,7 +60,7 @@ async def get_activities(
         activities = []
         
         # Determine which sources to query
-        sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive']
+        sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings']
         
         # Build date filter
         date_filter = {}
@@ -185,6 +185,28 @@ async def get_activities(
                             'doc_type': activity.get('doc_type')
                         }
                     ))
+            
+            elif source == 'recordings':
+                shared_db = get_mongo().shared_db
+                recordings = shared_db["recordings"]
+                query = {}
+                if member_name:
+                    query['createdBy'] = {"$regex": member_name, "$options": "i"}
+                if date_filter:
+                    query['modifiedTime'] = date_filter
+                
+                for recording in recordings.find(query).sort("modifiedTime", -1).limit(limit):
+                    activities.append(ActivityResponse(
+                        id=str(recording['_id']),
+                        member_name=recording.get('createdBy', ''),
+                        source_type='recordings',
+                        activity_type='meeting_recording',
+                        timestamp=recording['modifiedTime'].isoformat() if isinstance(recording['modifiedTime'], datetime) else recording['modifiedTime'],
+                        metadata={
+                            'name': recording.get('name'),
+                            'size': recording.get('size', 0)
+                        }
+                    ))
         
         # Sort all activities by timestamp descending
         activities.sort(key=lambda x: x.timestamp, reverse=True)
@@ -236,7 +258,7 @@ async def get_activities_summary(
         if end_date:
             date_filter['$lte'] = datetime.fromisoformat(end_date)
         
-        sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive']
+        sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings']
         
         for source in sources_to_query:
             source_summary = {
@@ -323,6 +345,30 @@ async def get_activities_summary(
                 if drive_count > 0:
                     source_summary['total_activities'] = drive_count
             
+            elif source == 'recordings':
+                shared_db = get_mongo().shared_db
+                recordings = shared_db["recordings"]
+                query = {}
+                if date_filter:
+                    query['modifiedTime'] = date_filter
+                
+                pipeline = [
+                    {"$match": query},
+                    {"$group": {
+                        "_id": None,
+                        "count": {"$sum": 1},
+                        "unique_creators": {"$addToSet": "$createdBy"}
+                    }}
+                ]
+                result = list(recordings.aggregate(pipeline))
+                if result:
+                    recording_count = result[0]['count']
+                    source_summary['total_activities'] = recording_count
+                    source_summary['activity_types']['meeting_recording'] = {
+                        'count': recording_count,
+                        'unique_members': len(result[0]['unique_creators'])
+                    }
+            
             if source_summary['total_activities'] > 0:
                 summary[source] = source_summary
         
@@ -356,7 +402,8 @@ async def get_activity_types(
             'github': ['commit', 'pull_request', 'issue'],
             'slack': ['message', 'reaction'],
             'notion': ['page_created', 'page_edited', 'comment_added'],
-            'google_drive': ['create', 'edit', 'upload', 'download', 'share']
+            'google_drive': ['create', 'edit', 'upload', 'download', 'share'],
+            'recordings': ['meeting_recording']
         }
         
         if source_type:
