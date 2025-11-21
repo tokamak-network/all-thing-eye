@@ -94,7 +94,7 @@ async def get_tables(request: Request):
         return {
             "sources": collections_by_source,
             "total_sources": len(collections_by_source),
-            "total_collections": sum(len(cols) for cols in collections_by_source.values())
+            "total_tables": sum(len(cols) for cols in collections_by_source.values())
         }
         
     except Exception as e:
