@@ -194,7 +194,7 @@ export default function ActivitiesPage() {
                       {activity.source_type === 'slack' && (
                         <>
                           {activity.activity_type === 'message' && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                               💬 message
                             </span>
                           )}
@@ -207,6 +207,25 @@ export default function ActivitiesPage() {
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                               📎 file share
                             </span>
+                          )}
+                          {activity.metadata?.channel && (
+                            <>
+                              {activity.metadata?.url ? (
+                                <a
+                                  href={activity.metadata.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                                >
+                                  #{activity.metadata.channel}
+                                </a>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                  #{activity.metadata.channel}
+                                </span>
+                              )}
+                            </>
                           )}
                         </>
                       )}
