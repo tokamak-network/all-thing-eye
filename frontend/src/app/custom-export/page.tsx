@@ -46,6 +46,25 @@ export default function CustomExportPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      {/* TBD Notice - Top of Page */}
+      <div className="max-w-7xl mx-auto mb-6 bg-blue-50 border-2 border-blue-300 rounded-lg p-6">
+        <div className="flex items-start">
+          <span className="text-3xl mr-4">🔨</span>
+          <div>
+            <h3 className="text-lg font-bold text-blue-900 mb-2">
+              🚧 To Be Developed (TBD)
+            </h3>
+            <p className="text-sm text-blue-800 mb-2">
+              This feature is currently under development and will be available in a future release.
+            </p>
+            <p className="text-sm text-blue-700">
+              <strong>What's Coming:</strong> Advanced custom data export builder with AI-powered field selection, 
+              multi-source data integration, and template saving functionality.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -83,25 +102,6 @@ export default function CustomExportPage() {
 
           {/* AI Chat Panel */}
           <AIChatPanel selectedFields={selectedFields} filters={filters} />
-        </div>
-      </div>
-
-      {/* TBD Notice */}
-      <div className="max-w-7xl mx-auto mt-6 bg-blue-50 border-2 border-blue-300 rounded-lg p-6">
-        <div className="flex items-start">
-          <span className="text-3xl mr-4">🔨</span>
-          <div>
-            <h3 className="text-lg font-bold text-blue-900 mb-2">
-              🚧 To Be Developed (TBD)
-            </h3>
-            <p className="text-sm text-blue-800 mb-2">
-              This feature is currently under development and will be available in a future release.
-            </p>
-            <p className="text-sm text-blue-700">
-              <strong>What's Coming:</strong> Advanced custom data export builder with AI-powered field selection, 
-              multi-source data integration, and template saving functionality.
-            </p>
-          </div>
         </div>
       </div>
     </div>
