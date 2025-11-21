@@ -56,7 +56,7 @@ COLLECTION_MAP = {
     'slack': ['slack_channels', 'slack_messages'],
     'notion': ['notion_pages', 'notion_databases', 'notion_comments'],
     'google_drive': ['drive_files', 'drive_activities'],
-    'shared': ['recordings']
+    'other': ['recordings']  # Changed from 'shared' to 'other' to match Database page grouping
 }
 
 
@@ -81,8 +81,8 @@ async def get_tables(request: Request):
         collections_by_source = {}
         
         for source, expected_collections in COLLECTION_MAP.items():
-            if source == 'shared':
-                # Check shared database
+            if source == 'other':
+                # Check shared database for 'other' collections
                 existing = [col for col in expected_collections if col in shared_collections]
             else:
                 # Check main database
@@ -115,7 +115,7 @@ async def export_collection_csv(
     Export a specific collection as CSV
     
     Args:
-        source: Database source (main, github, slack, google_drive, notion)
+        source: Database source (main, github, slack, google_drive, notion, other)
         collection: Collection name
         limit: Maximum number of documents to export (optional)
         start_date: Filter records from this date onwards (optional)
@@ -128,7 +128,7 @@ async def export_collection_csv(
         mongo = get_mongo()
         
         # Select database based on source
-        if source == 'shared':
+        if source == 'other':
             db = mongo.async_shared_db
         else:
             db = mongo.async_db
@@ -270,7 +270,7 @@ async def export_collection_toon(
     - Human-readable and self-documenting
     
     Args:
-        source: Database source (main, github, slack, google_drive, notion)
+        source: Database source (main, github, slack, google_drive, notion, other)
         collection: Collection name
         limit: Maximum number of documents to export (optional)
         start_date: Filter records from this date onwards (optional)
@@ -284,7 +284,7 @@ async def export_collection_toon(
         mongo = get_mongo()
         
         # Select database based on source
-        if source == 'shared':
+        if source == 'other':
             db = mongo.async_shared_db
         else:
             db = mongo.async_db
@@ -736,7 +736,7 @@ async def export_bulk_collections(
                 
                 try:
                     # Select database based on source
-                    if source == 'shared':
+                    if source == 'other':
                         db = mongo.async_shared_db
                     else:
                         db = mongo.async_db
