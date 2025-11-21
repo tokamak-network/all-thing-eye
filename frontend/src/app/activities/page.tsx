@@ -190,6 +190,27 @@ export default function ActivitiesPage() {
                         </>
                       )}
                       
+                      {/* Activity Type Badge for Slack */}
+                      {activity.source_type === 'slack' && (
+                        <>
+                          {activity.activity_type === 'message' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              💬 message
+                            </span>
+                          )}
+                          {activity.activity_type === 'thread_reply' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                              💭 thread reply
+                            </span>
+                          )}
+                          {activity.activity_type === 'file_share' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              📎 file share
+                            </span>
+                          )}
+                        </>
+                      )}
+                      
                       <p className="text-sm font-medium text-gray-900">
                         {activity.member_name}
                       </p>
@@ -328,6 +349,25 @@ export default function ActivitiesPage() {
                   {/* Slack Details */}
                   {activity.source_type === 'slack' && (
                     <div className="space-y-3">
+                      {/* Activity Type Badge */}
+                      <div className="flex items-center space-x-2">
+                        {activity.activity_type === 'message' && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            💬 Message
+                          </span>
+                        )}
+                        {activity.activity_type === 'thread_reply' && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                            💭 Thread Reply
+                          </span>
+                        )}
+                        {activity.activity_type === 'file_share' && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            📎 File Share
+                          </span>
+                        )}
+                      </div>
+
                       {/* Timestamp */}
                       <div>
                         <span className="text-xs font-medium text-gray-500">Time:</span>
@@ -342,6 +382,7 @@ export default function ActivitiesPage() {
                           <p className="text-sm text-gray-900">#{activity.metadata.channel}</p>
                         </div>
                       )}
+                      
                       {activity.metadata?.text && (
                         <div>
                           <span className="text-xs font-medium text-gray-500">Message:</span>
@@ -350,14 +391,47 @@ export default function ActivitiesPage() {
                           </p>
                         </div>
                       )}
-                      {(activity.metadata?.reactions > 0 || activity.metadata?.links > 0) && (
-                        <div className="flex space-x-4 text-sm text-gray-500">
-                          {activity.metadata.reactions > 0 && (
-                            <span>👍 {activity.metadata.reactions} reactions</span>
-                          )}
-                          {activity.metadata.links > 0 && (
-                            <span>🔗 {activity.metadata.links} links</span>
-                          )}
+                      
+                      {/* Stats */}
+                      <div className="flex flex-wrap gap-3 text-sm">
+                        {activity.metadata?.reactions > 0 && (
+                          <div className="flex items-center space-x-1">
+                            <span className="text-gray-500">👍 Reactions:</span>
+                            <span className="font-medium text-gray-900">{activity.metadata.reactions}</span>
+                          </div>
+                        )}
+                        {activity.metadata?.reply_count > 0 && (
+                          <div className="flex items-center space-x-1">
+                            <span className="text-gray-500">💬 Replies:</span>
+                            <span className="font-medium text-gray-900">{activity.metadata.reply_count}</span>
+                          </div>
+                        )}
+                        {activity.metadata?.links > 0 && (
+                          <div className="flex items-center space-x-1">
+                            <span className="text-gray-500">🔗 Links:</span>
+                            <span className="font-medium text-gray-900">{activity.metadata.links}</span>
+                          </div>
+                        )}
+                        {activity.metadata?.files > 0 && (
+                          <div className="flex items-center space-x-1">
+                            <span className="text-gray-500">📎 Files:</span>
+                            <span className="font-medium text-gray-900">{activity.metadata.files}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Link Button */}
+                      {activity.metadata?.url && (
+                        <div className="mt-3">
+                          <a
+                            href={activity.metadata.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors"
+                          >
+                            🔗 View on Slack →
+                          </a>
                         </div>
                       )}
                     </div>

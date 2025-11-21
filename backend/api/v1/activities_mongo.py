@@ -197,17 +197,44 @@ async def get_activities(
                     else:
                         timestamp_str = str(posted_at) if posted_at else ''
                     
+                    # Determine activity type
+                    ts = msg.get('ts', '')
+                    thread_ts = msg.get('thread_ts', '')
+                    has_files = len(msg.get('files', [])) > 0
+                    is_thread_reply = thread_ts and str(thread_ts) != str(ts)
+                    
+                    if is_thread_reply:
+                        activity_type = 'thread_reply'
+                    elif has_files:
+                        activity_type = 'file_share'
+                    else:
+                        activity_type = 'message'
+                    
+                    # Build Slack message URL
+                    channel_id = msg.get('channel_id', '')
+                    if channel_id and ts:
+                        # Convert ts (1763525860.094349) to Slack URL format (p1763525860094349)
+                        ts_formatted = ts.replace('.', '')
+                        slack_url = f"https://tokamak-network.slack.com/archives/{channel_id}/p{ts_formatted}"
+                    else:
+                        slack_url = None
+                    
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
                         member_name=msg.get('user_name', ''),
                         source_type='slack',
-                        activity_type='message',
+                        activity_type=activity_type,
                         timestamp=timestamp_str,
                         metadata={
                             'channel': msg.get('channel_name'),
+                            'channel_id': channel_id,
                             'text': msg.get('text', '')[:200],
                             'reactions': len(msg.get('reactions', [])),
-                            'links': len(msg.get('links', []))
+                            'links': len(msg.get('links', [])),
+                            'files': len(msg.get('files', [])),
+                            'reply_count': msg.get('reply_count', 0),
+                            'url': slack_url,
+                            'is_thread': is_thread_reply
                         }
                     ))
             
