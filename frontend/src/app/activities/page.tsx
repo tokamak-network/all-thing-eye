@@ -5,12 +5,19 @@ import { format } from 'date-fns';
 import { api as apiClient } from '@/lib/api';
 import type { ActivityListResponse } from '@/types';
 
-// Helper function to safely format timestamps
+// Helper function to safely format timestamps (converts to browser's local timezone)
 function formatTimestamp(timestamp: string, formatStr: string): string {
   if (!timestamp) return 'N/A';
   const date = new Date(timestamp);
   if (isNaN(date.getTime())) return 'N/A';
   return format(date, formatStr);
+}
+
+// Helper function to get timezone offset string (e.g., "UTC+9", "UTC-5")
+function getTimezoneString(): string {
+  const offset = -new Date().getTimezoneOffset() / 60;
+  const sign = offset >= 0 ? '+' : '';
+  return `UTC${sign}${offset}`;
 }
 
 function formatSize(bytes: number): string {
@@ -203,11 +210,11 @@ export default function ActivitiesPage() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <p className="text-sm text-gray-500">
+                    <div className="text-right min-w-[160px]">
+                      <p className="text-sm font-medium text-gray-900">
                         {formatTimestamp(activity.timestamp, 'MMM dd, yyyy')}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-600">
                         {formatTimestamp(activity.timestamp, 'HH:mm:ss')}
                       </p>
                     </div>
@@ -251,6 +258,14 @@ export default function ActivitiesPage() {
                             {activity.metadata.state}
                           </span>
                         )}
+                      </div>
+
+                      {/* Timestamp */}
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">Time:</span>
+                        <p className="text-sm text-gray-900">
+                          {formatTimestamp(activity.timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                        </p>
                       </div>
 
                       {activity.metadata?.repository && (
@@ -313,6 +328,14 @@ export default function ActivitiesPage() {
                   {/* Slack Details */}
                   {activity.source_type === 'slack' && (
                     <div className="space-y-3">
+                      {/* Timestamp */}
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">Time:</span>
+                        <p className="text-sm text-gray-900">
+                          {formatTimestamp(activity.timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                        </p>
+                      </div>
+
                       {activity.metadata?.channel && (
                         <div>
                           <span className="text-xs font-medium text-gray-500">Channel:</span>
@@ -343,6 +366,14 @@ export default function ActivitiesPage() {
                   {/* Notion Details */}
                   {activity.source_type === 'notion' && (
                     <div className="space-y-3">
+                      {/* Timestamp */}
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">Time:</span>
+                        <p className="text-sm text-gray-900">
+                          {formatTimestamp(activity.timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                        </p>
+                      </div>
+
                       {activity.metadata?.title && (
                         <div>
                           <span className="text-xs font-medium text-gray-500">Page Title:</span>
@@ -360,6 +391,14 @@ export default function ActivitiesPage() {
                   {/* Google Drive Details */}
                   {activity.source_type === 'drive' && (
                     <div className="space-y-3">
+                      {/* Timestamp */}
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">Time:</span>
+                        <p className="text-sm text-gray-900">
+                          {formatTimestamp(activity.timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                        </p>
+                      </div>
+
                       {activity.metadata?.action && (
                         <div>
                           <span className="text-xs font-medium text-gray-500">Action:</span>
@@ -384,6 +423,14 @@ export default function ActivitiesPage() {
                   {/* Recordings Details */}
                   {activity.source_type === 'recordings' && (
                     <div className="space-y-3">
+                      {/* Timestamp */}
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">Time:</span>
+                        <p className="text-sm text-gray-900">
+                          {formatTimestamp(activity.timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                        </p>
+                      </div>
+
                       {activity.metadata?.name && (
                         <div>
                           <span className="text-xs font-medium text-gray-500">Recording Name:</span>

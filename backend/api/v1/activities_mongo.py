@@ -109,7 +109,11 @@ async def get_activities(
                     
                     async for commit in commits.find(query).sort("date", -1).limit(limit):
                         commit_date = commit.get('date')
-                        timestamp_str = commit_date.isoformat() if isinstance(commit_date, datetime) else str(commit_date) if commit_date else ''
+                        # Add 'Z' to indicate UTC timezone for proper frontend conversion
+                        if isinstance(commit_date, datetime):
+                            timestamp_str = commit_date.isoformat() + 'Z' if commit_date.tzinfo is None else commit_date.isoformat()
+                        else:
+                            timestamp_str = str(commit_date) if commit_date else ''
                         
                         # Get member display name
                         github_username = commit.get('author_name', '')
@@ -148,7 +152,11 @@ async def get_activities(
                     
                     async for pr in prs.find(query).sort("created_at", -1).limit(limit):
                         created_at = pr.get('created_at')
-                        timestamp_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at) if created_at else ''
+                        # Add 'Z' to indicate UTC timezone for proper frontend conversion
+                        if isinstance(created_at, datetime):
+                            timestamp_str = created_at.isoformat() + 'Z' if created_at.tzinfo is None else created_at.isoformat()
+                        else:
+                            timestamp_str = str(created_at) if created_at else ''
                         
                         # Get member display name
                         github_username = pr.get('author', '')
@@ -183,7 +191,11 @@ async def get_activities(
                 
                 async for msg in messages.find(query).sort("posted_at", -1).limit(limit):
                     posted_at = msg.get('posted_at')
-                    timestamp_str = posted_at.isoformat() if isinstance(posted_at, datetime) else str(posted_at) if posted_at else ''
+                    # Add 'Z' to indicate UTC timezone for proper frontend conversion
+                    if isinstance(posted_at, datetime):
+                        timestamp_str = posted_at.isoformat() + 'Z' if posted_at.tzinfo is None else posted_at.isoformat()
+                    else:
+                        timestamp_str = str(posted_at) if posted_at else ''
                     
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
@@ -209,7 +221,11 @@ async def get_activities(
                 
                 async for page in pages.find(query).sort("created_time", -1).limit(limit):
                     created_time = page.get('created_time')
-                    timestamp_str = created_time.isoformat() if isinstance(created_time, datetime) else str(created_time) if created_time else ''
+                    # Add 'Z' to indicate UTC timezone for proper frontend conversion
+                    if isinstance(created_time, datetime):
+                        timestamp_str = created_time.isoformat() + 'Z' if created_time.tzinfo is None else created_time.isoformat()
+                    else:
+                        timestamp_str = str(created_time) if created_time else ''
                     
                     activities.append(ActivityResponse(
                         id=str(page['_id']),
@@ -233,7 +249,11 @@ async def get_activities(
                 
                 async for activity in drive_activities.find(query).sort("timestamp", -1).limit(limit):
                     timestamp_val = activity.get('timestamp')
-                    timestamp_str = timestamp_val.isoformat() if isinstance(timestamp_val, datetime) else str(timestamp_val) if timestamp_val else ''
+                    # Add 'Z' to indicate UTC timezone for proper frontend conversion
+                    if isinstance(timestamp_val, datetime):
+                        timestamp_str = timestamp_val.isoformat() + 'Z' if timestamp_val.tzinfo is None else timestamp_val.isoformat()
+                    else:
+                        timestamp_str = str(timestamp_val) if timestamp_val else ''
                     
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
@@ -259,7 +279,11 @@ async def get_activities(
                 
                 async for recording in recordings.find(query).sort("modifiedTime", -1).limit(limit):
                     modified_time = recording.get('modifiedTime')
-                    timestamp_str = modified_time.isoformat() if isinstance(modified_time, datetime) else str(modified_time) if modified_time else ''
+                    # Add 'Z' to indicate UTC timezone for proper frontend conversion
+                    if isinstance(modified_time, datetime):
+                        timestamp_str = modified_time.isoformat() + 'Z' if modified_time.tzinfo is None else modified_time.isoformat()
+                    else:
+                        timestamp_str = str(modified_time) if modified_time else ''
                     
                     activities.append(ActivityResponse(
                         id=str(recording['_id']),
@@ -279,8 +303,13 @@ async def get_activities(
         # Empty timestamps are treated as oldest
         def sort_key(activity):
             if not activity.timestamp:
-                return ''  # Empty strings sort first (oldest)
-            return activity.timestamp
+                return datetime.min  # Oldest possible datetime
+            try:
+                # Parse ISO timestamp (with or without Z)
+                ts = activity.timestamp.replace('Z', '+00:00')
+                return datetime.fromisoformat(ts)
+            except:
+                return datetime.min
         
         activities.sort(key=sort_key, reverse=True)
         
