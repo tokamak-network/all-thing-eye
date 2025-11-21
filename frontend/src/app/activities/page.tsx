@@ -61,6 +61,7 @@ export default function ActivitiesPage() {
       slack: 'bg-purple-100 text-purple-800',
       notion: 'bg-blue-100 text-blue-800',
       google_drive: 'bg-green-100 text-green-800',
+      recordings: 'bg-red-100 text-red-800',
     };
     return colors[source] || 'bg-gray-100 text-gray-800';
   };
@@ -86,6 +87,7 @@ export default function ActivitiesPage() {
             <option value="slack">Slack</option>
             <option value="notion">Notion</option>
             <option value="google_drive">Google Drive</option>
+            <option value="recordings">Recordings</option>
           </select>
           <a
             href={api.getExportActivitiesUrl('csv', {
