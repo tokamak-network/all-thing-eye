@@ -71,7 +71,7 @@ async def get_tables(request: Request):
     try:
         mongo = get_mongo()
         db = mongo.async_db  # Main database
-        shared_db = mongo.async_shared_db  # Shared database
+        shared_db = mongo.shared_async_db  # Shared database
         
         # Get collection names from both databases
         main_collections = await db.list_collection_names()
@@ -129,7 +129,7 @@ async def export_collection_csv(
         
         # Select database based on source
         if source == 'other':
-            db = mongo.async_shared_db
+            db = mongo.shared_async_db
         else:
             db = mongo.async_db
         
@@ -285,7 +285,7 @@ async def export_collection_toon(
         
         # Select database based on source
         if source == 'other':
-            db = mongo.async_shared_db
+            db = mongo.shared_async_db
         else:
             db = mongo.async_db
         
@@ -737,7 +737,7 @@ async def export_bulk_collections(
                 try:
                     # Select database based on source
                     if source == 'other':
-                        db = mongo.async_shared_db
+                        db = mongo.shared_async_db
                     else:
                         db = mongo.async_db
                     
