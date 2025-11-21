@@ -2,14 +2,32 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useAccount } from 'wagmi';
 import { isSessionValid, getAuthSession, clearAuthSession } from '@/lib/auth';
 import { isTokenValid, clearToken, getTokenTimeRemaining } from '@/lib/jwt';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { isConnected } = useAccount();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Monitor wallet connection status
+  useEffect(() => {
+    // Skip for login page
+    if (pathname === '/login') {
+      return;
+    }
+
+    // If wallet is disconnected but we have auth tokens, logout
+    if (!isConnected && (isTokenValid() || isSessionValid())) {
+      console.log('🔌 Wallet disconnected, logging out...');
+      clearToken();
+      clearAuthSession();
+      router.push('/login');
+    }
+  }, [isConnected, pathname, router]);
 
   useEffect(() => {
     // Skip auth check for login page
