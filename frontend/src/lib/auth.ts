@@ -16,9 +16,11 @@ const HARDCODED_ADMINS = [
   // TODO: 실제 관리자 지갑 주소로 변경하세요!
   // 예시:
   "0xF9Fa94D45C49e879E46Ea783fc133F41709f3bc7",
+  "0x322acfaa747f3ce5b5899611034fb4433f0edf34",
   "0x7f88539538ae808e45e23ff6c2b897d062616c4e",
   "0x9f1474b5b01940af4f6641bdcbcf8af3ca5197ec",
   "0x3d827286780dBc00ACE4ee416aD8a4C5dAAC972C",
+  "0x6E1c4a442E9B9ddA59382ee78058650F1723E0F6",
 ].map((addr) => addr.toLowerCase());
 
 export const ALLOWED_ADMINS =
