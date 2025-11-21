@@ -144,7 +144,8 @@ services:
           CURRENT_MIN=\$(TZ=Asia/Seoul date +%M)
           CURRENT_SEC=\$(TZ=Asia/Seoul date +%S)
           
-          SECONDS_TODAY=\$((CURRENT_HOUR * 3600 + CURRENT_MIN * 60 + CURRENT_SEC))
+          # Force base-10 interpretation to avoid octal number errors (08, 09)
+          SECONDS_TODAY=\$((10#\$CURRENT_HOUR * 3600 + 10#\$CURRENT_MIN * 60 + 10#\$CURRENT_SEC))
           SECONDS_UNTIL_MIDNIGHT=\$((86400 - SECONDS_TODAY))
           
           echo \"[INFO] Current time: \$(TZ=Asia/Seoul date)\"
