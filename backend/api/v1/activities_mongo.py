@@ -81,12 +81,15 @@ async def get_activities(
                         query['committed_at'] = date_filter
                     
                     for commit in commits.find(query).sort("committed_at", -1).limit(limit):
+                        committed_at = commit.get('committed_at')
+                        timestamp_str = committed_at.isoformat() if isinstance(committed_at, datetime) else str(committed_at) if committed_at else ''
+                        
                         activities.append(ActivityResponse(
                             id=str(commit['_id']),
                             member_name=commit.get('author_login', ''),
                             source_type='github',
                             activity_type='commit',
-                            timestamp=commit['committed_at'].isoformat() if isinstance(commit['committed_at'], datetime) else commit['committed_at'],
+                            timestamp=timestamp_str,
                             metadata={
                                 'sha': commit.get('sha'),
                                 'message': commit.get('message'),
@@ -106,12 +109,15 @@ async def get_activities(
                         query['created_at'] = date_filter
                     
                     for pr in prs.find(query).sort("created_at", -1).limit(limit):
+                        created_at = pr.get('created_at')
+                        timestamp_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at) if created_at else ''
+                        
                         activities.append(ActivityResponse(
                             id=str(pr['_id']),
                             member_name=pr.get('author', ''),
                             source_type='github',
                             activity_type='pull_request',
-                            timestamp=pr['created_at'].isoformat() if isinstance(pr['created_at'], datetime) else pr['created_at'],
+                            timestamp=timestamp_str,
                             metadata={
                                 'number': pr.get('number'),
                                 'title': pr.get('title'),
@@ -129,12 +135,15 @@ async def get_activities(
                     query['posted_at'] = date_filter
                 
                 for msg in messages.find(query).sort("posted_at", -1).limit(limit):
+                    posted_at = msg.get('posted_at')
+                    timestamp_str = posted_at.isoformat() if isinstance(posted_at, datetime) else str(posted_at) if posted_at else ''
+                    
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
                         member_name=msg.get('user_name', ''),
                         source_type='slack',
                         activity_type='message',
-                        timestamp=msg['posted_at'].isoformat() if isinstance(msg['posted_at'], datetime) else msg['posted_at'],
+                        timestamp=timestamp_str,
                         metadata={
                             'channel': msg.get('channel_name'),
                             'text': msg.get('text', '')[:200],
@@ -152,12 +161,15 @@ async def get_activities(
                     query['created_time'] = date_filter
                 
                 for page in pages.find(query).sort("created_time", -1).limit(limit):
+                    created_time = page.get('created_time')
+                    timestamp_str = created_time.isoformat() if isinstance(created_time, datetime) else str(created_time) if created_time else ''
+                    
                     activities.append(ActivityResponse(
                         id=str(page['_id']),
                         member_name=page.get('created_by', {}).get('name', ''),
                         source_type='notion',
                         activity_type='page_created',
-                        timestamp=page['created_time'].isoformat() if isinstance(page['created_time'], datetime) else page['created_time'],
+                        timestamp=timestamp_str,
                         metadata={
                             'title': page.get('title'),
                             'comments': page.get('comments_count', 0)
@@ -173,12 +185,15 @@ async def get_activities(
                     query['timestamp'] = date_filter
                 
                 for activity in drive_activities.find(query).sort("timestamp", -1).limit(limit):
+                    timestamp_val = activity.get('timestamp')
+                    timestamp_str = timestamp_val.isoformat() if isinstance(timestamp_val, datetime) else str(timestamp_val) if timestamp_val else ''
+                    
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
                         member_name=activity.get('user_email', '').split('@')[0],
                         source_type='google_drive',
                         activity_type=activity.get('event_name', 'activity'),
-                        timestamp=activity['timestamp'].isoformat() if isinstance(activity['timestamp'], datetime) else activity['timestamp'],
+                        timestamp=timestamp_str,
                         metadata={
                             'action': activity.get('action'),
                             'doc_title': activity.get('doc_title'),
@@ -196,12 +211,15 @@ async def get_activities(
                     query['modifiedTime'] = date_filter
                 
                 for recording in recordings.find(query).sort("modifiedTime", -1).limit(limit):
+                    modified_time = recording.get('modifiedTime')
+                    timestamp_str = modified_time.isoformat() if isinstance(modified_time, datetime) else str(modified_time) if modified_time else ''
+                    
                     activities.append(ActivityResponse(
                         id=str(recording['_id']),
                         member_name=recording.get('createdBy', ''),
                         source_type='recordings',
                         activity_type='meeting_recording',
-                        timestamp=recording['modifiedTime'].isoformat() if isinstance(recording['modifiedTime'], datetime) else recording['modifiedTime'],
+                        timestamp=timestamp_str,
                         metadata={
                             'name': recording.get('name'),
                             'size': recording.get('size', 0)
