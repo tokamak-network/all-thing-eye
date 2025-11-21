@@ -26,6 +26,7 @@ const HARDCODED_ADMINS = [
   "0xf109a6faa0c8adae8ccb114f4ab55d47e8fd4be6",
   "0x97826f4bf96EFa51Ef92184D7555A9Ac4DD7db80",
   "0xf90432b76A23bC7bB50b868dC4257C5F5B401742",
+  "0x5c61cb743bfdca46e829e3e6f1d3b56efbb56e20",
 ].map((addr) => addr.toLowerCase());
 
 export const ALLOWED_ADMINS =
