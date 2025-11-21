@@ -58,7 +58,7 @@ export default function CustomExportPage() {
               This feature is currently under development and will be available in a future release.
             </p>
             <p className="text-sm text-blue-700">
-              <strong>What's Coming:</strong> Advanced custom data export builder with AI-powered field selection, 
+              <strong>What&apos;s Coming:</strong> Advanced custom data export builder with AI-powered field selection, 
               multi-source data integration, and template saving functionality.
             </p>
           </div>
