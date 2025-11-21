@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useDisconnect } from "wagmi";
 import { getAuthSession, clearAuthSession } from "@/lib/auth";
+import { clearToken } from "@/lib/jwt";
 
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
+  const { disconnect } = useDisconnect();
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,7 +37,14 @@ export default function Navigation() {
   };
 
   const handleLogout = () => {
+    // Clear all auth data
     clearAuthSession();
+    clearToken();
+    
+    // Disconnect wallet
+    disconnect();
+    
+    // Redirect to login
     router.push("/login");
   };
 
