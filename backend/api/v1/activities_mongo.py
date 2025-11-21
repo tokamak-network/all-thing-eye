@@ -22,6 +22,32 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+# Helper function to map GitHub username to member name
+async def get_member_display_name(github_username: str, db) -> str:
+    """Map GitHub username to member's display name from members collection"""
+    if not github_username:
+        return github_username
+    
+    try:
+        # Look up member by GitHub username (case-insensitive)
+        member_identifier = await db["member_identifiers"].find_one({
+            "source": "github",
+            "identifier_value": {"$regex": f"^{github_username}$", "$options": "i"}
+        })
+        
+        if member_identifier:
+            member = await db["members"].find_one({"_id": member_identifier["member_id"]})
+            if member:
+                logger.info(f"Mapped GitHub user '{github_username}' to '{member.get('name')}'")
+                return member.get("name", github_username)
+        
+        logger.warning(f"No mapping found for GitHub user '{github_username}'")
+        return github_username
+    except Exception as e:
+        logger.warning(f"Failed to map GitHub username {github_username}: {e}")
+        return github_username
+
+
 # Response models
 class ActivityResponse(BaseModel):
     id: str
@@ -56,7 +82,8 @@ async def get_activities(
         Paginated list of activities from various collections
     """
     try:
-        db = get_mongo().db
+        mongo = get_mongo()
+        db = mongo.async_db
         activities = []
         
         # Determine which sources to query
@@ -80,22 +107,33 @@ async def get_activities(
                     if date_filter:
                         query['committed_at'] = date_filter
                     
-                    for commit in commits.find(query).sort("committed_at", -1).limit(limit):
+                    async for commit in commits.find(query).sort("committed_at", -1).limit(limit):
                         committed_at = commit.get('committed_at')
                         timestamp_str = committed_at.isoformat() if isinstance(committed_at, datetime) else str(committed_at) if committed_at else ''
                         
+                        # Get member display name
+                        github_username = commit.get('author_login', '')
+                        display_name = await get_member_display_name(github_username, db)
+                        
+                        # Build commit URL
+                        repo_name = commit.get('repository_name', '')
+                        sha = commit.get('sha', '')
+                        commit_url = f"https://github.com/tokamak-network/{repo_name}/commit/{sha}" if repo_name and sha else None
+                        
                         activities.append(ActivityResponse(
                             id=str(commit['_id']),
-                            member_name=commit.get('author_login', ''),
+                            member_name=display_name,
                             source_type='github',
                             activity_type='commit',
                             timestamp=timestamp_str,
                             metadata={
-                                'sha': commit.get('sha'),
+                                'sha': sha,
                                 'message': commit.get('message'),
-                                'repository': commit.get('repository_name'),
+                                'repository': repo_name,
                                 'additions': commit.get('additions', 0),
-                                'deletions': commit.get('deletions', 0)
+                                'deletions': commit.get('deletions', 0),
+                                'url': commit_url,
+                                'github_username': github_username
                             }
                         ))
                 
@@ -108,13 +146,20 @@ async def get_activities(
                     if date_filter:
                         query['created_at'] = date_filter
                     
-                    for pr in prs.find(query).sort("created_at", -1).limit(limit):
+                    async for pr in prs.find(query).sort("created_at", -1).limit(limit):
                         created_at = pr.get('created_at')
                         timestamp_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at) if created_at else ''
                         
+                        # Get member display name
+                        github_username = pr.get('author', '')
+                        display_name = await get_member_display_name(github_username, db)
+                        
+                        # PR URL
+                        pr_url = pr.get('url')
+                        
                         activities.append(ActivityResponse(
                             id=str(pr['_id']),
-                            member_name=pr.get('author', ''),
+                            member_name=display_name,
                             source_type='github',
                             activity_type='pull_request',
                             timestamp=timestamp_str,
@@ -122,7 +167,9 @@ async def get_activities(
                                 'number': pr.get('number'),
                                 'title': pr.get('title'),
                                 'repository': pr.get('repository'),
-                                'state': pr.get('state')
+                                'state': pr.get('state'),
+                                'url': pr_url,
+                                'github_username': github_username
                             }
                         ))
             
@@ -134,7 +181,7 @@ async def get_activities(
                 if date_filter:
                     query['posted_at'] = date_filter
                 
-                for msg in messages.find(query).sort("posted_at", -1).limit(limit):
+                async for msg in messages.find(query).sort("posted_at", -1).limit(limit):
                     posted_at = msg.get('posted_at')
                     timestamp_str = posted_at.isoformat() if isinstance(posted_at, datetime) else str(posted_at) if posted_at else ''
                     
@@ -160,7 +207,7 @@ async def get_activities(
                 if date_filter:
                     query['created_time'] = date_filter
                 
-                for page in pages.find(query).sort("created_time", -1).limit(limit):
+                async for page in pages.find(query).sort("created_time", -1).limit(limit):
                     created_time = page.get('created_time')
                     timestamp_str = created_time.isoformat() if isinstance(created_time, datetime) else str(created_time) if created_time else ''
                     
@@ -184,14 +231,14 @@ async def get_activities(
                 if date_filter:
                     query['timestamp'] = date_filter
                 
-                for activity in drive_activities.find(query).sort("timestamp", -1).limit(limit):
+                async for activity in drive_activities.find(query).sort("timestamp", -1).limit(limit):
                     timestamp_val = activity.get('timestamp')
                     timestamp_str = timestamp_val.isoformat() if isinstance(timestamp_val, datetime) else str(timestamp_val) if timestamp_val else ''
                     
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
                         member_name=activity.get('user_email', '').split('@')[0],
-                        source_type='google_drive',
+                        source_type='drive',
                         activity_type=activity.get('event_name', 'activity'),
                         timestamp=timestamp_str,
                         metadata={
@@ -202,7 +249,7 @@ async def get_activities(
                     ))
             
             elif source == 'recordings':
-                shared_db = get_mongo().shared_db
+                shared_db = mongo.shared_async_db
                 recordings = shared_db["recordings"]
                 query = {}
                 if member_name:
@@ -210,7 +257,7 @@ async def get_activities(
                 if date_filter:
                     query['modifiedTime'] = date_filter
                 
-                for recording in recordings.find(query).sort("modifiedTime", -1).limit(limit):
+                async for recording in recordings.find(query).sort("modifiedTime", -1).limit(limit):
                     modified_time = recording.get('modifiedTime')
                     timestamp_str = modified_time.isoformat() if isinstance(modified_time, datetime) else str(modified_time) if modified_time else ''
                     
@@ -222,7 +269,9 @@ async def get_activities(
                         timestamp=timestamp_str,
                         metadata={
                             'name': recording.get('name'),
-                            'size': recording.get('size', 0)
+                            'size': recording.get('size', 0),
+                            'recording_id': recording.get('id'),  # Google Drive file ID
+                            'webViewLink': recording.get('webViewLink')  # Google Docs link
                         }
                     ))
         
@@ -426,7 +475,7 @@ async def get_activity_types(
             'github': ['commit', 'pull_request', 'issue'],
             'slack': ['message', 'reaction'],
             'notion': ['page_created', 'page_edited', 'comment_added'],
-            'google_drive': ['create', 'edit', 'upload', 'download', 'share'],
+            'drive': ['create', 'edit', 'upload', 'download', 'share'],
             'recordings': ['meeting_recording']
         }
         

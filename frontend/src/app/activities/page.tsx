@@ -88,7 +88,7 @@ export default function ActivitiesPage() {
       github: 'bg-gray-100 text-gray-800',
       slack: 'bg-purple-100 text-purple-800',
       notion: 'bg-blue-100 text-blue-800',
-      google_drive: 'bg-green-100 text-green-800',
+      drive: 'bg-green-100 text-green-800',
       recordings: 'bg-red-100 text-red-800',
     };
     return colors[source] || 'bg-gray-100 text-gray-800';
@@ -99,7 +99,7 @@ export default function ActivitiesPage() {
       github: '🐙',
       slack: '💬',
       notion: '📝',
-      google_drive: '📁',
+      drive: '📁',
       recordings: '📹',
     };
     return icons[source] || '📋';
@@ -125,7 +125,7 @@ export default function ActivitiesPage() {
             <option value="github">🐙 GitHub</option>
             <option value="slack">💬 Slack</option>
             <option value="notion">📝 Notion</option>
-            <option value="google_drive">📁 Google Drive</option>
+            <option value="drive">📁 Google Drive</option>
             <option value="recordings">📹 Recordings</option>
           </select>
           <a
@@ -161,11 +161,30 @@ export default function ActivitiesPage() {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSourceColor(activity.source_type)}`}>
                         {activity.source_type}
                       </span>
+                      
+                      {/* Activity Type Badge for GitHub */}
+                      {activity.source_type === 'github' && (
+                        <>
+                          {activity.activity_type === 'commit' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              💾 commit
+                            </span>
+                          )}
+                          {activity.activity_type === 'pull_request' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              🔀 pull request
+                            </span>
+                          )}
+                          {activity.activity_type === 'issue' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              ⚠️ issue
+                            </span>
+                          )}
+                        </>
+                      )}
+                      
                       <p className="text-sm font-medium text-gray-900">
                         {activity.member_name}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {activity.activity_type.replace(/_/g, ' ')}
                       </p>
                     </div>
                     <div className="mt-2 text-sm text-gray-600">
@@ -210,39 +229,82 @@ export default function ActivitiesPage() {
                   {/* GitHub Details */}
                   {activity.source_type === 'github' && (
                     <div className="space-y-3">
+                      {/* Activity Type Badge */}
+                      <div className="flex items-center space-x-2">
+                        {activity.activity_type === 'commit' && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            💾 Commit
+                          </span>
+                        )}
+                        {activity.activity_type === 'pull_request' && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            🔀 Pull Request
+                          </span>
+                        )}
+                        {activity.activity_type === 'issue' && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            ⚠️ Issue
+                          </span>
+                        )}
+                        {activity.metadata?.state && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${activity.metadata.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {activity.metadata.state}
+                          </span>
+                        )}
+                      </div>
+
                       {activity.metadata?.repository && (
                         <div>
                           <span className="text-xs font-medium text-gray-500">Repository:</span>
-                          <p className="text-sm text-gray-900">{activity.metadata.repository}</p>
+                          <p className="text-sm text-gray-900">tokamak-network/{activity.metadata.repository}</p>
                         </div>
                       )}
+                      
                       {activity.metadata?.sha && (
                         <div>
                           <span className="text-xs font-medium text-gray-500">Commit SHA:</span>
                           <p className="text-sm font-mono text-gray-900">{activity.metadata.sha.substring(0, 7)}</p>
                         </div>
                       )}
+                      
                       {activity.metadata?.number && (
                         <div>
-                          <span className="text-xs font-medium text-gray-500">PR/Issue Number:</span>
+                          <span className="text-xs font-medium text-gray-500">
+                            {activity.activity_type === 'pull_request' ? 'PR Number:' : 'Issue Number:'}
+                          </span>
                           <p className="text-sm text-gray-900">#{activity.metadata.number}</p>
                         </div>
                       )}
+                      
                       {(activity.metadata?.additions !== undefined || activity.metadata?.deletions !== undefined) && (
-                        <div className="flex space-x-4">
-                          <div>
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center space-x-1">
+                            <span className="text-xs font-medium text-gray-500">Changes:</span>
                             <span className="text-xs font-medium text-green-600">+{activity.metadata.additions || 0}</span>
-                          </div>
-                          <div>
                             <span className="text-xs font-medium text-red-600">-{activity.metadata.deletions || 0}</span>
                           </div>
                         </div>
                       )}
-                      {activity.metadata?.state && (
+
+                      {activity.metadata?.github_username && (
                         <div>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${activity.metadata.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {activity.metadata.state}
-                          </span>
+                          <span className="text-xs font-medium text-gray-500">GitHub:</span>
+                          <p className="text-sm text-gray-600">@{activity.metadata.github_username}</p>
+                        </div>
+                      )}
+
+                      {/* Link Button */}
+                      {activity.metadata?.url && (
+                        <div className="mt-3">
+                          <a
+                            href={activity.metadata.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center px-3 py-1.5 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                          >
+                            🔗 View on GitHub →
+                          </a>
                         </div>
                       )}
                     </div>
@@ -296,7 +358,7 @@ export default function ActivitiesPage() {
                   )}
 
                   {/* Google Drive Details */}
-                  {activity.source_type === 'google_drive' && (
+                  {activity.source_type === 'drive' && (
                     <div className="space-y-3">
                       {activity.metadata?.action && (
                         <div>
@@ -338,12 +400,25 @@ export default function ActivitiesPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleViewRecordingDetail(activity.id);
+                            if (activity.metadata?.recording_id) {
+                              handleViewRecordingDetail(activity.metadata.recording_id);
+                            }
                           }}
                           className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                         >
                           📄 View Transcript
                         </button>
+                        {activity.metadata?.webViewLink && (
+                          <a
+                            href={activity.metadata.webViewLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                          >
+                            🔗 Open in Google Docs
+                          </a>
+                        )}
                       </div>
                     </div>
                   )}
