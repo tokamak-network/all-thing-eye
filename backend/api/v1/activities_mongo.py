@@ -226,8 +226,14 @@ async def get_activities(
                         }
                     ))
         
-        # Sort all activities by timestamp descending
-        activities.sort(key=lambda x: x.timestamp, reverse=True)
+        # Sort all activities by timestamp descending (newest first)
+        # Empty timestamps are treated as oldest
+        def sort_key(activity):
+            if not activity.timestamp:
+                return ''  # Empty strings sort first (oldest)
+            return activity.timestamp
+        
+        activities.sort(key=sort_key, reverse=True)
         
         # Apply offset and limit
         total = len(activities)
