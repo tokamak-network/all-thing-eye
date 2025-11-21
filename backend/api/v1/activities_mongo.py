@@ -103,22 +103,22 @@ async def get_activities(
                     commits = db["github_commits"]
                     query = {}
                     if member_name:
-                        query['author_login'] = member_name
+                        query['author_name'] = member_name
                     if date_filter:
-                        query['committed_at'] = date_filter
+                        query['date'] = date_filter
                     
-                    async for commit in commits.find(query).sort("committed_at", -1).limit(limit):
-                        committed_at = commit.get('committed_at')
-                        timestamp_str = committed_at.isoformat() if isinstance(committed_at, datetime) else str(committed_at) if committed_at else ''
+                    async for commit in commits.find(query).sort("date", -1).limit(limit):
+                        commit_date = commit.get('date')
+                        timestamp_str = commit_date.isoformat() if isinstance(commit_date, datetime) else str(commit_date) if commit_date else ''
                         
                         # Get member display name
-                        github_username = commit.get('author_login', '')
+                        github_username = commit.get('author_name', '')
                         display_name = await get_member_display_name(github_username, db)
                         
-                        # Build commit URL
-                        repo_name = commit.get('repository_name', '')
+                        # Build commit URL (use existing URL or construct it)
+                        repo_name = commit.get('repository', '')
                         sha = commit.get('sha', '')
-                        commit_url = f"https://github.com/tokamak-network/{repo_name}/commit/{sha}" if repo_name and sha else None
+                        commit_url = commit.get('url') or (f"https://github.com/tokamak-network/{repo_name}/commit/{sha}" if repo_name and sha else None)
                         
                         activities.append(ActivityResponse(
                             id=str(commit['_id']),
