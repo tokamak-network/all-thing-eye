@@ -5,6 +5,14 @@ import { format } from 'date-fns';
 import api from '@/lib/api';
 import type { ActivityListResponse } from '@/types';
 
+// Helper function to safely format timestamps
+function formatTimestamp(timestamp: string, formatStr: string): string {
+  if (!timestamp) return 'N/A';
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return 'N/A';
+  return format(date, formatStr);
+}
+
 export default function ActivitiesPage() {
   const [data, setData] = useState<ActivityListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,10 +137,10 @@ export default function ActivitiesPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-500">
-                    {format(new Date(activity.timestamp), 'MMM dd, yyyy')}
+                    {formatTimestamp(activity.timestamp, 'MMM dd, yyyy')}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {format(new Date(activity.timestamp), 'HH:mm:ss')}
+                    {formatTimestamp(activity.timestamp, 'HH:mm:ss')}
                   </p>
                 </div>
               </div>
