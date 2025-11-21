@@ -20,8 +20,10 @@ export default function Navigation() {
   const navItems = [
     { href: "/", label: "Dashboard" },
     { href: "/database", label: "🗄️ Database" },
+    { href: "/recordings", label: "📹 Recordings" },
     { href: "/exports", label: "📥 Exports" },
-    { href: "/custom-export", label: "🎨 Custom Export" },
+    // TODO: Enable after beta testing
+    // { href: "/custom-export", label: "🎨 Custom Export" },
     { href: "/activities", label: "Activities" },
     { href: "/members", label: "Members" },
   ];
