@@ -94,6 +94,12 @@
   slack_id: "aryan@tokamak.network"
   notion_id: "aryan@tokamak.network"
 
+- name: "Thomas"
+  email: "thomas@tokamak.network"
+  github_id: "shinthom"
+  slack_id: "thomas@tokamak.network"
+  notion_id: "thomas@tokamak.network"
+
 - name: "Muhammed"
   email: "muhammed@tokamak.network"
   github_id: "mabingol"
