@@ -31,6 +31,7 @@ export default function ActivitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>('');
+  const [memberFilter, setMemberFilter] = useState<string>('');
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -56,18 +57,34 @@ export default function ActivitiesPage() {
     fetchActivities();
   }, []); // Only run once on mount
 
+  // Extract unique member names from activities
+  const uniqueMembers = allActivities
+    ? Array.from(
+        new Set(
+          allActivities.activities
+            .map((activity) => activity.member_name)
+            .filter((name) => name) // Remove null/undefined
+        )
+      ).sort()
+    : [];
+
   // Filter activities on the client side
-  const data = sourceFilter && allActivities
-    ? {
-        ...allActivities,
-        activities: allActivities.activities.filter(
-          (activity) => activity.source === sourceFilter
-        ),
-        total: allActivities.activities.filter(
-          (activity) => activity.source === sourceFilter
-        ).length,
-      }
-    : allActivities;
+  const data =
+    (sourceFilter || memberFilter) && allActivities
+      ? {
+          ...allActivities,
+          activities: allActivities.activities.filter((activity) => {
+            const matchesSource = !sourceFilter || activity.source === sourceFilter;
+            const matchesMember = !memberFilter || activity.member_name === memberFilter;
+            return matchesSource && matchesMember;
+          }),
+          total: allActivities.activities.filter((activity) => {
+            const matchesSource = !sourceFilter || activity.source === sourceFilter;
+            const matchesMember = !memberFilter || activity.member_name === memberFilter;
+            return matchesSource && matchesMember;
+          }).length,
+        }
+      : allActivities;
 
   const toggleActivity = (activityId: string) => {
     setExpandedActivity(expandedActivity === activityId ? null : activityId);
@@ -147,6 +164,18 @@ export default function ActivitiesPage() {
             <option value="notion">📝 Notion</option>
             <option value="drive">📁 Google Drive</option>
             <option value="recordings">📹 Recordings</option>
+          </select>
+          <select
+            value={memberFilter}
+            onChange={(e) => setMemberFilter(e.target.value)}
+            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+          >
+            <option value="">All Members</option>
+            {uniqueMembers.map((member) => (
+              <option key={member} value={member}>
+                {member}
+              </option>
+            ))}
           </select>
           <a
             href={apiClient.getExportActivitiesUrl('csv', {
