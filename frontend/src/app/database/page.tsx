@@ -550,8 +550,14 @@ export default function DatabasePage() {
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-purple-600">
-              {/* Storage size calculation removed as not available in unified stats */}
-              N/A
+              {collections?.collections
+                ? formatBytes(
+                    collections.collections.reduce(
+                      (sum, col) => sum + (col.storageSize || 0),
+                      0
+                    )
+                  )
+                : "N/A"}
             </div>
             <div className="text-xs text-gray-600 mt-1">Storage Size</div>
           </div>
