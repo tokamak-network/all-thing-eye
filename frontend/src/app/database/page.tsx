@@ -82,22 +82,10 @@ export default function DatabasePage() {
     new Set()
   );
 
+  // Last collected times are now loaded from appStats (unified stats)
   useEffect(() => {
-    // Load last collected times from unified stats
-    if (appStats?.last_collected) {
-      // Convert appStats format to component format if needed
-      // For now, we'll use it directly from appStats
-    }
+    // No additional loading needed - data comes from appStats
   }, [appStats]);
-
-  const loadLastCollected = async () => {
-    try {
-      const data = await api.getLastCollected();
-      setLastCollected(data.last_collected || {});
-    } catch (err) {
-      console.error("Failed to load last collected times:", err);
-    }
-  };
 
   const handleCollectionClick = async (collectionName: string) => {
     setSelectedCollection(collectionName);
