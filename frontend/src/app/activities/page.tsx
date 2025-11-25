@@ -47,7 +47,8 @@ export default function ActivitiesPage() {
     async function fetchMembers() {
       try {
         const response = await apiClient.getMembers({ limit: 1000 });
-        const memberNames = response.members
+        // Response is directly an array of members
+        const memberNames = response
           .map((m: any) => m.name)
           .filter((name: string) => name)
           .sort();
