@@ -52,8 +52,12 @@ interface DocumentsData {
 
 export default function DatabasePage() {
   // Use unified stats hook for consistent data
-  const { stats: appStats, loading: statsLoading, error: statsError } = useAppStats();
-  
+  const {
+    stats: appStats,
+    loading: statsLoading,
+    error: statsError,
+  } = useAppStats();
+
   const [collections, setCollections] = useState<CollectionsData | null>(null);
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
     null
@@ -518,13 +522,13 @@ export default function DatabasePage() {
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-blue-600">
-              {collections.total_collections}
+              {collections?.total_collections ?? 0}
             </div>
             <div className="text-xs text-gray-600 mt-1">Collections</div>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-green-600">
-              {collections.total_documents.toLocaleString()}
+              {(collections?.total_documents ?? 0).toLocaleString()}
             </div>
             <div className="text-xs text-gray-600 mt-1">Total Documents</div>
           </div>
