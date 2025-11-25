@@ -638,9 +638,9 @@ export default function DatabasePage() {
         )}
 
         {/* Error Message */}
-        {error && (
+        {statsError && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-800">{error}</p>
+            <p className="text-red-800">{statsError}</p>
           </div>
         )}
 
