@@ -23,12 +23,15 @@ router = APIRouter()
 
 
 # Helper function to map various identifiers to member name
-async def get_member_by_identifier(identifier_type: str, identifier_value: str, db) -> str:
+async def get_member_by_source_identifier(source: str, identifier_value: str, db) -> str:
     """
-    Map identifier to member's display name from members collection
+    Map source identifier to member's display name from members collection
+    
+    Uses member_identifiers table schema:
+    { source: 'github', identifier_type: 'username', identifier_value: '...', member_id: '...' }
     
     Args:
-        identifier_type: Type of identifier (github_id, slack_id, notion_id, email)
+        source: Source name (github, slack, notion, drive)
         identifier_value: Value of the identifier
         db: Database connection
     
@@ -39,17 +42,17 @@ async def get_member_by_identifier(identifier_type: str, identifier_value: str, 
         return identifier_value
     
     try:
-        # Look up member by identifier (case-insensitive for some types)
-        if identifier_type in ['github_id', 'email']:
-            # Case-insensitive for GitHub and email
+        # Look up member by source and identifier (case-insensitive for GitHub/email)
+        if source in ['github', 'drive']:
+            # Case-insensitive for GitHub username and email
             member_identifier = await db["member_identifiers"].find_one({
-                "identifier_type": identifier_type,
+                "source": source,
                 "identifier_value": {"$regex": f"^{identifier_value}$", "$options": "i"}
             })
         else:
             # Case-sensitive for Slack/Notion IDs
             member_identifier = await db["member_identifiers"].find_one({
-                "identifier_type": identifier_type,
+                "source": source,
                 "identifier_value": identifier_value
             })
         
@@ -59,20 +62,20 @@ async def get_member_by_identifier(identifier_type: str, identifier_value: str, 
                 member = await db["members"].find_one({"_id": member_id})
                 if member:
                     member_name = member.get("name", identifier_value)
-                    logger.debug(f"Mapped {identifier_type}='{identifier_value}' to '{member_name}'")
+                    logger.debug(f"Mapped {source}='{identifier_value}' to '{member_name}'")
                     return member_name
         
-        logger.debug(f"No mapping found for {identifier_type}='{identifier_value}'")
+        logger.debug(f"No mapping found for {source}='{identifier_value}'")
         return identifier_value
     except Exception as e:
-        logger.warning(f"Failed to map {identifier_type}={identifier_value}: {e}")
+        logger.warning(f"Failed to map {source}={identifier_value}: {e}")
         return identifier_value
 
 
 # Backward compatibility wrapper
 async def get_member_display_name(github_username: str, db) -> str:
-    """Deprecated: Use get_member_by_identifier instead"""
-    return await get_member_by_identifier("github_id", github_username, db)
+    """Deprecated: Use get_member_by_source_identifier instead"""
+    return await get_member_by_source_identifier("github", github_username, db)
 
 
 # Response models
@@ -251,7 +254,7 @@ async def get_activities(
                     user_name_raw = msg.get('user_name', '')
                     # Try mapping by Slack ID first, fall back to username
                     if slack_user_id:
-                        display_name = await get_member_by_identifier("slack_id", slack_user_id, db)
+                        display_name = await get_member_by_source_identifier("slack", slack_user_id, db)
                     else:
                         display_name = user_name_raw
                     
@@ -297,7 +300,7 @@ async def get_activities(
                     notion_user_name = notion_user.get('name', '')
                     # Try mapping by Notion ID first, fall back to name
                     if notion_user_id:
-                        display_name = await get_member_by_identifier("notion_id", notion_user_id, db)
+                        display_name = await get_member_by_source_identifier("notion", notion_user_id, db)
                     else:
                         display_name = notion_user_name
                     
@@ -333,7 +336,7 @@ async def get_activities(
                     # Map Drive user email to member name
                     user_email = activity.get('user_email', '')
                     if user_email:
-                        display_name = await get_member_by_identifier("email", user_email, db)
+                        display_name = await get_member_by_source_identifier("drive", user_email, db)
                     else:
                         display_name = user_email.split('@')[0] if user_email else ''
                     

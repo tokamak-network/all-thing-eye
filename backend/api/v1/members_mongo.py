@@ -130,9 +130,11 @@ async def create_member(
         # Create member identifiers
         identifiers = []
         
-        # Email identifier
+        # Email identifier (for Drive/general use)
         await db["member_identifiers"].insert_one({
             "member_id": member_id,
+            "member_name": member_data.name,
+            "source": "drive",
             "identifier_type": "email",
             "identifier_value": member_data.email,
             "created_at": now
@@ -143,31 +145,39 @@ async def create_member(
         if member_data.github_id:
             await db["member_identifiers"].insert_one({
                 "member_id": member_id,
-                "identifier_type": "github",
+                "member_name": member_data.name,
+                "source": "github",
+                "identifier_type": "username",
                 "identifier_value": member_data.github_id,
                 "created_at": now
             })
-            identifiers.append({"type": "github", "value": member_data.github_id})
+            identifiers.append({"type": "github_id", "value": member_data.github_id})
         
         # Slack identifier
         if member_data.slack_id:
+            # Determine if it's email or user_id
+            id_type = "email" if '@' in member_data.slack_id else "user_id"
             await db["member_identifiers"].insert_one({
                 "member_id": member_id,
-                "identifier_type": "slack",
+                "member_name": member_data.name,
+                "source": "slack",
+                "identifier_type": id_type,
                 "identifier_value": member_data.slack_id,
                 "created_at": now
             })
-            identifiers.append({"type": "slack", "value": member_data.slack_id})
+            identifiers.append({"type": "slack_id", "value": member_data.slack_id})
         
         # Notion identifier
         if member_data.notion_id:
             await db["member_identifiers"].insert_one({
                 "member_id": member_id,
-                "identifier_type": "notion",
+                "member_name": member_data.name,
+                "source": "notion",
+                "identifier_type": "email",
                 "identifier_value": member_data.notion_id,
                 "created_at": now
             })
-            identifiers.append({"type": "notion", "value": member_data.notion_id})
+            identifiers.append({"type": "notion_id", "value": member_data.notion_id})
         
         logger.info(f"Created new member: {member_data.name} ({member_id})")
         
@@ -235,32 +245,54 @@ async def update_member(
         # Update identifiers
         now = datetime.utcnow().isoformat() + 'Z'
         
-        async def update_identifier(identifier_type: str, identifier_value: Optional[str]):
+        async def update_identifier(source: str, sub_type: str, identifier_value: Optional[str]):
             if identifier_value is not None:
                 # Check if identifier exists
                 existing_identifier = await db["member_identifiers"].find_one({
                     "member_id": member_id,
-                    "identifier_type": identifier_type
+                    "source": source
                 })
+                
+                member_name = update_data.get("name", existing_member.get("name"))
                 
                 if existing_identifier:
                     # Update existing
                     await db["member_identifiers"].update_one(
                         {"_id": existing_identifier["_id"]},
-                        {"$set": {"identifier_value": identifier_value, "updated_at": now}}
+                        {"$set": {
+                            "member_name": member_name,
+                            "identifier_type": sub_type,
+                            "identifier_value": identifier_value,
+                            "updated_at": now
+                        }}
                     )
                 else:
                     # Create new
                     await db["member_identifiers"].insert_one({
                         "member_id": member_id,
-                        "identifier_type": identifier_type,
+                        "member_name": member_name,
+                        "source": source,
+                        "identifier_type": sub_type,
                         "identifier_value": identifier_value,
                         "created_at": now
                     })
         
-        await update_identifier("github", member_data.github_id)
-        await update_identifier("slack", member_data.slack_id)
-        await update_identifier("notion", member_data.notion_id)
+        # Update GitHub identifier
+        if member_data.github_id is not None:
+            await update_identifier("github", "username", member_data.github_id)
+        
+        # Update Slack identifier
+        if member_data.slack_id is not None:
+            slack_type = "email" if '@' in member_data.slack_id else "user_id"
+            await update_identifier("slack", slack_type, member_data.slack_id)
+        
+        # Update Notion identifier
+        if member_data.notion_id is not None:
+            await update_identifier("notion", "email", member_data.notion_id)
+        
+        # Update email identifier (for Drive)
+        if member_data.email is not None:
+            await update_identifier("drive", "email", member_data.email)
         
         # Get updated member
         updated_member = await db["members"].find_one({"_id": member_obj_id})
@@ -269,7 +301,9 @@ async def update_member(
         identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
         identifiers = {}
         async for identifier in identifiers_cursor:
-            identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
+            # Use source as key for consistency
+            source = identifier.get("source", identifier.get("identifier_type"))
+            identifiers[source] = identifier["identifier_value"]
         
         logger.info(f"Updated member: {member_id}")
         
@@ -321,7 +355,9 @@ async def get_member_detail(
         identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
         identifiers = {}
         async for identifier in identifiers_cursor:
-            identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
+            # Use source as key for consistency
+            source = identifier.get("source", identifier.get("identifier_type"))
+            identifiers[source] = identifier["identifier_value"]
         
         # Get activity statistics
         activity_stats = {
