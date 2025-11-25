@@ -52,6 +52,7 @@ export default function ActivitiesPage() {
         });
         setAllActivities(response);
         setCurrentPage(1); // Reset to first page when filter changes
+        setMemberFilter(''); // Reset member filter when source changes
       } catch (err: any) {
         console.error('Error fetching activities:', err);
         setError(err.message || 'Failed to fetch activities');
