@@ -59,6 +59,7 @@ export default function DatabasePage() {
   } = useAppStats();
 
   const [collections, setCollections] = useState<CollectionsData | null>(null);
+  const [lastCollected, setLastCollected] = useState<Record<string, string>>({});
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
     null
   );
@@ -98,6 +99,19 @@ export default function DatabasePage() {
       }
     };
     loadCollections();
+  }, []);
+
+  // Load last collected times
+  useEffect(() => {
+    const loadLastCollected = async () => {
+      try {
+        const data = await api.getLastCollected();
+        setLastCollected(data.last_collected || {});
+      } catch (err) {
+        console.error("Failed to load last collected times:", err);
+      }
+    };
+    loadLastCollected();
   }, []);
 
   const handleCollectionClick = async (collectionName: string) => {
