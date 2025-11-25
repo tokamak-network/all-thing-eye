@@ -74,6 +74,13 @@ export default function ActivitiesPage() {
       ).sort()
     : [];
 
+  // Reset member filter if selected member is not in current source's data
+  useEffect(() => {
+    if (memberFilter && !uniqueMembers.includes(memberFilter)) {
+      setMemberFilter('');
+    }
+  }, [uniqueMembers, memberFilter]);
+
   // Reset to first page when member filter changes
   useEffect(() => {
     setCurrentPage(1);
