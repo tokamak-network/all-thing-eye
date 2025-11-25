@@ -82,6 +82,37 @@ class ApiClient {
     return response.data;
   }
 
+  async createMember(memberData: {
+    name: string;
+    email: string;
+    github_id?: string;
+    slack_id?: string;
+    notion_id?: string;
+    role?: string;
+    project?: string;
+  }) {
+    const response = await this.client.post("/members", memberData);
+    return response.data;
+  }
+
+  async updateMember(memberId: string, memberData: {
+    name?: string;
+    email?: string;
+    github_id?: string;
+    slack_id?: string;
+    notion_id?: string;
+    role?: string;
+    project?: string;
+  }) {
+    const response = await this.client.patch(`/members/${memberId}`, memberData);
+    return response.data;
+  }
+
+  async deleteMember(memberId: string) {
+    const response = await this.client.delete(`/members/${memberId}`);
+    return response.data;
+  }
+
   // Activities API
   async getActivities(params?: {
     source_type?: string;

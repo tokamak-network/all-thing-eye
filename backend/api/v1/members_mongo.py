@@ -1,277 +1,332 @@
 """
-Members API endpoints (MongoDB Version)
-
-Provides member information and statistics from MongoDB
+Members Management API
+Handles CRUD operations for team members
 """
-
-from fastapi import APIRouter, HTTPException, Query, Request, Depends
-from typing import List, Optional
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request, Depends
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, EmailStr
 from datetime import datetime
-
 from src.utils.logger import get_logger
-from src.core.mongo_manager import get_mongo_manager
 from backend.middleware.jwt_auth import require_admin
+from backend.main import mongo_manager
 
 logger = get_logger(__name__)
-
 router = APIRouter()
 
-# Get MongoDB manager instance
-def get_mongo():
-    from backend.main_mongo import mongo_manager
-    return mongo_manager
+
+class MemberIdentifier(BaseModel):
+    """Member identifier model"""
+    identifier_type: str
+    identifier_value: str
 
 
-# Response models
-class MemberResponse(BaseModel):
-    id: str  # ObjectId as string
+class MemberCreate(BaseModel):
+    """Member creation model"""
     name: str
-    email: Optional[str] = None
-    created_at: str
-    
-    class Config:
-        from_attributes = True
+    email: EmailStr
+    github_id: Optional[str] = None
+    slack_id: Optional[str] = None
+    notion_id: Optional[str] = None
+    role: Optional[str] = None
+    project: Optional[str] = None
 
 
-class MemberDetailResponse(BaseModel):
-    id: str
-    name: str
-    email: Optional[str] = None
-    identifiers: List[dict] = []
-    activity_summary: dict = {}
-    created_at: str
+class MemberUpdate(BaseModel):
+    """Member update model"""
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    github_id: Optional[str] = None
+    slack_id: Optional[str] = None
+    notion_id: Optional[str] = None
+    role: Optional[str] = None
+    project: Optional[str] = None
 
 
-class MemberListResponse(BaseModel):
-    total: int
-    members: List[MemberResponse]
-
-
-@router.get("/members", response_model=MemberListResponse)
+@router.get("/members")
 async def get_members(
     request: Request,
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
     _admin: str = Depends(require_admin)
-):
+) -> List[Dict[str, Any]]:
     """
-    Get list of all members from MongoDB
-    
-    Args:
-        limit: Maximum number of members to return
-        offset: Number of members to skip
-    
-    Returns:
-        List of members with pagination
+    Get all team members with their identifiers
     """
     try:
-        db = get_mongo().db
-        members_collection = db["members"]
+        mongo = mongo_manager
+        db = mongo.async_db
         
-        # Get total count
-        total = members_collection.count_documents({})
-        
-        # Get members with pagination
-        cursor = members_collection.find({}).sort("name", 1).skip(offset).limit(limit)
-        
+        # Get all members
+        members_cursor = db["members"].find({})
         members = []
-        for doc in cursor:
-            members.append(MemberResponse(
-                id=str(doc['_id']),
-                name=doc.get('name', ''),
-                email=doc.get('email'),
-                created_at=doc.get('created_at', '').isoformat() if isinstance(doc.get('created_at'), datetime) else doc.get('created_at', '')
-            ))
         
-        return MemberListResponse(
-            total=total,
-            members=members
-        )
+        async for member in members_cursor:
+            member_id = str(member["_id"])
+            
+            # Get member identifiers
+            identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
+            identifiers = {}
+            
+            async for identifier in identifiers_cursor:
+                identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
+            
+            members.append({
+                "id": member_id,
+                "name": member.get("name"),
+                "email": member.get("email"),
+                "role": member.get("role"),
+                "project": member.get("project"),
+                "identifiers": identifiers,
+                "created_at": member.get("created_at"),
+                "updated_at": member.get("updated_at")
+            })
+        
+        # Sort by name
+        members.sort(key=lambda x: x.get("name", "").lower())
+        
+        return members
         
     except Exception as e:
         logger.error(f"Error fetching members: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch members")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch members: {str(e)}")
 
 
-@router.get("/members/{member_name}", response_model=MemberDetailResponse)
-async def get_member_detail(
+@router.post("/members")
+async def create_member(
+    member_data: MemberCreate,
     request: Request,
-    member_name: str,
     _admin: str = Depends(require_admin)
-):
+) -> Dict[str, Any]:
     """
-    Get detailed information for a specific member
-    
-    Args:
-        member_name: Member name
-    
-    Returns:
-        Detailed member information including identifiers and activity summary
+    Create a new team member
     """
     try:
-        db = get_mongo().db
-        members_collection = db["members"]
+        mongo = mongo_manager
+        db = mongo.async_db
         
-        # Find member by name
-        member_doc = members_collection.find_one({"name": member_name})
+        # Check if member with same email already exists
+        existing_member = await db["members"].find_one({"email": member_data.email})
+        if existing_member:
+            raise HTTPException(status_code=400, detail=f"Member with email {member_data.email} already exists")
         
-        if not member_doc:
-            raise HTTPException(status_code=404, detail="Member not found")
-        
-        member_data = {
-            'id': str(member_doc['_id']),
-            'name': member_doc.get('name', ''),
-            'email': member_doc.get('email'),
-            'created_at': member_doc.get('created_at', '').isoformat() if isinstance(member_doc.get('created_at'), datetime) else member_doc.get('created_at', '')
+        # Create member document
+        now = datetime.utcnow().isoformat() + 'Z'
+        member_doc = {
+            "name": member_data.name,
+            "email": member_data.email,
+            "role": member_data.role,
+            "project": member_data.project,
+            "created_at": now,
+            "updated_at": now
         }
         
-        # Get member identifiers (embedded in member document)
-        identifiers = member_doc.get('identifiers', [])
+        # Insert member
+        result = await db["members"].insert_one(member_doc)
+        member_id = str(result.inserted_id)
         
-        # Get activity summary from various collections
-        activity_summary = {}
+        # Create member identifiers
+        identifiers = []
         
-        # GitHub activities
-        github_commits = db["github_commits"]
-        github_prs = db["github_pull_requests"]
+        # Email identifier
+        await db["member_identifiers"].insert_one({
+            "member_id": member_id,
+            "identifier_type": "email",
+            "identifier_value": member_data.email,
+            "created_at": now
+        })
+        identifiers.append({"type": "email", "value": member_data.email})
         
-        github_commit_count = github_commits.count_documents({"author_login": member_name})
-        github_pr_count = github_prs.count_documents({"author": member_name})
+        # GitHub identifier
+        if member_data.github_id:
+            await db["member_identifiers"].insert_one({
+                "member_id": member_id,
+                "identifier_type": "github",
+                "identifier_value": member_data.github_id,
+                "created_at": now
+            })
+            identifiers.append({"type": "github", "value": member_data.github_id})
         
-        if github_commit_count > 0 or github_pr_count > 0:
-            activity_summary['github'] = {
-                'commits': github_commit_count,
-                'pull_requests': github_pr_count
-            }
+        # Slack identifier
+        if member_data.slack_id:
+            await db["member_identifiers"].insert_one({
+                "member_id": member_id,
+                "identifier_type": "slack",
+                "identifier_value": member_data.slack_id,
+                "created_at": now
+            })
+            identifiers.append({"type": "slack", "value": member_data.slack_id})
         
-        # Slack activities
-        slack_messages = db["slack_messages"]
-        slack_message_count = slack_messages.count_documents({"user_name": member_name})
+        # Notion identifier
+        if member_data.notion_id:
+            await db["member_identifiers"].insert_one({
+                "member_id": member_id,
+                "identifier_type": "notion",
+                "identifier_value": member_data.notion_id,
+                "created_at": now
+            })
+            identifiers.append({"type": "notion", "value": member_data.notion_id})
         
-        if slack_message_count > 0:
-            activity_summary['slack'] = {
-                'messages': slack_message_count
-            }
+        logger.info(f"Created new member: {member_data.name} ({member_id})")
         
-        # Notion activities
-        notion_pages = db["notion_pages"]
-        notion_page_count = notion_pages.count_documents({"created_by.name": member_name})
-        
-        if notion_page_count > 0:
-            activity_summary['notion'] = {
-                'pages_created': notion_page_count
-            }
-        
-        return MemberDetailResponse(
-            **member_data,
-            identifiers=identifiers,
-            activity_summary=activity_summary
-        )
+        return {
+            "id": member_id,
+            "name": member_data.name,
+            "email": member_data.email,
+            "role": member_data.role,
+            "project": member_data.project,
+            "identifiers": identifiers,
+            "created_at": now,
+            "updated_at": now
+        }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching member detail: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch member detail")
+        logger.error(f"Error creating member: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create member: {str(e)}")
 
 
-@router.get("/members/{member_name}/activities")
-async def get_member_activities(
+@router.patch("/members/{member_id}")
+async def update_member(
+    member_id: str,
+    member_data: MemberUpdate,
     request: Request,
-    member_name: str,
-    source_type: Optional[str] = Query(None, description="Filter by source (github, slack, notion, google_drive)"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
     _admin: str = Depends(require_admin)
-):
+) -> Dict[str, Any]:
     """
-    Get activities for a specific member across all sources
-    
-    Args:
-        member_name: Member name
-        source_type: Filter by source
-        limit: Maximum number of activities to return
-        offset: Number of activities to skip
-    
-    Returns:
-        List of member activities from various collections
+    Update an existing team member
     """
     try:
-        db = get_mongo().db
-        activities = []
+        mongo = mongo_manager
+        db = mongo.async_db
         
-        # Collect from different sources based on filter
-        sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive']
+        # Check if member exists
+        from bson import ObjectId
+        try:
+            member_obj_id = ObjectId(member_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid member ID format")
         
-        for source in sources_to_query:
-            if source == 'github':
-                # GitHub commits
-                commits = db["github_commits"]
-                for commit in commits.find({"author_login": member_name}).sort("committed_at", -1).limit(limit):
-                    activities.append({
-                        'source_type': 'github',
-                        'activity_type': 'commit',
-                        'timestamp': commit['committed_at'].isoformat() if isinstance(commit['committed_at'], datetime) else commit['committed_at'],
-                        'metadata': {
-                            'sha': commit.get('sha'),
-                            'message': commit.get('message'),
-                            'repository': commit.get('repository_name')
-                        }
-                    })
+        existing_member = await db["members"].find_one({"_id": member_obj_id})
+        if not existing_member:
+            raise HTTPException(status_code=404, detail=f"Member with ID {member_id} not found")
+        
+        # Prepare update data
+        update_data = {}
+        if member_data.name is not None:
+            update_data["name"] = member_data.name
+        if member_data.email is not None:
+            update_data["email"] = member_data.email
+        if member_data.role is not None:
+            update_data["role"] = member_data.role
+        if member_data.project is not None:
+            update_data["project"] = member_data.project
+        
+        if update_data:
+            update_data["updated_at"] = datetime.utcnow().isoformat() + 'Z'
+            await db["members"].update_one(
+                {"_id": member_obj_id},
+                {"$set": update_data}
+            )
+        
+        # Update identifiers
+        now = datetime.utcnow().isoformat() + 'Z'
+        
+        async def update_identifier(identifier_type: str, identifier_value: Optional[str]):
+            if identifier_value is not None:
+                # Check if identifier exists
+                existing_identifier = await db["member_identifiers"].find_one({
+                    "member_id": member_id,
+                    "identifier_type": identifier_type
+                })
                 
-                # GitHub PRs
-                prs = db["github_pull_requests"]
-                for pr in prs.find({"author": member_name}).sort("created_at", -1).limit(limit):
-                    activities.append({
-                        'source_type': 'github',
-                        'activity_type': 'pull_request',
-                        'timestamp': pr['created_at'].isoformat() if isinstance(pr['created_at'], datetime) else pr['created_at'],
-                        'metadata': {
-                            'number': pr.get('number'),
-                            'title': pr.get('title'),
-                            'repository': pr.get('repository')
-                        }
-                    })
-            
-            elif source == 'slack':
-                messages = db["slack_messages"]
-                for msg in messages.find({"user_name": member_name}).sort("posted_at", -1).limit(limit):
-                    activities.append({
-                        'source_type': 'slack',
-                        'activity_type': 'message',
-                        'timestamp': msg['posted_at'].isoformat() if isinstance(msg['posted_at'], datetime) else msg['posted_at'],
-                        'metadata': {
-                            'channel': msg.get('channel_name'),
-                            'text': msg.get('text', '')[:100]
-                        }
-                    })
-            
-            elif source == 'notion':
-                pages = db["notion_pages"]
-                for page in pages.find({"created_by.name": member_name}).sort("created_time", -1).limit(limit):
-                    activities.append({
-                        'source_type': 'notion',
-                        'activity_type': 'page_created',
-                        'timestamp': page['created_time'].isoformat() if isinstance(page['created_time'], datetime) else page['created_time'],
-                        'metadata': {
-                            'title': page.get('title')
-                        }
+                if existing_identifier:
+                    # Update existing
+                    await db["member_identifiers"].update_one(
+                        {"_id": existing_identifier["_id"]},
+                        {"$set": {"identifier_value": identifier_value, "updated_at": now}}
+                    )
+                else:
+                    # Create new
+                    await db["member_identifiers"].insert_one({
+                        "member_id": member_id,
+                        "identifier_type": identifier_type,
+                        "identifier_value": identifier_value,
+                        "created_at": now
                     })
         
-        # Sort by timestamp descending
-        activities.sort(key=lambda x: x['timestamp'], reverse=True)
+        await update_identifier("github", member_data.github_id)
+        await update_identifier("slack", member_data.slack_id)
+        await update_identifier("notion", member_data.notion_id)
         
-        # Apply offset and limit
-        activities = activities[offset:offset+limit]
+        # Get updated member
+        updated_member = await db["members"].find_one({"_id": member_obj_id})
+        
+        # Get identifiers
+        identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
+        identifiers = {}
+        async for identifier in identifiers_cursor:
+            identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
+        
+        logger.info(f"Updated member: {member_id}")
         
         return {
-            'member_name': member_name,
-            'total': len(activities),
-            'activities': activities
+            "id": member_id,
+            "name": updated_member.get("name"),
+            "email": updated_member.get("email"),
+            "role": updated_member.get("role"),
+            "project": updated_member.get("project"),
+            "identifiers": identifiers,
+            "created_at": updated_member.get("created_at"),
+            "updated_at": updated_member.get("updated_at")
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching member activities: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch member activities")
+        logger.error(f"Error updating member: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update member: {str(e)}")
 
+
+@router.delete("/members/{member_id}")
+async def delete_member(
+    member_id: str,
+    request: Request,
+    _admin: str = Depends(require_admin)
+) -> Dict[str, str]:
+    """
+    Delete a team member and their identifiers
+    """
+    try:
+        mongo = mongo_manager
+        db = mongo.async_db
+        
+        # Check if member exists
+        from bson import ObjectId
+        try:
+            member_obj_id = ObjectId(member_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid member ID format")
+        
+        existing_member = await db["members"].find_one({"_id": member_obj_id})
+        if not existing_member:
+            raise HTTPException(status_code=404, detail=f"Member with ID {member_id} not found")
+        
+        member_name = existing_member.get("name", "Unknown")
+        
+        # Delete member identifiers
+        await db["member_identifiers"].delete_many({"member_id": member_id})
+        
+        # Delete member
+        await db["members"].delete_one({"_id": member_obj_id})
+        
+        logger.info(f"Deleted member: {member_name} ({member_id})")
+        
+        return {
+            "message": f"Member {member_name} deleted successfully",
+            "deleted_member_id": member_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting member: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete member: {str(e)}")
