@@ -60,7 +60,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    command: uvicorn backend.main_mongo:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 
   # Next.js Frontend (Optional)
   # frontend:

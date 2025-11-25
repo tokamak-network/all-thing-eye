@@ -1,7 +1,7 @@
 """
-All-Thing-Eye Backend API
+All-Thing-Eye Backend API (MongoDB Version)
 
-FastAPI-based REST API for team activity analytics
+FastAPI-based REST API for team activity analytics with MongoDB
 """
 
 from fastapi import FastAPI, HTTPException
@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import sys
+import os
 from pathlib import Path
 
 # Add project root to path
@@ -16,44 +17,37 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.config import Config
-from src.core.database import DatabaseManager
+from src.core.mongo_manager import get_mongo_manager
 from src.utils.logger import get_logger
-from backend.api.v1 import members, activities, projects, exports, query
+from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, exports_mongo, database_mongo, auth
 
 logger = get_logger(__name__)
+
+# Global mongo_manager instance
+mongo_manager = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle handler for startup and shutdown"""
+    global mongo_manager
+    
     # Startup
-    print("🚀 Starting All-Thing-Eye API...")
+    print("🚀 Starting All-Thing-Eye API (MongoDB)...")
     
     # Initialize configuration
     config = Config()
     app.state.config = config
     
-    # Initialize database
-    main_db_url = config.get('database', {}).get(
-        'main_db', 
-        'sqlite:///data/databases/main.db'
-    )
-    db_manager = DatabaseManager(main_db_url)
-    app.state.db_manager = db_manager
-    
-    # Register source databases
-    print("🚀 Starting database registration...")
-    for source in ['github', 'slack', 'google_drive', 'notion']:
-        try:
-            # Construct database URL for each source
-            source_db_url = f"sqlite:///data/databases/{source}.db"
-            print(f"   📂 Attempting to register {source} from {source_db_url}")
-            db_manager.register_existing_source_database(source, source_db_url)
-            print(f"   ✅ Registered {source} database")
-        except Exception as e:
-            print(f"   ⚠️  Could not register {source} database: {e}")
-            import traceback
-            print(traceback.format_exc())
+    # Initialize MongoDB
+    print("🍃 Connecting to MongoDB...")
+    mongo_config = {
+        'uri': config.get('mongodb.uri', os.getenv('MONGODB_URI', 'mongodb://localhost:27017')),
+        'database': config.get('mongodb.database', os.getenv('MONGODB_DATABASE', 'all_thing_eye'))
+    }
+    mongo_manager = get_mongo_manager(mongo_config)
+    mongo_manager.connect_async()  # This is synchronous despite the name
+    app.state.mongo_manager = mongo_manager
     
     print("✅ API startup complete")
     
@@ -61,15 +55,15 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("🔒 Shutting down All-Thing-Eye API...")
-    db_manager.close_all()
+    mongo_manager.close()
     logger.info("✅ API shutdown complete")
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="All-Thing-Eye API",
-    description="Team Activity Analytics API",
-    version="0.1.0",
+    title="All-Thing-Eye API (MongoDB)",
+    description="Team Activity Analytics API with MongoDB",
+    version="0.2.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -77,22 +71,14 @@ app = FastAPI(
 )
 
 
-# CORS Middleware
-config = Config()
-cors_config = config.get('api', {}).get('cors', {})
-
-if cors_config.get('enabled', True):
-    origins = cors_config.get('origins', 'http://localhost:3000')
-    if isinstance(origins, str):
-        origins = [o.strip() for o in origins.split(',')]
-    
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=cors_config.get('allow_credentials', True),
-        allow_methods=cors_config.get('allow_methods', ["*"]),
-        allow_headers=cors_config.get('allow_headers', ["*"]),
-    )
+# CORS Middleware - Allow all origins for development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=False,  # Must be False when allow_origins is ["*"]
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Root endpoint
@@ -100,72 +86,108 @@ if cors_config.get('enabled', True):
 async def root():
     """API root endpoint"""
     return {
-        "name": "All-Thing-Eye API",
-        "version": "0.1.0",
+        "name": "All-Thing-Eye API (MongoDB)",
+        "version": "0.2.0",
         "status": "running",
+        "database": "MongoDB",
         "docs": "/api/docs"
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Docker/K8s"""
-    from datetime import datetime
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "version": "0.1.0"
-    }
-
-
-# Health check
-@app.get("/health")
-async def health_check():
     """Health check endpoint"""
     try:
-        # Check database connection
-        db_manager = app.state.db_manager
-        with db_manager.get_connection() as conn:
-            conn.execute("SELECT 1")
+        # Check MongoDB connection
+        db = mongo_manager.db
+        db.command("ping")
+        
+        # Get collection counts
+        collections_count = len(db.list_collection_names())
         
         return {
             "status": "healthy",
-            "database": "connected"
+            "database": "connected",
+            "database_type": "MongoDB",
+            "database_name": db.name,
+            "collections": collections_count
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=503, detail="Service unavailable")
 
 
-# Include API routers
+@app.get("/test/commits")
+async def test_commits_query():
+    """Simple test endpoint to check MongoDB commit aggregation"""
+    try:
+        db = mongo_manager.get_database_async()
+        commits_col = db['github_commits']
+        
+        # Aggregation: Count commits by author
+        pipeline = [
+            {"$group": {"_id": "$author_login", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 5}
+        ]
+        
+        cursor = commits_col.aggregate(pipeline)
+        results = await cursor.to_list(length=10)
+        
+        return {
+            "status": "success",
+            "data": results,
+            "total": len(results)
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+# Include API routers (MongoDB versions)
+
+# Authentication (no JWT required)
 app.include_router(
-    members.router,
+    auth.router,
+    prefix="/api/v1/auth",
+    tags=["authentication"]
+)
+
+# Protected routes (JWT required)
+app.include_router(
+    query_mongo.router,
+    prefix="/api/v1/query",
+    tags=["query"]
+)
+
+app.include_router(
+    members_mongo.router,
     prefix="/api/v1",
     tags=["members"]
 )
 
 app.include_router(
-    activities.router,
+    activities_mongo.router,
     prefix="/api/v1",
     tags=["activities"]
 )
 
 app.include_router(
-    projects.router,
+    projects_mongo.router,
     prefix="/api/v1",
     tags=["projects"]
 )
 
 app.include_router(
-    exports.router,
+    exports_mongo.router,
     prefix="/api/v1/exports",
     tags=["exports"]
 )
 
+# Database viewer routes
 app.include_router(
-    query.router,
-    prefix="/api/v1/query",
-    tags=["query"]
+    database_mongo.router,
+    prefix="/api/v1/database",
+    tags=["database"]
 )
 
 
@@ -205,7 +227,7 @@ if __name__ == "__main__":
     reload = api_config.get('reload', False)
     workers = api_config.get('workers', 4)
     
-    logger.info(f"🚀 Starting server on {host}:{port}")
+    logger.info(f"🚀 Starting API server on {host}:{port}")
     
     uvicorn.run(
         "backend.main:app",

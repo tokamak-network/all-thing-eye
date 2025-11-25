@@ -57,7 +57,7 @@ python scripts/daily_data_collection_mongo.py --sources github slack
 ### 2. Docker 설정 파일
 
 #### `Dockerfile.backend` (수정됨)
-- MongoDB 버전 백엔드 실행 (`backend.main_mongo:app`)
+- MongoDB 버전 백엔드 실행 (`backend.main:app`)
 - Python 3.12 slim 이미지 사용
 - 헬스체크 포함
 
