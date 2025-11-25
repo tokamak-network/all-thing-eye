@@ -495,38 +495,9 @@ export default function DatabasePage() {
     return <span>{String(value)}</span>;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            Database Viewer
-          </h1>
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading database...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Loading state handled above with statsLoading
 
-  if (!collections) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            Database Viewer
-          </h1>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800">
-              Failed to load database. Please refresh the page.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Collections check handled above with appStats
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
