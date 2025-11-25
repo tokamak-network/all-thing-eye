@@ -54,6 +54,7 @@ export default function DatabasePage() {
   // Use unified stats hook for consistent data
   const { stats: appStats, loading: statsLoading, error: statsError } = useAppStats();
   
+  const [collections, setCollections] = useState<CollectionsData | null>(null);
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
     null
   );
@@ -82,10 +83,18 @@ export default function DatabasePage() {
     new Set()
   );
 
-  // Last collected times are now loaded from appStats (unified stats)
+  // Load collections data
   useEffect(() => {
-    // No additional loading needed - data comes from appStats
-  }, [appStats]);
+    const loadCollections = async () => {
+      try {
+        const data = await api.getDatabaseCollections();
+        setCollections(data);
+      } catch (err) {
+        console.error("Failed to load collections:", err);
+      }
+    };
+    loadCollections();
+  }, []);
 
   const handleCollectionClick = async (collectionName: string) => {
     setSelectedCollection(collectionName);
