@@ -20,7 +20,7 @@ router = APIRouter()
 
 # Get MongoDB manager instance (will be initialized by main app)
 def get_mongo():
-    from backend.main_mongo import mongo_manager
+    from backend.main import mongo_manager
     return mongo_manager
 
 

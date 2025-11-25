@@ -14,7 +14,7 @@ from src.core.mongo_manager import get_mongo_manager
 
 # Get MongoDB manager instance
 def get_mongo():
-    from backend.main_mongo import mongo_manager
+    from backend.main import mongo_manager
     return mongo_manager
 
 logger = get_logger(__name__)

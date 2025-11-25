@@ -18,8 +18,8 @@ router = APIRouter()
 
 
 def get_mongo():
-    """Get MongoDB manager from main_mongo.py"""
-    from backend.main_mongo import mongo_manager
+    """Get MongoDB manager from main.py"""
+    from backend.main import mongo_manager
     return mongo_manager
 
 

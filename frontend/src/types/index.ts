@@ -34,6 +34,7 @@ export interface Activity {
   member_id: number;
   member_name: string;
   source_type: string;
+  source: string; // Alias for source_type (used in filtering)
   activity_type: string;
   timestamp: string;
   metadata: Record<string, any>;
