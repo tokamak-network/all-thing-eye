@@ -249,18 +249,9 @@ async def get_activities(
                     else:
                         slack_url = None
                     
-                    # Map Slack user to member name
-                    slack_user_id = msg.get('user_id') or msg.get('user', '')
-                    user_name_raw = msg.get('user_name', '')
-                    # Try mapping by Slack ID first, fall back to username
-                    if slack_user_id:
-                        display_name = await get_member_by_source_identifier("slack", slack_user_id, db)
-                    else:
-                        display_name = user_name_raw
-                    
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
-                        member_name=display_name,
+                        member_name=msg.get('user_name', ''),
                         source_type='slack',
                         activity_type=activity_type,
                         timestamp=timestamp_str,
@@ -273,8 +264,7 @@ async def get_activities(
                             'files': len(msg.get('files', [])),
                             'reply_count': msg.get('reply_count', 0),
                             'url': slack_url,
-                            'is_thread': is_thread_reply,
-                            'slack_user_id': slack_user_id
+                            'is_thread': is_thread_reply
                         }
                     ))
             
@@ -294,26 +284,15 @@ async def get_activities(
                     else:
                         timestamp_str = str(created_time) if created_time else ''
                     
-                    # Map Notion user to member name
-                    notion_user = page.get('created_by', {})
-                    notion_user_id = notion_user.get('id', '')
-                    notion_user_name = notion_user.get('name', '')
-                    # Try mapping by Notion ID first, fall back to name
-                    if notion_user_id:
-                        display_name = await get_member_by_source_identifier("notion", notion_user_id, db)
-                    else:
-                        display_name = notion_user_name
-                    
                     activities.append(ActivityResponse(
                         id=str(page['_id']),
-                        member_name=display_name,
+                        member_name=page.get('created_by', {}).get('name', ''),
                         source_type='notion',
                         activity_type='page_created',
                         timestamp=timestamp_str,
                         metadata={
                             'title': page.get('title'),
-                            'comments': page.get('comments_count', 0),
-                            'notion_user_id': notion_user_id
+                            'comments': page.get('comments_count', 0)
                         }
                     ))
             
@@ -333,24 +312,16 @@ async def get_activities(
                     else:
                         timestamp_str = str(timestamp_val) if timestamp_val else ''
                     
-                    # Map Drive user email to member name
-                    user_email = activity.get('user_email', '')
-                    if user_email:
-                        display_name = await get_member_by_source_identifier("drive", user_email, db)
-                    else:
-                        display_name = user_email.split('@')[0] if user_email else ''
-                    
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
-                        member_name=display_name,
+                        member_name=activity.get('user_email', '').split('@')[0],
                         source_type='drive',
                         activity_type=activity.get('event_name', 'activity'),
                         timestamp=timestamp_str,
                         metadata={
                             'action': activity.get('action'),
                             'doc_title': activity.get('doc_title'),
-                            'doc_type': activity.get('doc_type'),
-                            'user_email': user_email
+                            'doc_type': activity.get('doc_type')
                         }
                     ))
             
