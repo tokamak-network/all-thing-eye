@@ -189,11 +189,11 @@
 # External Contributors / Guests
 # (외부 협력자 - 특정 프로젝트 채널에만 참여)
 - name: "Jeongun Baek"
-  email: "jeongun.baek@gmail.com"
-  slack_id: "u03dchbjhsr" # Slack user ID (not email)
+  email: "jeongun@tokamak.network"
+  github_id: "blackcow1987"
+  slack_id: "jeongun@tokamak.network"
+  notion_id: "jeongun@tokamak.network"
   role: "External Contributor"
-  # github_id: ""  # Add if has GitHub account
-  # notion_id: ""  # Add if has Notion access
 # Add more members here as needed
 # - name: "New Member"
 #   email: "newmember@tokamak.network"
