@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { useAppStats } from "@/hooks/useAppStats";
 
 interface Collection {
   name: string;
@@ -50,7 +51,9 @@ interface DocumentsData {
 }
 
 export default function DatabasePage() {
-  const [collections, setCollections] = useState<CollectionsData | null>(null);
+  // Use unified stats hook for consistent data
+  const { stats: appStats, loading: statsLoading, error: statsError } = useAppStats();
+  
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
     null
   );
@@ -58,9 +61,7 @@ export default function DatabasePage() {
   const [documentsData, setDocumentsData] = useState<DocumentsData | null>(
     null
   );
-  const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"documents" | "tree" | "schema">(
     "documents"
   );
@@ -80,28 +81,14 @@ export default function DatabasePage() {
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(
     new Set()
   );
-  const [lastCollected, setLastCollected] = useState<
-    Record<string, string | null>
-  >({});
 
   useEffect(() => {
-    loadCollections();
-    loadLastCollected();
-  }, []);
-
-  const loadCollections = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = (await api.getDatabaseCollections()) as CollectionsData;
-      setCollections(data);
-    } catch (err) {
-      console.error("Failed to load collections:", err);
-      setError("Failed to load database collections. Please try again.");
-    } finally {
-      setLoading(false);
+    // Load last collected times from unified stats
+    if (appStats?.last_collected) {
+      // Convert appStats format to component format if needed
+      // For now, we'll use it directly from appStats
     }
-  };
+  }, [appStats]);
 
   const loadLastCollected = async () => {
     try {
@@ -578,12 +565,8 @@ export default function DatabasePage() {
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-purple-600">
-              {formatBytes(
-                collections.collections.reduce(
-                  (sum, c) => sum + c.storageSize,
-                  0
-                )
-              )}
+              {/* Storage size calculation removed as not available in unified stats */}
+              N/A
             </div>
             <div className="text-xs text-gray-600 mt-1">Storage Size</div>
           </div>

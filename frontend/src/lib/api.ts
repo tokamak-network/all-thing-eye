@@ -247,6 +247,12 @@ class ApiClient {
     return response.data;
   }
 
+  // Unified statistics API
+  async getAppStats() {
+    const response = await this.client.get("/stats/summary");
+    return response.data;
+  }
+
   // Authentication API
   async login(address: string, message: string, signature: string) {
     const response = await this.client.post("/auth/login", {

@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 from src.core.config import Config
 from src.core.mongo_manager import get_mongo_manager
 from src.utils.logger import get_logger
-from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, exports_mongo, database_mongo, auth
+from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, exports_mongo, database_mongo, auth, stats_mongo
 
 logger = get_logger(__name__)
 
@@ -188,6 +188,13 @@ app.include_router(
     database_mongo.router,
     prefix="/api/v1/database",
     tags=["database"]
+)
+
+# Unified statistics routes
+app.include_router(
+    stats_mongo.router,
+    prefix="/api/v1/stats",
+    tags=["statistics"]
 )
 
 

@@ -1,39 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import api from '@/lib/api';
-import type { ActivitySummaryResponse, ProjectListResponse, MemberListResponse } from '@/types';
+import { useAppStats } from '@/hooks/useAppStats';
 
 export default function Home() {
-  const [summary, setSummary] = useState<ActivitySummaryResponse | null>(null);
-  const [projects, setProjects] = useState<ProjectListResponse | null>(null);
-  const [members, setMembers] = useState<MemberListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        const [summaryData, projectsData, membersData] = await Promise.all([
-          api.getActivitiesSummary(),
-          api.getProjects(),
-          api.getMembers({ limit: 10 }),
-        ]);
-        setSummary(summaryData);
-        setProjects(projectsData);
-        setMembers(membersData);
-      } catch (err: any) {
-        console.error('Error fetching data:', err);
-        setError(err.message || 'Failed to fetch data');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, []);
+  const { stats, loading, error } = useAppStats();
 
   if (loading) {
     return (
@@ -54,12 +25,9 @@ export default function Home() {
     );
   }
 
-  const totalActivities = summary
-    ? Object.values(summary.summary).reduce(
-        (sum, source) => sum + source.total_activities,
-        0
-      )
-    : 0;
+  if (!stats) {
+    return null;
+  }
 
   return (
     <div className="space-y-8">
@@ -87,7 +55,7 @@ export default function Home() {
                     Total Members
                   </dt>
                   <dd className="text-3xl font-semibold text-gray-900">
-                    {members?.total || 0}
+                    {stats.total_members}
                   </dd>
                 </dl>
               </div>
@@ -109,7 +77,7 @@ export default function Home() {
                     Total Activities
                   </dt>
                   <dd className="text-3xl font-semibold text-gray-900">
-                    {totalActivities.toLocaleString()}
+                    {stats.total_activities.toLocaleString()}
                   </dd>
                 </dl>
               </div>
@@ -131,7 +99,7 @@ export default function Home() {
                     Active Projects
                   </dt>
                   <dd className="text-3xl font-semibold text-gray-900">
-                    {projects?.total || 0}
+                    {stats.active_projects}
                   </dd>
                 </dl>
               </div>
@@ -153,7 +121,7 @@ export default function Home() {
                     Data Sources
                   </dt>
                   <dd className="text-3xl font-semibold text-gray-900">
-                    {summary ? Object.keys(summary.summary).length : 0}
+                    {stats.data_sources}
                   </dd>
                 </dl>
               </div>
@@ -163,36 +131,34 @@ export default function Home() {
       </div>
 
       {/* Activity Summary by Source */}
-      {summary && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Activity Summary by Source
-            </h3>
-            <div className="space-y-4">
-              {Object.entries(summary.summary).map(([source, data]) => (
-                <div key={source} className="border-l-4 border-primary-500 pl-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-base font-medium text-gray-900 capitalize">
-                        {source}
-                      </h4>
-                      <p className="text-sm text-gray-500">
-                        {data.total_activities.toLocaleString()} activities
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-500">
-                        {Object.keys(data.activity_types).length} activity types
-                      </p>
-                    </div>
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+            Activity Summary by Source
+          </h3>
+          <div className="space-y-4">
+            {Object.entries(stats.activity_summary).map(([source, data]) => (
+              <div key={source} className="border-l-4 border-primary-500 pl-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-base font-medium text-gray-900 capitalize">
+                      {source}
+                    </h4>
+                    <p className="text-sm text-gray-500">
+                      {data.total_activities.toLocaleString()} activities
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">
+                      {Object.keys(data.activity_types).length} activity types
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
