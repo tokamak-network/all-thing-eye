@@ -66,8 +66,10 @@ export default function ActivitiesPage() {
     async function fetchActivities() {
       try {
         setLoading(true);
+        // Load 5-10 pages worth of data for smooth pagination
+        const loadLimit = Math.max(itemsPerPage * 10, 100);
         const response = await apiClient.getActivities({
-          limit: 1000, // Load enough data for filtering
+          limit: loadLimit,
           source_type: sourceFilter || undefined,
         });
         setAllActivities(response);
@@ -81,7 +83,7 @@ export default function ActivitiesPage() {
     }
 
     fetchActivities();
-  }, [sourceFilter]); // Reload when source filter changes
+  }, [sourceFilter, itemsPerPage]); // Reload when source filter or items per page changes
 
   // Reset to first page when member filter changes
   useEffect(() => {
