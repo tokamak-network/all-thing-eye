@@ -90,7 +90,6 @@ export default function DatabasePage() {
   const handleCollectionClick = async (collectionName: string) => {
     setSelectedCollection(collectionName);
     setDetailLoading(true);
-    setError(null);
     setActiveTab("documents");
     setCurrentPage(1);
     setExpandedDocs(new Set());
@@ -111,7 +110,6 @@ export default function DatabasePage() {
       setSchema(schemaData);
     } catch (err) {
       console.error("Failed to load collection details:", err);
-      setError("Failed to load collection details. Please try again.");
     } finally {
       setDetailLoading(false);
     }
@@ -133,7 +131,6 @@ export default function DatabasePage() {
       setExpandedPaths(new Set()); // Clear tree view expansion state
     } catch (err) {
       console.error("Failed to load page:", err);
-      setError("Failed to load page. Please try again.");
     } finally {
       setDetailLoading(false);
     }
