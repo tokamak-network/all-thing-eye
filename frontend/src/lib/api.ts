@@ -113,6 +113,11 @@ class ApiClient {
     return response.data;
   }
 
+  async getMemberDetailById(memberId: string) {
+    const response = await this.client.get(`/members/${memberId}`);
+    return response.data;
+  }
+
   // Activities API
   async getActivities(params?: {
     source_type?: string;

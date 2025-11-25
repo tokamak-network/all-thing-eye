@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { api as apiClient } from "@/lib/api";
 import {
   UserGroupIcon,
@@ -39,6 +40,7 @@ interface MemberFormData {
 }
 
 export default function MembersPage() {
+  const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -256,9 +258,12 @@ export default function MembersPage() {
                 members.map((member) => (
                   <tr key={member.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
+                      <button
+                        onClick={() => router.push(`/members/${member.id}`)}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                      >
                         {member.name}
-                      </div>
+                      </button>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-600">{member.email}</div>

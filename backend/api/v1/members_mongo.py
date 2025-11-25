@@ -291,6 +291,143 @@ async def update_member(
         raise HTTPException(status_code=500, detail=f"Failed to update member: {str(e)}")
 
 
+@router.get("/members/{member_id}")
+async def get_member_detail(
+    member_id: str,
+    request: Request,
+    _admin: str = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Get detailed information for a specific member including activity statistics
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Check if member exists
+        from bson import ObjectId
+        try:
+            member_obj_id = ObjectId(member_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid member ID format")
+        
+        member = await db["members"].find_one({"_id": member_obj_id})
+        if not member:
+            raise HTTPException(status_code=404, detail=f"Member with ID {member_id} not found")
+        
+        member_name = member.get("name")
+        
+        # Get identifiers
+        identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
+        identifiers = {}
+        async for identifier in identifiers_cursor:
+            identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
+        
+        # Get activity statistics
+        activity_stats = {
+            "total_activities": 0,
+            "by_source": {},
+            "by_type": {},
+            "recent_activities": []
+        }
+        
+        # GitHub statistics
+        github_commits = await db["github_commits"].count_documents({"author_name": member_name})
+        github_prs = await db["github_pull_requests"].count_documents({"user_login": member_name})
+        github_issues = await db["github_issues"].count_documents({"user_login": member_name})
+        
+        if github_commits + github_prs + github_issues > 0:
+            activity_stats["by_source"]["github"] = {
+                "total": github_commits + github_prs + github_issues,
+                "commits": github_commits,
+                "pull_requests": github_prs,
+                "issues": github_issues
+            }
+            activity_stats["total_activities"] += github_commits + github_prs + github_issues
+        
+        # Slack statistics
+        slack_email = identifiers.get("slack") or identifiers.get("email")
+        if slack_email:
+            slack_messages = await db["slack_messages"].count_documents({"user_email": slack_email})
+            if slack_messages > 0:
+                activity_stats["by_source"]["slack"] = {
+                    "total": slack_messages,
+                    "messages": slack_messages
+                }
+                activity_stats["total_activities"] += slack_messages
+        
+        # Notion statistics
+        notion_pages = await db["notion_pages"].count_documents({"created_by": member_name})
+        if notion_pages > 0:
+            activity_stats["by_source"]["notion"] = {
+                "total": notion_pages,
+                "pages": notion_pages
+            }
+            activity_stats["total_activities"] += notion_pages
+        
+        # Drive statistics
+        drive_activities = await db["drive_activities"].count_documents({"actor_email": identifiers.get("email")})
+        if drive_activities > 0:
+            activity_stats["by_source"]["drive"] = {
+                "total": drive_activities,
+                "activities": drive_activities
+            }
+            activity_stats["total_activities"] += drive_activities
+        
+        # Get recent activities (last 20)
+        recent = []
+        
+        # Recent GitHub commits
+        github_commits_cursor = db["github_commits"].find(
+            {"author_name": member_name}
+        ).sort("date", -1).limit(5)
+        async for commit in github_commits_cursor:
+            recent.append({
+                "source": "github",
+                "type": "commit",
+                "timestamp": commit.get("date"),
+                "description": commit.get("message", "")[:100],
+                "repository": commit.get("repository")
+            })
+        
+        # Recent Slack messages
+        if slack_email:
+            slack_cursor = db["slack_messages"].find(
+                {"user_email": slack_email}
+            ).sort("timestamp", -1).limit(5)
+            async for msg in slack_cursor:
+                recent.append({
+                    "source": "slack",
+                    "type": "message",
+                    "timestamp": msg.get("timestamp"),
+                    "description": msg.get("text", "")[:100]
+                })
+        
+        # Sort recent activities by timestamp
+        recent.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+        activity_stats["recent_activities"] = recent[:20]
+        
+        logger.info(f"Retrieved member detail: {member_name} ({member_id})")
+        
+        return {
+            "id": member_id,
+            "name": member.get("name"),
+            "email": member.get("email"),
+            "role": member.get("role"),
+            "project": member.get("project"),
+            "identifiers": identifiers,
+            "activity_stats": activity_stats,
+            "created_at": member.get("created_at"),
+            "updated_at": member.get("updated_at")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching member detail: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch member detail: {str(e)}")
+
+
 @router.delete("/members/{member_id}")
 async def delete_member(
     member_id: str,
