@@ -59,7 +59,9 @@ export default function DatabasePage() {
   } = useAppStats();
 
   const [collections, setCollections] = useState<CollectionsData | null>(null);
-  const [lastCollected, setLastCollected] = useState<Record<string, string>>({});
+  const [lastCollected, setLastCollected] = useState<Record<string, string>>(
+    {}
+  );
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
     null
   );
