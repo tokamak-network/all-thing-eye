@@ -36,10 +36,29 @@ export default function ActivitiesPage() {
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [allMembers, setAllMembers] = useState<string[]>([]);
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Fetch all members from DB (runs once on mount)
+  useEffect(() => {
+    async function fetchMembers() {
+      try {
+        const response = await apiClient.getMembers({ limit: 1000 });
+        const memberNames = response.members
+          .map((m: any) => m.name)
+          .filter((name: string) => name)
+          .sort();
+        setAllMembers(memberNames);
+      } catch (err: any) {
+        console.error('Error fetching members:', err);
+      }
+    }
+
+    fetchMembers();
+  }, []);
 
   // Fetch activities with filters
   useEffect(() => {
@@ -62,17 +81,6 @@ export default function ActivitiesPage() {
 
     fetchActivities();
   }, [sourceFilter]); // Reload when source filter changes
-
-  // Extract unique member names from activities
-  const uniqueMembers = allActivities
-    ? Array.from(
-        new Set(
-          allActivities.activities
-            .map((activity) => activity.member_name)
-            .filter((name) => name) // Remove null/undefined
-        )
-      ).sort()
-    : [];
 
   // Reset to first page when member filter changes
   useEffect(() => {
@@ -187,13 +195,7 @@ export default function ActivitiesPage() {
             className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
           >
             <option value="">All Members</option>
-            {/* Show currently selected member even if not in current source */}
-            {memberFilter && !uniqueMembers.includes(memberFilter) && (
-              <option key={memberFilter} value={memberFilter}>
-                {memberFilter} (no data in this source)
-              </option>
-            )}
-            {uniqueMembers.map((member) => (
+            {allMembers.map((member) => (
               <option key={member} value={member}>
                 {member}
               </option>
