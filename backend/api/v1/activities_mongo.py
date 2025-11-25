@@ -22,30 +22,57 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-# Helper function to map GitHub username to member name
-async def get_member_display_name(github_username: str, db) -> str:
-    """Map GitHub username to member's display name from members collection"""
-    if not github_username:
-        return github_username
+# Helper function to map various identifiers to member name
+async def get_member_by_identifier(identifier_type: str, identifier_value: str, db) -> str:
+    """
+    Map identifier to member's display name from members collection
+    
+    Args:
+        identifier_type: Type of identifier (github_id, slack_id, notion_id, email)
+        identifier_value: Value of the identifier
+        db: Database connection
+    
+    Returns:
+        Member display name or original identifier if not found
+    """
+    if not identifier_value:
+        return identifier_value
     
     try:
-        # Look up member by GitHub username (case-insensitive)
-        member_identifier = await db["member_identifiers"].find_one({
-            "source": "github",
-            "identifier_value": {"$regex": f"^{github_username}$", "$options": "i"}
-        })
+        # Look up member by identifier (case-insensitive for some types)
+        if identifier_type in ['github_id', 'email']:
+            # Case-insensitive for GitHub and email
+            member_identifier = await db["member_identifiers"].find_one({
+                "identifier_type": identifier_type,
+                "identifier_value": {"$regex": f"^{identifier_value}$", "$options": "i"}
+            })
+        else:
+            # Case-sensitive for Slack/Notion IDs
+            member_identifier = await db["member_identifiers"].find_one({
+                "identifier_type": identifier_type,
+                "identifier_value": identifier_value
+            })
         
         if member_identifier:
-            member = await db["members"].find_one({"_id": member_identifier["member_id"]})
-            if member:
-                logger.info(f"Mapped GitHub user '{github_username}' to '{member.get('name')}'")
-                return member.get("name", github_username)
+            member_id = member_identifier.get("member_id")
+            if member_id:
+                member = await db["members"].find_one({"_id": member_id})
+                if member:
+                    member_name = member.get("name", identifier_value)
+                    logger.debug(f"Mapped {identifier_type}='{identifier_value}' to '{member_name}'")
+                    return member_name
         
-        logger.warning(f"No mapping found for GitHub user '{github_username}'")
-        return github_username
+        logger.debug(f"No mapping found for {identifier_type}='{identifier_value}'")
+        return identifier_value
     except Exception as e:
-        logger.warning(f"Failed to map GitHub username {github_username}: {e}")
-        return github_username
+        logger.warning(f"Failed to map {identifier_type}={identifier_value}: {e}")
+        return identifier_value
+
+
+# Backward compatibility wrapper
+async def get_member_display_name(github_username: str, db) -> str:
+    """Deprecated: Use get_member_by_identifier instead"""
+    return await get_member_by_identifier("github_id", github_username, db)
 
 
 # Response models
@@ -219,9 +246,18 @@ async def get_activities(
                     else:
                         slack_url = None
                     
+                    # Map Slack user to member name
+                    slack_user_id = msg.get('user_id') or msg.get('user', '')
+                    user_name_raw = msg.get('user_name', '')
+                    # Try mapping by Slack ID first, fall back to username
+                    if slack_user_id:
+                        display_name = await get_member_by_identifier("slack_id", slack_user_id, db)
+                    else:
+                        display_name = user_name_raw
+                    
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
-                        member_name=msg.get('user_name', ''),
+                        member_name=display_name,
                         source_type='slack',
                         activity_type=activity_type,
                         timestamp=timestamp_str,
@@ -234,7 +270,8 @@ async def get_activities(
                             'files': len(msg.get('files', [])),
                             'reply_count': msg.get('reply_count', 0),
                             'url': slack_url,
-                            'is_thread': is_thread_reply
+                            'is_thread': is_thread_reply,
+                            'slack_user_id': slack_user_id
                         }
                     ))
             
@@ -254,15 +291,26 @@ async def get_activities(
                     else:
                         timestamp_str = str(created_time) if created_time else ''
                     
+                    # Map Notion user to member name
+                    notion_user = page.get('created_by', {})
+                    notion_user_id = notion_user.get('id', '')
+                    notion_user_name = notion_user.get('name', '')
+                    # Try mapping by Notion ID first, fall back to name
+                    if notion_user_id:
+                        display_name = await get_member_by_identifier("notion_id", notion_user_id, db)
+                    else:
+                        display_name = notion_user_name
+                    
                     activities.append(ActivityResponse(
                         id=str(page['_id']),
-                        member_name=page.get('created_by', {}).get('name', ''),
+                        member_name=display_name,
                         source_type='notion',
                         activity_type='page_created',
                         timestamp=timestamp_str,
                         metadata={
                             'title': page.get('title'),
-                            'comments': page.get('comments_count', 0)
+                            'comments': page.get('comments_count', 0),
+                            'notion_user_id': notion_user_id
                         }
                     ))
             
@@ -282,16 +330,24 @@ async def get_activities(
                     else:
                         timestamp_str = str(timestamp_val) if timestamp_val else ''
                     
+                    # Map Drive user email to member name
+                    user_email = activity.get('user_email', '')
+                    if user_email:
+                        display_name = await get_member_by_identifier("email", user_email, db)
+                    else:
+                        display_name = user_email.split('@')[0] if user_email else ''
+                    
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
-                        member_name=activity.get('user_email', '').split('@')[0],
+                        member_name=display_name,
                         source_type='drive',
                         activity_type=activity.get('event_name', 'activity'),
                         timestamp=timestamp_str,
                         metadata={
                             'action': activity.get('action'),
                             'doc_title': activity.get('doc_title'),
-                            'doc_type': activity.get('doc_type')
+                            'doc_type': activity.get('doc_type'),
+                            'user_email': user_email
                         }
                     ))
             

@@ -93,23 +93,10 @@ export default function ActivitiesPage() {
   // Filter activities by member on the client side
   const filteredActivities = allActivities
     ? allActivities.activities.filter((activity) => {
-        if (!memberFilter) return true;
-        
-        // Normalize both strings for comparison (trim and case-insensitive)
-        const activityMember = (activity.member_name || '').trim().toLowerCase();
-        const filterMember = memberFilter.trim().toLowerCase();
-        
-        // Debug log for first few activities
-        if (process.env.NODE_ENV === 'development' && allActivities.activities.indexOf(activity) < 3) {
-          console.log('🔍 Filter Debug:', {
-            activityMember,
-            filterMember,
-            match: activityMember === filterMember,
-            original: activity.member_name
-          });
-        }
-        
-        return activityMember === filterMember;
+        // Backend now properly maps all identifiers to member names
+        // So we can use exact matching
+        const matchesMember = !memberFilter || activity.member_name === memberFilter;
+        return matchesMember;
       })
     : [];
 
