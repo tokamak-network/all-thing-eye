@@ -8,10 +8,15 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from src.utils.logger import get_logger
 from backend.middleware.jwt_auth import require_admin
-from backend.main import mongo_manager
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+# Get MongoDB manager instance
+def get_mongo():
+    from backend.main import mongo_manager
+    return mongo_manager
 
 
 class MemberIdentifier(BaseModel):
@@ -51,7 +56,7 @@ async def get_members(
     Get all team members with their identifiers
     """
     try:
-        mongo = mongo_manager
+        mongo = get_mongo()
         db = mongo.async_db
         
         # Get all members
@@ -99,7 +104,7 @@ async def create_member(
     Create a new team member
     """
     try:
-        mongo = mongo_manager
+        mongo = get_mongo()
         db = mongo.async_db
         
         # Check if member with same email already exists
@@ -195,7 +200,7 @@ async def update_member(
     Update an existing team member
     """
     try:
-        mongo = mongo_manager
+        mongo = get_mongo()
         db = mongo.async_db
         
         # Check if member exists
@@ -296,7 +301,7 @@ async def delete_member(
     Delete a team member and their identifiers
     """
     try:
-        mongo = mongo_manager
+        mongo = get_mongo()
         db = mongo.async_db
         
         # Check if member exists
