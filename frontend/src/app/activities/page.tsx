@@ -36,16 +36,22 @@ export default function ActivitiesPage() {
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Load all activities once on mount
+  // Fetch activities with filters
   useEffect(() => {
     async function fetchActivities() {
       try {
         setLoading(true);
         const response = await apiClient.getActivities({
-          limit: 500, // Load more activities upfront
+          limit: 1000, // Load enough data for filtering
+          source_type: sourceFilter || undefined,
         });
         setAllActivities(response);
+        setCurrentPage(1); // Reset to first page when filter changes
       } catch (err: any) {
         console.error('Error fetching activities:', err);
         setError(err.message || 'Failed to fetch activities');
@@ -55,7 +61,7 @@ export default function ActivitiesPage() {
     }
 
     fetchActivities();
-  }, []); // Only run once on mount
+  }, [sourceFilter]); // Reload when source filter changes
 
   // Extract unique member names from activities
   const uniqueMembers = allActivities
@@ -68,23 +74,33 @@ export default function ActivitiesPage() {
       ).sort()
     : [];
 
-  // Filter activities on the client side
-  const data =
-    (sourceFilter || memberFilter) && allActivities
-      ? {
-          ...allActivities,
-          activities: allActivities.activities.filter((activity) => {
-            const matchesSource = !sourceFilter || activity.source_type === sourceFilter;
-            const matchesMember = !memberFilter || activity.member_name === memberFilter;
-            return matchesSource && matchesMember;
-          }),
-          total: allActivities.activities.filter((activity) => {
-            const matchesSource = !sourceFilter || activity.source_type === sourceFilter;
-            const matchesMember = !memberFilter || activity.member_name === memberFilter;
-            return matchesSource && matchesMember;
-          }).length,
-        }
-      : allActivities;
+  // Reset to first page when member filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [memberFilter]);
+
+  // Filter activities by member on the client side
+  const filteredActivities = allActivities
+    ? allActivities.activities.filter((activity) => {
+        const matchesMember = !memberFilter || activity.member_name === memberFilter;
+        return matchesMember;
+      })
+    : [];
+
+  // Paginate filtered activities
+  const totalItems = filteredActivities.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedActivities = filteredActivities.slice(startIndex, endIndex);
+
+  const data = allActivities
+    ? {
+        ...allActivities,
+        activities: paginatedActivities,
+        total: totalItems,
+      }
+    : null;
 
   const toggleActivity = (activityId: string) => {
     setExpandedActivity(expandedActivity === activityId ? null : activityId);
@@ -177,6 +193,18 @@ export default function ActivitiesPage() {
               </option>
             ))}
           </select>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => {
+              setItemsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+          >
+            <option value="10">10 per page</option>
+            <option value="30">30 per page</option>
+            <option value="50">50 per page</option>
+          </select>
           <a
             href={apiClient.getExportActivitiesUrl('csv', {
               limit: 10000,
@@ -192,6 +220,95 @@ export default function ActivitiesPage() {
           </a>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {data && totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white px-4 py-3 sm:px-6 rounded-lg shadow">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+                <span className="font-medium">{Math.min(endIndex, totalItems)}</span> of{' '}
+                <span className="font-medium">{totalItems}</span> results
+              </p>
+            </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Previous</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((page) => {
+                    // Show first page, last page, current page, and pages around current
+                    return (
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    );
+                  })
+                  .map((page, index, array) => {
+                    // Add ellipsis if there's a gap
+                    const prevPage = array[index - 1];
+                    const showEllipsis = prevPage && page - prevPage > 1;
+                    
+                    return (
+                      <div key={page} className="inline-flex">
+                        {showEllipsis && (
+                          <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300">
+                            ...
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setCurrentPage(page)}
+                          className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                            page === currentPage
+                              ? 'z-10 bg-primary-600 text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+                              : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </div>
+                    );
+                  })}
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Next</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Activities List */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
