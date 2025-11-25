@@ -74,12 +74,12 @@ export default function ActivitiesPage() {
       ? {
           ...allActivities,
           activities: allActivities.activities.filter((activity) => {
-            const matchesSource = !sourceFilter || activity.source === sourceFilter;
+            const matchesSource = !sourceFilter || activity.source_type === sourceFilter;
             const matchesMember = !memberFilter || activity.member_name === memberFilter;
             return matchesSource && matchesMember;
           }),
           total: allActivities.activities.filter((activity) => {
-            const matchesSource = !sourceFilter || activity.source === sourceFilter;
+            const matchesSource = !sourceFilter || activity.source_type === sourceFilter;
             const matchesMember = !memberFilter || activity.member_name === memberFilter;
             return matchesSource && matchesMember;
           }).length,
