@@ -27,7 +27,7 @@ function formatSize(bytes: number): string {
 }
 
 export default function ActivitiesPage() {
-  const [data, setData] = useState<ActivityListResponse | null>(null);
+  const [allActivities, setAllActivities] = useState<ActivityListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>('');
@@ -36,15 +36,15 @@ export default function ActivitiesPage() {
   const [showTranscript, setShowTranscript] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Load all activities once on mount
   useEffect(() => {
     async function fetchActivities() {
       try {
         setLoading(true);
         const response = await apiClient.getActivities({
-          limit: 100,
-          source_type: sourceFilter || undefined,
+          limit: 500, // Load more activities upfront
         });
-        setData(response);
+        setAllActivities(response);
       } catch (err: any) {
         console.error('Error fetching activities:', err);
         setError(err.message || 'Failed to fetch activities');
@@ -54,7 +54,20 @@ export default function ActivitiesPage() {
     }
 
     fetchActivities();
-  }, [sourceFilter]);
+  }, []); // Only run once on mount
+
+  // Filter activities on the client side
+  const data = sourceFilter && allActivities
+    ? {
+        ...allActivities,
+        activities: allActivities.activities.filter(
+          (activity) => activity.source === sourceFilter
+        ),
+        total: allActivities.activities.filter(
+          (activity) => activity.source === sourceFilter
+        ).length,
+      }
+    : allActivities;
 
   const toggleActivity = (activityId: string) => {
     setExpandedActivity(expandedActivity === activityId ? null : activityId);
