@@ -74,13 +74,6 @@ export default function ActivitiesPage() {
       ).sort()
     : [];
 
-  // Reset member filter if selected member is not in current source's data
-  useEffect(() => {
-    if (memberFilter && !uniqueMembers.includes(memberFilter)) {
-      setMemberFilter('');
-    }
-  }, [uniqueMembers, memberFilter]);
-
   // Reset to first page when member filter changes
   useEffect(() => {
     setCurrentPage(1);
@@ -194,6 +187,12 @@ export default function ActivitiesPage() {
             className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
           >
             <option value="">All Members</option>
+            {/* Show currently selected member even if not in current source */}
+            {memberFilter && !uniqueMembers.includes(memberFilter) && (
+              <option key={memberFilter} value={memberFilter}>
+                {memberFilter} (no data in this source)
+              </option>
+            )}
             {uniqueMembers.map((member) => (
               <option key={member} value={member}>
                 {member}
