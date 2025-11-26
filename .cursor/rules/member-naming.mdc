@@ -10,9 +10,9 @@ tags: [naming, members, ui, backend]
 
 All-Thing-Eye 플랫폼의 모든 페이지에서 멤버 이름은 **`config/members.yaml`의 `name` 필드**를 기준으로 통일하여 표시합니다.
 
-## 🎯 Core Principle
+## 🎯 Core Principles
 
-**Single Source of Truth: `config/members.yaml`**
+### 1. Single Source of Truth: `config/members.yaml`
 
 ```yaml
 - name: "Ale"          # ✅ 이것이 모든 곳에서 사용되는 표준 이름
@@ -21,6 +21,24 @@ All-Thing-Eye 플랫폼의 모든 페이지에서 멤버 이름은 **`config/mem
   slack_id: "ale@tokamak.network"
   notion_id: "ale@tokamak.network"
 ```
+
+### 2. Capitalization Rule: First Letter Always Uppercase
+
+**모든 멤버 이름의 첫 글자는 반드시 대문자로 표시합니다.**
+
+```python
+# ✅ Good
+"Jaden", "Irene", "Kevin", "Manish"
+
+# ❌ Bad
+"jaden", "irene", "kevin", "manish"
+```
+
+**적용 범위:**
+- 모든 소스 (GitHub, Slack, Notion, Drive)
+- 모든 페이지 (Activities, Dashboard, Members, etc.)
+- 필터 드롭다운
+- 백엔드 API 응답
 
 ## 📍 Affected Areas
 
@@ -110,10 +128,23 @@ member_name = get_mapped_member_name(member_mappings, 'github', github_username)
 # Result: "Ale" (not "SonYoungsung")
 ```
 
-**Key principle:**
+**Key principles:**
 - Always return `members.yaml` name
+- **Always capitalize first letter** of returned name
 - If mapping not found, use graceful fallback (first name, capitalized username)
 - Never return raw identifiers (UUIDs, user IDs, emails) to frontend
+
+**Capitalization implementation:**
+```python
+# In get_mapped_member_name function
+name = mappings[source].get(key, identifier)
+if name and isinstance(name, str):
+    return name[0].upper() + name[1:] if len(name) > 0 else name
+
+# In fallback logic
+username = email.split('@')[0]
+member_name = username.capitalize()  # "jaden" → "Jaden"
+```
 
 ### Frontend (TypeScript)
 
@@ -145,18 +176,23 @@ const allMembers = useMemo(() => {
 GitHub:  "SonYoungsung"
 Slack:   "ale" or "U08065B1ZQF"
 Notion:  "Alejandra Maria Garcia"
-Drive:   "ale@tokamak.network"
+Drive:   "ale@tokamak.network" or "jaden"
 Filter:  "Ale"
 ```
 
-### After (Consistent)
+### After (Consistent & Capitalized)
 ```
-GitHub:  "Ale" ✅
-Slack:   "Ale" ✅
-Notion:  "Ale" ✅
-Drive:   "Ale" ✅
-Filter:  "Ale" ✅
+GitHub:  "Ale" ✅  (capitalized)
+Slack:   "Ale" ✅  (capitalized)
+Notion:  "Ale" ✅  (capitalized)
+Drive:   "Ale" ✅  (capitalized, not "ale")
+Filter:  "Ale" ✅  (capitalized)
 ```
+
+**Key improvements:**
+- Same name across all sources
+- First letter always capitalized
+- Matches filter dropdown exactly
 
 ## ⚠️ Special Cases
 

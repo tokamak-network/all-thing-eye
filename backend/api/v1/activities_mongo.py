@@ -85,7 +85,7 @@ def get_mapped_member_name(mappings: dict, source: str, identifier: str) -> str:
         identifier: Identifier value to look up
     
     Returns:
-        Member display name or original identifier if not found
+        Member display name with capitalized first letter
     """
     if not identifier or source not in mappings:
         return identifier
@@ -96,7 +96,13 @@ def get_mapped_member_name(mappings: dict, source: str, identifier: str) -> str:
     else:
         key = identifier
     
-    return mappings[source].get(key, identifier)
+    name = mappings[source].get(key, identifier)
+    
+    # Ensure first letter is capitalized for consistency
+    if name and isinstance(name, str):
+        return name[0].upper() + name[1:] if len(name) > 0 else name
+    
+    return name
 
 
 # Response models
@@ -355,7 +361,8 @@ async def get_activities(
                     # Priority 3: Extract first name from full name (fallback)
                     if not member_name and notion_user_name:
                         # "Manish Kumar" → "Manish", "Jaden Kong" → "Jaden"
-                        member_name = notion_user_name.split()[0] if ' ' in notion_user_name else notion_user_name
+                        first_name = notion_user_name.split()[0] if ' ' in notion_user_name else notion_user_name
+                        member_name = first_name.capitalize() if first_name else None
                     
                     # Priority 4: Use short UUID if nothing else works
                     if not member_name:
@@ -389,9 +396,16 @@ async def get_activities(
                     else:
                         timestamp_str = str(timestamp_val) if timestamp_val else ''
                     
-                    # Map Drive email to member name
+                    # Map Drive email to member name (MUST use members.yaml standard name)
                     user_email = activity.get('user_email', '')
-                    member_name = get_mapped_member_name(member_mappings, 'drive', user_email) if user_email else user_email.split('@')[0]
+                    
+                    # Try mapping first
+                    member_name = get_mapped_member_name(member_mappings, 'drive', user_email) if user_email else ''
+                    
+                    # If mapping returns the email itself (not mapped), extract username and capitalize
+                    if not member_name or '@' in member_name:
+                        username = user_email.split('@')[0] if user_email else 'Unknown'
+                        member_name = username.capitalize() if username else 'Unknown'
                     
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
