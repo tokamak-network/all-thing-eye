@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from notion_client import Client
 from notion_client.errors import APIResponseError
 import pytz
+import time
 from pymongo.errors import DuplicateKeyError
 
 from src.plugins.base import DataSourcePlugin
@@ -232,10 +233,18 @@ class NotionPluginMongo(DataSourcePlugin):
                         has_more = False
                         break
                     
+                    # Fetch page content (full text)
+                    page_content = self._fetch_page_content(page_id)
+                    
+                    # Rate limiting: respect Notion API limit (3 req/s)
+                    time.sleep(0.35)  # ~3 requests per second
+                    
                     page_data = {
                         'id': page_id,
                         'notion_id': page_id,
                         'title': self._extract_title(page.get('properties', {})),
+                        'content': page_content,  # Add full content
+                        'content_length': len(page_content),  # Add content length for reference
                         'created_time': datetime.fromisoformat(page.get('created_time', '').replace('Z', '+00:00')),
                         'last_edited_time': last_edited,
                         'created_by': self._extract_user_info(page.get('created_by', {})),
@@ -368,6 +377,102 @@ class NotionPluginMongo(DataSourcePlugin):
         """Extract plain text from rich text array"""
         return ''.join([rt.get('plain_text', '') for rt in rich_text])
     
+    def _fetch_page_content(self, page_id: str) -> str:
+        """
+        Fetch full content of a Notion page by retrieving all blocks
+        
+        Args:
+            page_id: Notion page ID
+            
+        Returns:
+            Full page content as plain text string
+        """
+        try:
+            content_parts = []
+            
+            # Fetch all blocks from the page with pagination
+            has_more = True
+            next_cursor = None
+            
+            while has_more:
+                # Request with pagination
+                if next_cursor:
+                    response = self.client.blocks.children.list(
+                        block_id=page_id,
+                        start_cursor=next_cursor,
+                        page_size=100  # Max allowed by Notion API
+                    )
+                else:
+                    response = self.client.blocks.children.list(
+                        block_id=page_id,
+                        page_size=100
+                    )
+                
+                # Process blocks
+                for block in response.get('results', []):
+                    block_type = block.get('type')
+                    
+                    # Extract text from different block types
+                    if block_type == 'paragraph':
+                        text = self._extract_rich_text(block['paragraph'].get('rich_text', []))
+                        if text:
+                            content_parts.append(text)
+                    
+                    elif block_type in ['heading_1', 'heading_2', 'heading_3']:
+                        heading = block[block_type]
+                        text = self._extract_rich_text(heading.get('rich_text', []))
+                        if text:
+                            # Add markdown-style heading
+                            prefix = '#' * int(block_type[-1])
+                            content_parts.append(f"{prefix} {text}")
+                    
+                    elif block_type == 'bulleted_list_item':
+                        text = self._extract_rich_text(block['bulleted_list_item'].get('rich_text', []))
+                        if text:
+                            content_parts.append(f"• {text}")
+                    
+                    elif block_type == 'numbered_list_item':
+                        text = self._extract_rich_text(block['numbered_list_item'].get('rich_text', []))
+                        if text:
+                            content_parts.append(f"- {text}")
+                    
+                    elif block_type == 'quote':
+                        text = self._extract_rich_text(block['quote'].get('rich_text', []))
+                        if text:
+                            content_parts.append(f"> {text}")
+                    
+                    elif block_type == 'code':
+                        text = self._extract_rich_text(block['code'].get('rich_text', []))
+                        language = block['code'].get('language', '')
+                        if text:
+                            content_parts.append(f"```{language}\n{text}\n```")
+                    
+                    elif block_type == 'toggle':
+                        text = self._extract_rich_text(block['toggle'].get('rich_text', []))
+                        if text:
+                            content_parts.append(text)
+                    
+                    elif block_type == 'callout':
+                        text = self._extract_rich_text(block['callout'].get('rich_text', []))
+                        if text:
+                            content_parts.append(f"💡 {text}")
+                
+                # Check for more pages
+                has_more = response.get('has_more', False)
+                next_cursor = response.get('next_cursor')
+            
+            # Join all content with double newlines
+            full_content = '\n\n'.join(content_parts)
+            
+            return full_content
+            
+        except APIResponseError as e:
+            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {e.message}")
+            return ""
+        except Exception as e:
+            self.logger.warning(f"⚠️  Unexpected error fetching content for page {page_id}: {str(e)}")
+            return ""
+    
     async def save_data(self, collected_data: Dict[str, Any]):
         """Save collected Notion data to MongoDB"""
         print("\n8️⃣ Saving to MongoDB...")
@@ -433,6 +538,8 @@ class NotionPluginMongo(DataSourcePlugin):
                 'page_id': page['notion_id'],  # Use page_id to match Pydantic model
                 'notion_id': page['notion_id'],  # Keep notion_id for compatibility
                 'title': page.get('title', ''),
+                'content': page.get('content', ''),  # Add full content
+                'content_length': page.get('content_length', 0),  # Add content length
                 'url': page.get('url', ''),
                 'created_time': page['created_time'],
                 'last_edited_time': page['last_edited_time'],

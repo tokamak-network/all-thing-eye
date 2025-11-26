@@ -125,8 +125,7 @@ data/cache/
 # Cursor
 .cursor/
 !.cursor/rules/  # Keep rules for team standards
-.cursorrules 
+.cursorrules
 
 # Output
 output/
-

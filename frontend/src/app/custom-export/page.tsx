@@ -5,8 +5,11 @@ import FieldSelector from "./components/FieldSelector";
 import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
 import AIChatPanel from "./components/AIChatPanel";
+import NotionExportPanel from "./components/NotionExportPanel";
 
 export default function CustomExportPage() {
+  const [activeTab, setActiveTab] = useState<"custom" | "notion">("notion");
+
   const [selectedFields, setSelectedFields] = useState<string[]>([
     "member.name",
     "member.email",
@@ -74,35 +77,69 @@ export default function CustomExportPage() {
           Select fields from multiple data sources and export custom reports
           without SQL knowledge
         </p>
+
+        {/* Tabs */}
+        <div className="mt-4 border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab("notion")}
+              className={`${
+                activeTab === "notion"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              📝 Notion Documents
+            </button>
+            <button
+              onClick={() => setActiveTab("custom")}
+              className={`${
+                activeTab === "custom"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              🔧 Custom Fields (TBD)
+            </button>
+          </nav>
+        </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Field Selector */}
-        <div className="lg:col-span-1">
-          <FieldSelector
-            selectedFields={selectedFields}
-            onFieldToggle={handleFieldToggle}
-          />
-        </div>
+      <div className="max-w-7xl mx-auto">
+        {activeTab === "notion" ? (
+          /* Notion Export Tab */
+          <NotionExportPanel />
+        ) : (
+          /* Custom Fields Tab (TBD) */
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column: Field Selector */}
+            <div className="lg:col-span-1">
+              <FieldSelector
+                selectedFields={selectedFields}
+                onFieldToggle={handleFieldToggle}
+              />
+            </div>
 
-        {/* Right Column: Filters + Preview */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Filter Panel */}
-          <FilterPanel
-            filters={filters}
-            onFiltersChange={setFilters}
-            onPreview={handlePreview}
-            onExport={handleExport}
-            onSaveTemplate={handleSaveTemplate}
-          />
+            {/* Right Column: Filters + Preview */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Filter Panel */}
+              <FilterPanel
+                filters={filters}
+                onFiltersChange={setFilters}
+                onPreview={handlePreview}
+                onExport={handleExport}
+                onSaveTemplate={handleSaveTemplate}
+              />
 
-          {/* Preview Table */}
-          <PreviewTable selectedFields={selectedFields} />
+              {/* Preview Table */}
+              <PreviewTable selectedFields={selectedFields} />
 
-          {/* AI Chat Panel */}
-          <AIChatPanel selectedFields={selectedFields} filters={filters} />
-        </div>
+              {/* AI Chat Panel */}
+              <AIChatPanel selectedFields={selectedFields} filters={filters} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
