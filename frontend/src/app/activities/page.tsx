@@ -61,16 +61,17 @@ export default function ActivitiesPage() {
     fetchMembers();
   }, []);
 
-  // Fetch activities with filters
+  // Fetch activities with filters (including member filter from backend)
   useEffect(() => {
     async function fetchActivities() {
       try {
         setLoading(true);
-        // Load 5-10 pages worth of data for smooth pagination
-        const loadLimit = Math.max(itemsPerPage * 10, 100);
+        // Always fetch enough data for current page settings
+        const loadLimit = Math.max(itemsPerPage * 10, 500);
         const response = await apiClient.getActivities({
           limit: loadLimit,
           source_type: sourceFilter || undefined,
+          member_name: memberFilter || undefined, // Filter by member on backend
         });
         setAllActivities(response);
         setCurrentPage(1); // Reset to first page when filter changes
@@ -83,22 +84,10 @@ export default function ActivitiesPage() {
     }
 
     fetchActivities();
-  }, [sourceFilter, itemsPerPage]); // Reload when source filter or items per page changes
+  }, [sourceFilter, memberFilter, itemsPerPage]); // Reload when any filter changes
 
-  // Reset to first page when member filter changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [memberFilter]);
-
-  // Filter activities by member on the client side
-  const filteredActivities = allActivities
-    ? allActivities.activities.filter((activity) => {
-        // Backend now properly maps all identifiers to member names
-        // So we can use exact matching
-        const matchesMember = !memberFilter || activity.member_name === memberFilter;
-        return matchesMember;
-      })
-    : [];
+  // Activities are already filtered by backend, no client-side filtering needed
+  const filteredActivities = allActivities ? allActivities.activities : [];
 
   // Paginate filtered activities
   const totalItems = filteredActivities.length;
