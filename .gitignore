@@ -125,6 +125,8 @@ data/cache/
 # Cursor
 .cursor/
 .cursorrules   
+.cursor/rules/
 
 # Output
 output/
+

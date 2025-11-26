@@ -328,29 +328,24 @@ async def get_activities(
                         timestamp_str = str(created_time) if created_time else ''
                     
                     # Map Notion user to member name
+                    # Data now includes full user info (name, email) from notion_users
                     notion_user = page.get('created_by', {})
-                    notion_user_id = notion_user.get('id', '')
                     notion_user_name = notion_user.get('name', '')
-                    notion_email = notion_user.get('person', {}).get('email', '')
+                    notion_user_email = notion_user.get('email', '')
+                    notion_user_id = notion_user.get('id', '')
                     
-                    # Default: Use short UUID (first 8 chars)
-                    member_name = f"Notion-{notion_user_id[:8]}" if notion_user_id else "Unknown"
+                    # Default: Use name from Notion data
+                    member_name = notion_user_name if notion_user_name else f"Notion-{notion_user_id[:8]}"
                     
-                    # Try to find better mapping
-                    if notion_user_id:
-                        mapped = get_mapped_member_name(member_mappings, 'notion', notion_user_id)
-                        if mapped and mapped != notion_user_id:
-                            member_name = mapped
-                    
-                    # Try email if ID mapping failed
-                    if 'Notion-' in member_name and notion_email:
-                        mapped = get_mapped_member_name(member_mappings, 'notion', notion_email)
+                    # Try to map to members.yaml name (for consistency)
+                    if notion_user_email:
+                        mapped = get_mapped_member_name(member_mappings, 'notion', notion_user_email)
                         if mapped and '@' not in mapped:
                             member_name = mapped
-                    
-                    # Use name if available and no mapping found
-                    if 'Notion-' in member_name and notion_user_name:
-                        member_name = notion_user_name
+                    elif notion_user_id:
+                        mapped = get_mapped_member_name(member_mappings, 'notion', notion_user_id)
+                        if mapped and mapped != notion_user_id and 'Notion-' not in mapped:
+                            member_name = mapped
                     
                     activities.append(ActivityResponse(
                         id=str(page['_id']),

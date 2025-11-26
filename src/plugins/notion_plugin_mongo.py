@@ -372,8 +372,10 @@ class NotionPluginMongo(DataSourcePlugin):
         """Save collected Notion data to MongoDB"""
         print("\n8️⃣ Saving to MongoDB...")
         
-        # Save users
+        # Save users first
         users_to_save = []
+        user_map = {}  # UUID -> {name, email} for enriching pages
+        
         for user in collected_data.get('users', []):
             # Skip users without valid ID
             if not user.get('id'):
@@ -386,6 +388,14 @@ class NotionPluginMongo(DataSourcePlugin):
                 'type': user.get('type', 'person')
             }
             users_to_save.append(user_doc)
+            
+            # Build map for enriching pages
+            user_map[user['id']] = {
+                'id': user['id'],
+                'name': user.get('name', ''),
+                'email': user.get('email', ''),
+                'type': user.get('type', 'person')
+            }
         
         if users_to_save:
             try:
@@ -399,12 +409,24 @@ class NotionPluginMongo(DataSourcePlugin):
             except Exception as e:
                 print(f"   ❌ Error saving users: {e}")
         
-        # Save pages
+        # Save pages (enrich with user info)
         pages_to_save = []
         for page in collected_data.get('pages', []):
             # Skip pages without valid notion_id
             if not page.get('notion_id'):
                 continue
+            
+            # Enrich created_by with name and email from user_map
+            created_by = page.get('created_by', {})
+            created_by_id = created_by.get('id', '')
+            if created_by_id in user_map:
+                created_by = user_map[created_by_id]
+            
+            # Enrich last_edited_by with name and email from user_map
+            last_edited_by = page.get('last_edited_by', {})
+            last_edited_by_id = last_edited_by.get('id', '')
+            if last_edited_by_id in user_map:
+                last_edited_by = user_map[last_edited_by_id]
                 
             page_doc = {
                 'id': page.get('id') or page['notion_id'],  # Required for unique index
@@ -414,8 +436,8 @@ class NotionPluginMongo(DataSourcePlugin):
                 'url': page.get('url', ''),
                 'created_time': page['created_time'],
                 'last_edited_time': page['last_edited_time'],
-                'created_by': page.get('created_by'),
-                'last_edited_by': page.get('last_edited_by'),
+                'created_by': created_by,  # Now includes name and email
+                'last_edited_by': last_edited_by,  # Now includes name and email
                 'parent_type': page.get('parent', {}).get('type'),
                 'parent_id': page.get('parent', {}).get('id') if page.get('parent', {}).get('type') != 'workspace' else None,
                 'properties': page.get('properties', {}),
@@ -441,12 +463,24 @@ class NotionPluginMongo(DataSourcePlugin):
             except Exception as e:
                 print(f"   ❌ Error saving pages: {e}")
         
-        # Save databases
+        # Save databases (enrich with user info)
         dbs_to_save = []
         for db in collected_data.get('databases', []):
             # Skip databases without valid notion_id
             if not db.get('notion_id'):
                 continue
+            
+            # Enrich created_by with name and email from user_map
+            created_by = db.get('created_by', {})
+            created_by_id = created_by.get('id', '')
+            if created_by_id in user_map:
+                created_by = user_map[created_by_id]
+            
+            # Enrich last_edited_by with name and email from user_map
+            last_edited_by = db.get('last_edited_by', {})
+            last_edited_by_id = last_edited_by.get('id', '')
+            if last_edited_by_id in user_map:
+                last_edited_by = user_map[last_edited_by_id]
                 
             db_doc = {
                 'id': db.get('id') or db['notion_id'],  # Required for unique index
@@ -457,8 +491,8 @@ class NotionPluginMongo(DataSourcePlugin):
                 'url': db.get('url', ''),
                 'created_time': db['created_time'],
                 'last_edited_time': db['last_edited_time'],
-                'created_by': db.get('created_by'),
-                'last_edited_by': db.get('last_edited_by'),
+                'created_by': created_by,  # Now includes name and email
+                'last_edited_by': last_edited_by,  # Now includes name and email
                 'parent_type': db.get('parent', {}).get('type'),
                 'parent_id': db.get('parent', {}).get('id') if db.get('parent', {}).get('type') != 'workspace' else None,
                 'properties': db.get('properties', {}),
