@@ -271,10 +271,22 @@ async def get_activities(
                     else:
                         slack_url = None
                     
-                    # Map Slack user to member name (try user_id first, fall back to user_name)
+                    # Map Slack user to member name
+                    # Try: user_id → user_email → user_name (capitalized)
                     slack_user_id = msg.get('user_id') or msg.get('user', '')
+                    slack_user_email = msg.get('user_email', '').lower() if msg.get('user_email') else None
                     slack_user_name = msg.get('user_name', '')
-                    member_name = get_mapped_member_name(member_mappings, 'slack', slack_user_id) if slack_user_id else slack_user_name
+                    
+                    # Try mapping in order: user_id, user_email, then fall back to user_name
+                    member_name = None
+                    if slack_user_id:
+                        member_name = get_mapped_member_name(member_mappings, 'slack', slack_user_id)
+                    if not member_name or member_name == slack_user_id:  # If no mapping found
+                        if slack_user_email:
+                            member_name = get_mapped_member_name(member_mappings, 'slack', slack_user_email)
+                    if not member_name or '@' in member_name:  # Still no good mapping
+                        # Capitalize user_name for display (theo → Theo)
+                        member_name = slack_user_name.capitalize() if slack_user_name else slack_user_id
                     
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
