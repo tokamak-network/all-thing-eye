@@ -105,6 +105,30 @@ def get_mapped_member_name(mappings: dict, source: str, identifier: str) -> str:
     return name
 
 
+def get_identifiers_for_member(mappings: dict, source: str, member_name: str) -> list:
+    """
+    Reverse lookup: Get all identifiers for a member name (for filtering)
+    
+    Args:
+        mappings: Pre-loaded member mappings dict
+        source: Source name (github, slack, notion, drive)
+        member_name: Member display name (e.g., "Ale")
+    
+    Returns:
+        List of identifiers for this member in the source
+    """
+    if not member_name or source not in mappings:
+        return []
+    
+    identifiers = []
+    for identifier, name in mappings[source].items():
+        # Case-insensitive comparison
+        if name.lower() == member_name.lower():
+            identifiers.append(identifier)
+    
+    return identifiers
+
+
 # Response models
 class ActivityResponse(BaseModel):
     id: str
@@ -163,7 +187,13 @@ async def get_activities(
                     commits = db["github_commits"]
                     query = {}
                     if member_name:
-                        query['author_name'] = member_name
+                        # Reverse lookup: Find identifiers for this member name
+                        identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                        if identifiers:
+                            query['author_name'] = {'$in': identifiers}
+                        else:
+                            # No identifiers found, query won't match anything
+                            query['author_name'] = member_name
                     if date_filter:
                         query['date'] = date_filter
                     
@@ -205,7 +235,12 @@ async def get_activities(
                     prs = db["github_pull_requests"]
                     query = {}
                     if member_name:
-                        query['author'] = member_name
+                        # Reverse lookup: Find identifiers for this member name
+                        identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                        if identifiers:
+                            query['author'] = {'$in': identifiers}
+                        else:
+                            query['author'] = member_name
                     if date_filter:
                         query['created_at'] = date_filter
                     
@@ -243,7 +278,17 @@ async def get_activities(
                 messages = db["slack_messages"]
                 query = {}
                 if member_name:
-                    query['user_name'] = member_name
+                    # Reverse lookup: Find user_ids and emails for this member name
+                    identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
+                    if identifiers:
+                        # Search by user_id or user_email
+                        query['$or'] = [
+                            {'user_id': {'$in': identifiers}},
+                            {'user_email': {'$in': identifiers}}
+                        ]
+                    else:
+                        # Fallback to name search
+                        query['user_name'] = member_name
                 if date_filter:
                     query['posted_at'] = date_filter
                 
@@ -321,7 +366,13 @@ async def get_activities(
                 pages = db["notion_pages"]
                 query = {}
                 if member_name:
-                    query['created_by.name'] = member_name
+                    # Reverse lookup: Find UUIDs for this member name
+                    identifiers = get_identifiers_for_member(member_mappings, 'notion', member_name)
+                    if identifiers:
+                        query['created_by.id'] = {'$in': identifiers}
+                    else:
+                        # Fallback to name search (less reliable)
+                        query['created_by.name'] = {"$regex": f"^{member_name}", "$options": "i"}
                 if date_filter:
                     query['created_time'] = date_filter
                 
@@ -384,7 +435,13 @@ async def get_activities(
                 drive_activities = db["drive_activities"]
                 query = {}
                 if member_name:
-                    query['user_email'] = {"$regex": member_name, "$options": "i"}
+                    # Reverse lookup: Find emails for this member name
+                    identifiers = get_identifiers_for_member(member_mappings, 'drive', member_name)
+                    if identifiers:
+                        query['user_email'] = {'$in': identifiers}
+                    else:
+                        # Fallback to regex search
+                        query['user_email'] = {"$regex": member_name, "$options": "i"}
                 if date_filter:
                     query['timestamp'] = date_filter
                 
