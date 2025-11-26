@@ -157,15 +157,65 @@ async def build_identifiers_collection(
             })
             identifier_maps['slack'][slack_id.lower()] = member_id
             identifier_count += 1
+            
+            # IMPORTANT: Also find and add actual Slack user_id from slack_messages
+            # Because slack_messages may not have user_email populated
+            if '@' in slack_id:  # If slack_id is an email, find the actual user_id
+                slack_msg = await db['slack_messages'].find_one({
+                    '$or': [
+                        {'user_email': slack_id},
+                        {'user_name': name.lower()}
+                    ]
+                })
+                if slack_msg and slack_msg.get('user_id'):
+                    actual_user_id = slack_msg['user_id']
+                    # Add user_id identifier as well
+                    await identifiers_col.insert_one({
+                        'member_id': member_id,
+                        'member_name': name,
+                        'source': 'slack',
+                        'identifier_type': 'user_id',
+                        'identifier_value': actual_user_id,
+                        'created_at': datetime.utcnow()
+                    })
+                    identifier_maps['slack'][actual_user_id] = member_id
+                    identifier_count += 1
+                    print(f"      ➕ Found Slack user_id: {actual_user_id} for {name}")
         
         # Notion identifier
         if member_config.get('notion_id'):
             notion_id = member_config['notion_id']
+            
+            # Try to find the actual Notion user UUID from notion_users collection
+            # This is crucial because pages use UUIDs, not emails
+            notion_user = await db["notion_users"].find_one({
+                '$or': [
+                    {'email': notion_id},
+                    {'name': {'$regex': f'^{name}', '$options': 'i'}}
+                ]
+            })
+            
+            if notion_user and notion_user.get('user_id'):
+                actual_notion_uuid = notion_user['user_id']
+                await identifiers_col.insert_one({
+                    'member_id': member_id,
+                    'member_name': name,
+                    'source': 'notion',
+                    'identifier_type': 'user_id',
+                    'identifier_value': actual_notion_uuid,
+                    'created_at': datetime.utcnow()
+                })
+                identifier_maps['notion'][actual_notion_uuid] = member_id
+                identifier_count += 1
+                print(f"      ➕ Found Notion UUID: {actual_notion_uuid} for {name}")
+            
+            # Also add the notion_id from config (could be email or UUID)
+            id_type = 'email' if '@' in notion_id else 'user_id'
             await identifiers_col.insert_one({
                 'member_id': member_id,
                 'member_name': name,
                 'source': 'notion',
-                'identifier_type': 'email',
+                'identifier_type': id_type,
                 'identifier_value': notion_id,
                 'created_at': datetime.utcnow()
             })
