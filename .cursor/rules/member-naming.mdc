@@ -1,0 +1,302 @@
+---
+title: Member Name Display Standard
+description: All-Thing-Eye 플랫폼의 멤버 이름 표시 통일 규칙
+tags: [naming, members, ui, backend]
+---
+
+# Member Name Display Standard
+
+## 📋 Overview
+
+All-Thing-Eye 플랫폼의 모든 페이지에서 멤버 이름은 **`config/members.yaml`의 `name` 필드**를 기준으로 통일하여 표시합니다.
+
+## 🎯 Core Principle
+
+**Single Source of Truth: `config/members.yaml`**
+
+```yaml
+- name: "Ale"          # ✅ 이것이 모든 곳에서 사용되는 표준 이름
+  email: "ale@tokamak.network"
+  github_id: "SonYoungsung"
+  slack_id: "ale@tokamak.network"
+  notion_id: "ale@tokamak.network"
+```
+
+## 📍 Affected Areas
+
+### 1. Frontend Display
+
+**모든 UI 컴포넌트:**
+- Activities page
+- Members page
+- Dashboard
+- Database viewer
+- Custom export
+- Any other pages showing member names
+
+**Example:**
+```tsx
+// ✅ Good: Display name from members.yaml
+<div>{activity.member_name}</div> // "Ale"
+
+// ❌ Bad: Display full name from source
+<div>{notion_data.created_by.name}</div> // "Alejandra Maria Garcia"
+```
+
+### 2. Member Filter Dropdown
+
+**Select box options:**
+- Must use `members.yaml` names
+- Sorting: Alphabetical
+- Should match displayed names exactly
+
+```tsx
+// ✅ Good
+<option value="Ale">Ale</option>
+
+// ❌ Bad
+<option value="ale@tokamak.network">Ale</option>
+<option value="U08065B1ZQF">Ale</option>
+```
+
+### 3. Backend API Response
+
+**All `/api/v1/activities` responses:**
+
+```json
+{
+  "member_name": "Ale",  // ✅ Always use members.yaml name
+  "source_type": "github",
+  "activity_type": "commit"
+}
+```
+
+## 🔄 Source-Specific Mapping
+
+### GitHub
+- Input: `github_username` (e.g., "SonYoungsung")
+- Mapping: `member_identifiers.github.username` → `members.name`
+- Output: "Ale"
+
+### Slack
+- Input: `user_id` (e.g., "U08065B1ZQF") or `user_name` (e.g., "ale")
+- Mapping: `member_identifiers.slack.user_id` → `members.name`
+- Fallback: `capitalize(user_name)` if not in identifiers
+- Output: "Ale"
+
+### Notion
+- Input: `created_by.name` (e.g., "Alejandra Maria Garcia")
+- Mapping: `created_by.email` → `member_identifiers.notion.email` → `members.name`
+- Fallback: Use first name if full name provided
+- Output: "Ale"
+
+### Google Drive
+- Input: `user_email` (e.g., "ale@tokamak.network")
+- Mapping: `member_identifiers.drive.email` → `members.name`
+- Output: "Ale"
+
+## 🛠️ Implementation Guidelines
+
+### Backend (Python)
+
+**File: `backend/api/v1/activities_mongo.py`**
+
+```python
+# Load member mappings once per request
+member_mappings = await load_member_mappings(db)
+
+# For each activity, map to members.yaml name
+member_name = get_mapped_member_name(member_mappings, 'github', github_username)
+# Result: "Ale" (not "SonYoungsung")
+```
+
+**Key principle:**
+- Always return `members.yaml` name
+- If mapping not found, use graceful fallback (first name, capitalized username)
+- Never return raw identifiers (UUIDs, user IDs, emails) to frontend
+
+### Frontend (TypeScript)
+
+**File: `frontend/src/app/activities/page.tsx`**
+
+```tsx
+// Member filter should use same names as displayed
+const allMembers = useMemo(() => {
+  if (!allActivities?.activities) return [];
+  const uniqueNames = new Set(
+    allActivities.activities.map(a => a.member_name)
+  );
+  return Array.from(uniqueNames).sort();
+}, [allActivities]);
+
+// Display name directly (already standardized from backend)
+<div className="font-medium">{activity.member_name}</div>
+```
+
+**Key principle:**
+- Trust backend to provide correct names
+- Use `member_name` field directly without transformation
+- Filter and sort by these standard names
+
+## 📊 Examples
+
+### Before (Inconsistent)
+```
+GitHub:  "SonYoungsung"
+Slack:   "ale" or "U08065B1ZQF"
+Notion:  "Alejandra Maria Garcia"
+Drive:   "ale@tokamak.network"
+Filter:  "Ale"
+```
+
+### After (Consistent)
+```
+GitHub:  "Ale" ✅
+Slack:   "Ale" ✅
+Notion:  "Ale" ✅
+Drive:   "Ale" ✅
+Filter:  "Ale" ✅
+```
+
+## ⚠️ Special Cases
+
+### Full Names in Notion
+
+If Notion returns full names (e.g., "Manish Kumar", "Jaden Kong"):
+
+**Option 1: Email Mapping (Preferred)**
+```python
+# Try to map by email first
+if notion_email:
+    member_name = get_mapped_member_name(mappings, 'notion', notion_email)
+    # Result: "Manish" (from members.yaml)
+```
+
+**Option 2: Extract First Name**
+```python
+# Fallback: Use first name
+full_name = "Manish Kumar"
+member_name = full_name.split()[0]  # "Manish"
+```
+
+### New Members
+
+When adding a new member to `members.yaml`:
+
+```yaml
+- name: "NewMember"  # This becomes the standard display name
+  email: "newmember@tokamak.network"
+  github_id: "newmember-gh"
+  slack_id: "U123456789"
+  notion_id: "uuid-or-email"
+```
+
+Then run:
+```bash
+python3 scripts/build_member_index_mongo.py
+```
+
+The new member will automatically appear as "NewMember" in all sources.
+
+## 🔍 Verification
+
+### How to verify consistency:
+
+1. **Check Activities page:**
+   - All displayed names should match filter dropdown
+   - No raw identifiers (UUIDs, emails, user IDs)
+
+2. **Test filtering:**
+   - Select a name from dropdown
+   - All activities shown should have that exact name
+
+3. **Cross-source check:**
+   - Find a member active in multiple sources
+   - Verify same name appears for GitHub, Slack, Notion, Drive
+
+### Common issues:
+
+❌ **Problem:** "Manish Kumar" in Notion, but "Manish" in filter
+✅ **Solution:** Update Notion mapping to use email → members.yaml
+
+❌ **Problem:** "ale@tokamak.network" shown in Drive
+✅ **Solution:** Run `build_member_index_mongo.py` to create Drive mappings
+
+❌ **Problem:** "U08065B1ZQF" shown in Slack
+✅ **Solution:** Ensure fallback logic capitalizes username
+
+## 📝 Maintenance
+
+### Adding a new data source:
+
+1. Create identifier mapping in `member_identifiers`:
+   ```python
+   {
+     "source": "new_source",
+     "identifier_type": "username",
+     "identifier_value": "source_username",
+     "member_name": "Ale"  # From members.yaml
+   }
+   ```
+
+2. Implement mapping in backend API:
+   ```python
+   source_username = activity.get('username')
+   member_name = get_mapped_member_name(mappings, 'new_source', source_username)
+   ```
+
+3. Result: New source automatically shows standard names
+
+### Updating member names:
+
+1. Edit `members.yaml`:
+   ```yaml
+   - name: "NewName"  # Change this
+   ```
+
+2. Rebuild member index:
+   ```bash
+   python3 scripts/build_member_index_mongo.py
+   ```
+
+3. Restart backend:
+   ```bash
+   python3 -m uvicorn backend.main:app --reload
+   ```
+
+4. All pages will show "NewName" consistently
+
+## 🎨 UI/UX Consistency
+
+### Typography:
+- Font: Same as other text in the UI
+- Case: Use as-is from members.yaml (usually Title Case)
+- No truncation: Display full name
+
+### Colors:
+- Member names: Default text color
+- Not special colored badges
+- Consistent with other UI text
+
+### Hover/Click:
+- Member names should be clickable links to member detail page
+- Link format: `/members/{member_id}`
+
+## 🚀 Deployment Checklist
+
+Before deploying changes:
+
+- [ ] Verify `members.yaml` has all current members
+- [ ] Run `build_member_index_mongo.py` to update identifiers
+- [ ] Re-collect data from sources (if needed) to populate names
+- [ ] Test locally with all sources
+- [ ] Verify filter dropdown matches displayed names
+- [ ] Check all pages showing member names
+- [ ] Deploy backend + frontend together
+- [ ] On AWS: Run build script, restart backend
+
+---
+
+**Last Updated:** 2025-11-27  
+**Version:** 1.0.0  
+**Owner:** All-Thing-Eye Development Team
