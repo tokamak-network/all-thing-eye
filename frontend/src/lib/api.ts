@@ -123,6 +123,7 @@ class ApiClient {
     source_type?: string;
     activity_type?: string;
     member_id?: number;
+    member_name?: string; // Filter by member name
     start_date?: string;
     end_date?: string;
     limit?: number;
