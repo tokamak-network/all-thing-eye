@@ -115,7 +115,8 @@ async def build_identifiers_collection(
     identifier_maps = {
         'github': {},
         'slack': {},
-        'notion': {}
+        'notion': {},
+        'drive': {}
     }
     
     identifier_count = 0
@@ -169,6 +170,20 @@ async def build_identifiers_collection(
                 'created_at': datetime.utcnow()
             })
             identifier_maps['notion'][notion_id.lower()] = member_id
+            identifier_count += 1
+        
+        # Drive identifier (using email)
+        if member_config.get('email'):
+            email = member_config['email']
+            await identifiers_col.insert_one({
+                'member_id': member_id,
+                'member_name': name,
+                'source': 'drive',
+                'identifier_type': 'email',
+                'identifier_value': email,
+                'created_at': datetime.utcnow()
+            })
+            identifier_maps['drive'][email.lower()] = member_id
             identifier_count += 1
     
     print(f"   📊 Total: {identifier_count} identifiers created")

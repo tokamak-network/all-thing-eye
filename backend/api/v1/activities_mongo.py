@@ -22,60 +22,81 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-# Helper function to map various identifiers to member name
-async def get_member_by_source_identifier(source: str, identifier_value: str, db) -> str:
+# Cache for member mappings to avoid repeated DB queries
+_member_mapping_cache = {}
+
+async def load_member_mappings(db) -> dict:
     """
-    Map source identifier to member's display name from members collection
+    Load all member mappings into memory for fast lookup
     
-    Uses member_identifiers table schema:
-    { source: 'github', identifier_type: 'username', identifier_value: '...', member_id: '...' }
+    Returns:
+        Dict with structure: {
+            'github': {'username': 'MemberName', ...},
+            'slack': {'U12345': 'MemberName', ...},
+            'notion': {'notion-id': 'MemberName', ...},
+            'drive': {'email@domain.com': 'MemberName', ...}
+        }
+    """
+    global _member_mapping_cache
+    
+    # Return cached if available
+    if _member_mapping_cache:
+        return _member_mapping_cache
+    
+    try:
+        mappings = {
+            'github': {},
+            'slack': {},
+            'notion': {},
+            'drive': {}
+        }
+        
+        # Load all member_identifiers
+        async for identifier in db["member_identifiers"].find({}):
+            source = identifier.get("source")
+            identifier_value = identifier.get("identifier_value")
+            member_name = identifier.get("member_name")
+            
+            if source and identifier_value and member_name:
+                # Case-insensitive key for GitHub and email
+                if source in ['github', 'drive']:
+                    key = identifier_value.lower()
+                else:
+                    key = identifier_value
+                
+                mappings[source][key] = member_name
+        
+        _member_mapping_cache = mappings
+        logger.info(f"Loaded member mappings: GitHub={len(mappings['github'])}, Slack={len(mappings['slack'])}, Notion={len(mappings['notion'])}, Drive={len(mappings['drive'])}")
+        return mappings
+        
+    except Exception as e:
+        logger.error(f"Failed to load member mappings: {e}")
+        return {'github': {}, 'slack': {}, 'notion': {}, 'drive': {}}
+
+
+def get_mapped_member_name(mappings: dict, source: str, identifier: str) -> str:
+    """
+    Get member name from pre-loaded mappings (fast, no DB query)
     
     Args:
+        mappings: Pre-loaded member mappings dict
         source: Source name (github, slack, notion, drive)
-        identifier_value: Value of the identifier
-        db: Database connection
+        identifier: Identifier value to look up
     
     Returns:
         Member display name or original identifier if not found
     """
-    if not identifier_value:
-        return identifier_value
+    if not identifier or source not in mappings:
+        return identifier
     
-    try:
-        # Look up member by source and identifier (case-insensitive for GitHub/email)
-        if source in ['github', 'drive']:
-            # Case-insensitive for GitHub username and email
-            member_identifier = await db["member_identifiers"].find_one({
-                "source": source,
-                "identifier_value": {"$regex": f"^{identifier_value}$", "$options": "i"}
-            })
-        else:
-            # Case-sensitive for Slack/Notion IDs
-            member_identifier = await db["member_identifiers"].find_one({
-                "source": source,
-                "identifier_value": identifier_value
-            })
-        
-        if member_identifier:
-            member_id = member_identifier.get("member_id")
-            if member_id:
-                member = await db["members"].find_one({"_id": member_id})
-                if member:
-                    member_name = member.get("name", identifier_value)
-                    logger.debug(f"Mapped {source}='{identifier_value}' to '{member_name}'")
-                    return member_name
-        
-        logger.debug(f"No mapping found for {source}='{identifier_value}'")
-        return identifier_value
-    except Exception as e:
-        logger.warning(f"Failed to map {source}={identifier_value}: {e}")
-        return identifier_value
-
-
-# Backward compatibility wrapper
-async def get_member_display_name(github_username: str, db) -> str:
-    """Deprecated: Use get_member_by_source_identifier instead"""
-    return await get_member_by_source_identifier("github", github_username, db)
+    # Case-insensitive lookup for GitHub and Drive
+    if source in ['github', 'drive']:
+        key = identifier.lower()
+    else:
+        key = identifier
+    
+    return mappings[source].get(key, identifier)
 
 
 # Response models
@@ -116,6 +137,9 @@ async def get_activities(
         db = mongo.async_db
         activities = []
         
+        # Load member mappings once for all activities (performance optimization)
+        member_mappings = await load_member_mappings(db)
+        
         # Determine which sources to query
         sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings']
         
@@ -145,18 +169,18 @@ async def get_activities(
                         else:
                             timestamp_str = str(commit_date) if commit_date else ''
                         
-                        # Get member display name
-                        github_username = commit.get('author_name', '')
-                        display_name = await get_member_display_name(github_username, db)
-                        
                         # Build commit URL (use existing URL or construct it)
                         repo_name = commit.get('repository', '')
                         sha = commit.get('sha', '')
                         commit_url = commit.get('url') or (f"https://github.com/tokamak-network/{repo_name}/commit/{sha}" if repo_name and sha else None)
                         
+                        # Map GitHub username to member name
+                        github_username = commit.get('author_name', '')
+                        member_name = get_mapped_member_name(member_mappings, 'github', github_username)
+                        
                         activities.append(ActivityResponse(
                             id=str(commit['_id']),
-                            member_name=display_name,
+                            member_name=member_name,
                             source_type='github',
                             activity_type='commit',
                             timestamp=timestamp_str,
@@ -166,8 +190,7 @@ async def get_activities(
                                 'repository': repo_name,
                                 'additions': commit.get('additions', 0),
                                 'deletions': commit.get('deletions', 0),
-                                'url': commit_url,
-                                'github_username': github_username
+                                'url': commit_url
                             }
                         ))
                 
@@ -188,16 +211,16 @@ async def get_activities(
                         else:
                             timestamp_str = str(created_at) if created_at else ''
                         
-                        # Get member display name
+                        # Map GitHub username to member name
                         github_username = pr.get('author', '')
-                        display_name = await get_member_display_name(github_username, db)
+                        member_name = get_mapped_member_name(member_mappings, 'github', github_username)
                         
                         # PR URL
                         pr_url = pr.get('url')
                         
                         activities.append(ActivityResponse(
                             id=str(pr['_id']),
-                            member_name=display_name,
+                            member_name=member_name,
                             source_type='github',
                             activity_type='pull_request',
                             timestamp=timestamp_str,
@@ -206,8 +229,7 @@ async def get_activities(
                                 'title': pr.get('title'),
                                 'repository': pr.get('repository'),
                                 'state': pr.get('state'),
-                                'url': pr_url,
-                                'github_username': github_username
+                                'url': pr_url
                             }
                         ))
             
@@ -249,9 +271,14 @@ async def get_activities(
                     else:
                         slack_url = None
                     
+                    # Map Slack user to member name (try user_id first, fall back to user_name)
+                    slack_user_id = msg.get('user_id') or msg.get('user', '')
+                    slack_user_name = msg.get('user_name', '')
+                    member_name = get_mapped_member_name(member_mappings, 'slack', slack_user_id) if slack_user_id else slack_user_name
+                    
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
-                        member_name=msg.get('user_name', ''),
+                        member_name=member_name,
                         source_type='slack',
                         activity_type=activity_type,
                         timestamp=timestamp_str,
@@ -284,9 +311,15 @@ async def get_activities(
                     else:
                         timestamp_str = str(created_time) if created_time else ''
                     
+                    # Map Notion user to member name (try user ID first, fall back to name)
+                    notion_user = page.get('created_by', {})
+                    notion_user_id = notion_user.get('id', '')
+                    notion_user_name = notion_user.get('name', '')
+                    member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_id) if notion_user_id else notion_user_name
+                    
                     activities.append(ActivityResponse(
                         id=str(page['_id']),
-                        member_name=page.get('created_by', {}).get('name', ''),
+                        member_name=member_name,
                         source_type='notion',
                         activity_type='page_created',
                         timestamp=timestamp_str,
@@ -312,9 +345,13 @@ async def get_activities(
                     else:
                         timestamp_str = str(timestamp_val) if timestamp_val else ''
                     
+                    # Map Drive email to member name
+                    user_email = activity.get('user_email', '')
+                    member_name = get_mapped_member_name(member_mappings, 'drive', user_email) if user_email else user_email.split('@')[0]
+                    
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
-                        member_name=activity.get('user_email', '').split('@')[0],
+                        member_name=member_name,
                         source_type='drive',
                         activity_type=activity.get('event_name', 'activity'),
                         timestamp=timestamp_str,
