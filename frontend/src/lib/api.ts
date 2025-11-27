@@ -320,6 +320,27 @@ class ApiClient {
     const response = await this.client.get(endpoint, { params });
     return response.data;
   }
+
+  // Translation API
+  async translateText(text: string, targetLanguage: string = "ko", sourceLanguage?: string) {
+    const response = await this.client.post("/ai/translate", {
+      text,
+      target_language: targetLanguage,
+      source_language: sourceLanguage,
+    });
+    return response.data;
+  }
+
+  // AI Processed Data API
+  async getRecordingSummaries(params?: { source_id?: string; limit?: number; offset?: number }) {
+    const response = await this.client.get("/ai/recordings", { params });
+    return response.data;
+  }
+
+  async getRecordingSummary(sourceId: string) {
+    const response = await this.client.get(`/ai/recordings/${sourceId}`);
+    return response.data;
+  }
 }
 
 export const api = new ApiClient();

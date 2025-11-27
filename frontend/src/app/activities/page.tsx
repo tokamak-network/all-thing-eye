@@ -54,6 +54,10 @@ export default function ActivitiesPage() {
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Translation states
+  const [translations, setTranslations] = useState<Record<string, { text: string; lang: string }>>({});
+  const [translating, setTranslating] = useState<string | null>(null);
 
   // Fetch all members and Notion UUID mappings from DB (runs once on mount)
   useEffect(() => {
@@ -142,6 +146,38 @@ export default function ActivitiesPage() {
 
   const toggleActivity = (activityId: string) => {
     setExpandedActivity(expandedActivity === activityId ? null : activityId);
+  };
+
+  // Translate text using Google Translate API
+  const handleTranslate = async (activityId: string, text: string, targetLang: string) => {
+    if (!text || translating) return;
+    
+    const key = `${activityId}_${targetLang}`;
+    
+    // If already translated to this language, toggle back to original
+    if (translations[activityId]?.lang === targetLang) {
+      setTranslations((prev) => {
+        const newTranslations = { ...prev };
+        delete newTranslations[activityId];
+        return newTranslations;
+      });
+      return;
+    }
+    
+    setTranslating(activityId);
+    try {
+      const result = await apiClient.translateText(text, targetLang);
+      setTranslations((prev) => ({
+        ...prev,
+        [activityId]: { text: result.translated_text, lang: targetLang },
+      }));
+    } catch (err: any) {
+      console.error('Translation error:', err);
+      // Show error but don't block UI
+      alert('Translation failed. Please try again.');
+    } finally {
+      setTranslating(null);
+    }
   };
 
   // Convert Notion UUID or "Notion-xxx" format to member name
@@ -622,10 +658,47 @@ export default function ActivitiesPage() {
                       
                       {activity.metadata?.text && (
                         <div>
-                          <span className="text-xs font-medium text-gray-500">Message:</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-500">Message:</span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(activity.activity_id, activity.metadata.text, 'en');
+                                }}
+                                disabled={translating === activity.activity_id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.activity_id]?.lang === 'en'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700'
+                                } ${translating === activity.activity_id ? 'opacity-50 cursor-wait' : ''}`}
+                              >
+                                EN
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(activity.activity_id, activity.metadata.text, 'ko');
+                                }}
+                                disabled={translating === activity.activity_id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.activity_id]?.lang === 'ko'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700'
+                                } ${translating === activity.activity_id ? 'opacity-50 cursor-wait' : ''}`}
+                              >
+                                KR
+                              </button>
+                            </div>
+                          </div>
                           <p className="text-sm text-gray-700 whitespace-pre-wrap bg-white p-3 rounded border border-gray-200 mt-1">
-                            {activity.metadata.text}
+                            {translations[activity.activity_id]?.text || activity.metadata.text}
                           </p>
+                          {translations[activity.activity_id] && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              🌐 Translated to {translations[activity.activity_id].lang === 'ko' ? 'Korean' : 'English'}
+                            </p>
+                          )}
                         </div>
                       )}
                       
