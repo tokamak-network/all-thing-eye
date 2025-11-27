@@ -184,7 +184,7 @@ async def create_recording_summary(
 
 
 # ============================================
-# Translation API (Google Translate)
+# Translation API (using Gemini)
 # ============================================
 
 class TranslationRequest(BaseModel):
@@ -206,7 +206,7 @@ async def translate_text(
     translation_request: TranslationRequest
 ):
     """
-    Translate text using Google Cloud Translation API
+    Translate text using Gemini API
     
     Supports:
     - Auto language detection
@@ -214,96 +214,60 @@ async def translate_text(
     """
     try:
         import os
-        from google.cloud import translate_v2 as translate
+        import google.generativeai as genai
         
-        # Initialize client
-        translate_client = translate.Client()
+        # Get Gemini API key from environment
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise HTTPException(
+                status_code=501,
+                detail="GEMINI_API_KEY not configured"
+            )
+        
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
         text = translation_request.text
         target = translation_request.target_language
-        source = translation_request.source_language
         
-        if source:
-            result = translate_client.translate(
-                text,
-                target_language=target,
-                source_language=source
-            )
-        else:
-            result = translate_client.translate(
-                text,
-                target_language=target
-            )
+        # Language names for prompt
+        lang_names = {
+            "ko": "Korean",
+            "en": "English",
+            "ja": "Japanese",
+            "zh": "Chinese",
+        }
+        target_name = lang_names.get(target, target)
+        
+        # Create translation prompt
+        prompt = f"""Translate the following text to {target_name}. 
+Only output the translated text, nothing else. Do not add any explanations or notes.
+
+Text to translate:
+{text}"""
+        
+        response = model.generate_content(prompt)
+        translated_text = response.text.strip()
+        
+        # Detect source language (simple heuristic)
+        def detect_language(text: str) -> str:
+            korean_chars = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
+            if korean_chars > len(text) * 0.3:
+                return "ko"
+            return "en"
+        
+        source_lang = translation_request.source_language or detect_language(text)
         
         return TranslationResponse(
             original_text=text,
-            translated_text=result["translatedText"],
-            source_language=result.get("detectedSourceLanguage", source or "unknown"),
+            translated_text=translated_text,
+            source_language=source_lang,
             target_language=target
-        )
-        
-    except ImportError:
-        logger.error("google-cloud-translate not installed")
-        raise HTTPException(
-            status_code=501, 
-            detail="Translation service not available. Install google-cloud-translate."
-        )
-    except Exception as e:
-        logger.error(f"Translation error: {e}")
-        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
-
-
-@router.get("/ai/translate/slack/{message_id}")
-async def translate_slack_message(
-    request: Request,
-    message_id: str,
-    target_language: str = Query("ko", description="Target language (ko or en)")
-):
-    """
-    Translate a Slack message by its ID
-    """
-    try:
-        from backend.main import mongo_manager
-        from google.cloud import translate_v2 as translate
-        
-        db = mongo_manager.db
-        
-        # Find the Slack message
-        message = db["slack_messages"].find_one({"_id": message_id})
-        if not message:
-            # Try with ObjectId
-            from bson import ObjectId
-            try:
-                message = db["slack_messages"].find_one({"_id": ObjectId(message_id)})
-            except:
-                pass
-        
-        if not message:
-            raise HTTPException(status_code=404, detail="Message not found")
-        
-        text = message.get("text", "")
-        if not text:
-            raise HTTPException(status_code=400, detail="Message has no text")
-        
-        # Translate
-        translate_client = translate.Client()
-        result = translate_client.translate(text, target_language=target_language)
-        
-        return TranslationResponse(
-            original_text=text,
-            translated_text=result["translatedText"],
-            source_language=result.get("detectedSourceLanguage", "unknown"),
-            target_language=target_language
         )
         
     except HTTPException:
         raise
-    except ImportError:
-        raise HTTPException(
-            status_code=501, 
-            detail="Translation service not available"
-        )
     except Exception as e:
         logger.error(f"Translation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
