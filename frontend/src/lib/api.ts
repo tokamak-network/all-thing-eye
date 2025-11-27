@@ -331,14 +331,35 @@ class ApiClient {
     return response.data;
   }
 
-  // AI Processed Data API
-  async getRecordingSummaries(params?: { source_id?: string; limit?: number; offset?: number }) {
-    const response = await this.client.get("/ai/recordings", { params });
+  // AI Processed Data API - Meetings
+  async getMeetings(params?: { 
+    search?: string; 
+    participant?: string; 
+    template?: string;
+    limit?: number; 
+    offset?: number 
+  }) {
+    const response = await this.client.get("/ai/meetings", { params });
     return response.data;
   }
 
-  async getRecordingSummary(sourceId: string) {
-    const response = await this.client.get(`/ai/recordings/${sourceId}`);
+  async getMeetingDetail(meetingId: string) {
+    const response = await this.client.get(`/ai/meetings/${meetingId}`);
+    return response.data;
+  }
+
+  async getMeetingAnalysis(meetingId: string, template: string) {
+    const response = await this.client.get(`/ai/meetings/${meetingId}/analysis/${template}`);
+    return response.data;
+  }
+
+  async getFailedRecordings(params?: { limit?: number; offset?: number }) {
+    const response = await this.client.get("/ai/failed-recordings", { params });
+    return response.data;
+  }
+
+  async getAiStats() {
+    const response = await this.client.get("/ai/stats");
     return response.data;
   }
 }

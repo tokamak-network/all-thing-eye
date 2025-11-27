@@ -58,6 +58,11 @@ export default function ActivitiesPage() {
   // Translation states
   const [translations, setTranslations] = useState<Record<string, { text: string; lang: string }>>({});
   const [translating, setTranslating] = useState<string | null>(null);
+  
+  // AI Meeting Analysis states
+  const [meetingAnalysis, setMeetingAnalysis] = useState<any>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('default');
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   // Fetch all members and Notion UUID mappings from DB (runs once on mount)
   useEffect(() => {
@@ -203,15 +208,31 @@ export default function ActivitiesPage() {
 
   const handleViewRecordingDetail = async (recordingId: string) => {
     setDetailLoading(true);
+    setAnalysisLoading(true);
     setShowTranscript(true);
+    setSelectedTemplate('default');
 
     try {
+      // Fetch original recording details
       const response = await apiClient.get(`/database/recordings/${recordingId}`);
       setRecordingDetail(response);
+      setDetailLoading(false);
+
+      // Try to fetch AI analysis (from gemini.recordings)
+      try {
+        const analysisResponse = await apiClient.getMeetingDetail(recordingId);
+        setMeetingAnalysis(analysisResponse);
+      } catch (analysisErr) {
+        // No AI analysis available, that's okay
+        console.log('No AI analysis available for this recording');
+        setMeetingAnalysis(null);
+        setSelectedTemplate('transcript');
+      }
     } catch (err: any) {
       alert('Failed to load recording details');
     } finally {
       setDetailLoading(false);
+      setAnalysisLoading(false);
     }
   };
 
@@ -872,19 +893,29 @@ export default function ActivitiesPage() {
         </div>
       )}
 
-      {/* Transcript Modal (for Recordings) */}
+      {/* Meeting Analysis Modal (for Recordings) */}
       {showTranscript && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">
-                  📹 {recordingDetail?.name || 'Loading...'}
+                  📹 {recordingDetail?.name || meetingAnalysis?.meeting_title || 'Loading...'}
                 </h2>
-                {recordingDetail && (
+                {(recordingDetail || meetingAnalysis) && (
                   <p className="text-sm text-gray-500 mt-1">
-                    By {recordingDetail.created_by} • {formatTimestamp(recordingDetail.createdTime, 'MMM dd, yyyy HH:mm')}
+                    {recordingDetail?.created_by || meetingAnalysis?.created_by || 'Unknown'} • {
+                      formatTimestamp(
+                        recordingDetail?.createdTime || meetingAnalysis?.meeting_date, 
+                        'MMM dd, yyyy HH:mm'
+                      )
+                    }
+                    {meetingAnalysis?.participants && (
+                      <span className="ml-2">
+                        • 👥 {meetingAnalysis.participants.join(', ')}
+                      </span>
+                    )}
                   </p>
                 )}
               </div>
@@ -892,6 +923,8 @@ export default function ActivitiesPage() {
                 onClick={() => {
                   setShowTranscript(false);
                   setRecordingDetail(null);
+                  setMeetingAnalysis(null);
+                  setSelectedTemplate('default');
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -901,17 +934,112 @@ export default function ActivitiesPage() {
               </button>
             </div>
 
+            {/* Template Tabs (if AI analysis available) */}
+            {meetingAnalysis?.analyses && Object.keys(meetingAnalysis.analyses).length > 0 && (
+              <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setSelectedTemplate('transcript')}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                      selectedTemplate === 'transcript'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
+                    }`}
+                  >
+                    📝 Transcript
+                  </button>
+                  {Object.keys(meetingAnalysis.analyses).map((template) => (
+                    <button
+                      key={template}
+                      onClick={() => setSelectedTemplate(template)}
+                      className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                        selectedTemplate === template
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
+                      }`}
+                    >
+                      {template === 'default' && '📊 Default'}
+                      {template === 'team_collaboration' && '🤝 Collaboration'}
+                      {template === 'action_items' && '✅ Actions'}
+                      {template === 'knowledge_base' && '📚 Knowledge'}
+                      {template === 'decision_log' && '📋 Decisions'}
+                      {template === 'quick_recap' && '⚡ Quick Recap'}
+                      {template === 'meeting_context' && '🎯 Context'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6">
-              {detailLoading ? (
-                <div className="flex items-center justify-center h-full">
+              {(detailLoading || analysisLoading) ? (
+                <div className="flex items-center justify-center h-64">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
                 </div>
-              ) : recordingDetail ? (
+              ) : selectedTemplate === 'transcript' || !meetingAnalysis?.analyses ? (
+                // Show transcript
                 <div className="prose max-w-none">
                   <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans bg-gray-50 p-4 rounded">
-                    {recordingDetail.content || 'No transcript available'}
+                    {recordingDetail?.content || meetingAnalysis?.content || 'No transcript available'}
                   </pre>
+                </div>
+              ) : meetingAnalysis?.analyses[selectedTemplate] ? (
+                // Show AI analysis
+                <div className="space-y-4">
+                  {/* Analysis Status */}
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <span className={`px-2 py-0.5 rounded ${
+                      meetingAnalysis.analyses[selectedTemplate].status === 'success' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {meetingAnalysis.analyses[selectedTemplate].status}
+                    </span>
+                    <span>•</span>
+                    <span>🤖 {meetingAnalysis.analyses[selectedTemplate].model_used || 'Gemini'}</span>
+                    {meetingAnalysis.analyses[selectedTemplate].total_statements && (
+                      <>
+                        <span>•</span>
+                        <span>💬 {meetingAnalysis.analyses[selectedTemplate].total_statements} statements</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Participant Stats */}
+                  {meetingAnalysis.analyses[selectedTemplate].participant_stats && (
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <h4 className="font-medium text-blue-900 mb-2">👥 Participant Stats</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {Object.entries(meetingAnalysis.analyses[selectedTemplate].participant_stats).map(([name, stats]: [string, any]) => (
+                          <div key={name} className="bg-white rounded p-2 text-sm">
+                            <p className="font-medium text-gray-900">{name}</p>
+                            <p className="text-gray-500">
+                              {stats.speak_count || 0} speaks • {stats.total_words || 0} words
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Analysis Content */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 mb-3">
+                      {selectedTemplate === 'default' && '📊 Analysis'}
+                      {selectedTemplate === 'team_collaboration' && '🤝 Team Collaboration Analysis'}
+                      {selectedTemplate === 'action_items' && '✅ Action Items'}
+                      {selectedTemplate === 'knowledge_base' && '📚 Knowledge Base Entry'}
+                      {selectedTemplate === 'decision_log' && '📋 Decision Log'}
+                      {selectedTemplate === 'quick_recap' && '⚡ Quick Recap'}
+                      {selectedTemplate === 'meeting_context' && '🎯 Meeting Context'}
+                    </h4>
+                    <div className="prose max-w-none">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                        {meetingAnalysis.analyses[selectedTemplate].analysis || 'No analysis available'}
+                      </pre>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <p className="text-gray-500 text-center">No content available</p>
@@ -919,18 +1047,27 @@ export default function ActivitiesPage() {
             </div>
 
             {/* Modal Footer */}
-            {recordingDetail && recordingDetail.webViewLink && (
-              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
-                <a
-                  href={recordingDetail.webViewLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Open in Google Docs →
-                </a>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
+              <div className="text-sm text-gray-500">
+                {meetingAnalysis?.analyses && (
+                  <span>
+                    {Object.keys(meetingAnalysis.analyses).length} AI analyses available
+                  </span>
+                )}
               </div>
-            )}
+              <div className="flex gap-2">
+                {(recordingDetail?.webViewLink || meetingAnalysis?.web_view_link) && (
+                  <a
+                    href={recordingDetail?.webViewLink || meetingAnalysis?.web_view_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Open in Google Docs →
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

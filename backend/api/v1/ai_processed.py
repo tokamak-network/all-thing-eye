@@ -5,9 +5,10 @@ Provides endpoints for AI-processed data (Gemini summaries, translations, etc.)
 """
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
+from bson import ObjectId
 
 from src.utils.logger import get_logger
 
@@ -17,169 +18,392 @@ router = APIRouter()
 
 
 # ============================================
-# Gemini Recordings (AI Summaries)
+# Pydantic Models
 # ============================================
 
-class RecordingSummary(BaseModel):
-    """Recording summary document"""
-    source_id: str  # Original document _id from source collection
-    source_collection: str  # e.g., "drive_files", "drive_activities"
-    title: str
-    summary: str
-    summary_kr: Optional[str] = None  # Korean translation
-    key_points: Optional[List[str]] = None
-    participants: Optional[List[str]] = None
-    duration_minutes: Optional[int] = None
-    language: Optional[str] = None  # Detected language
-    processed_at: Optional[datetime] = None
-    model: Optional[str] = "gemini-1.5-flash"  # Model used
-
-
-class RecordingSummaryResponse(BaseModel):
+class MeetingAnalysis(BaseModel):
+    """Individual analysis result for a meeting"""
     id: str
-    source_id: str
-    source_collection: str
-    title: str
-    summary: str
-    summary_kr: Optional[str] = None
-    key_points: Optional[List[str]] = None
-    participants: Optional[List[str]] = None
-    duration_minutes: Optional[int] = None
-    language: Optional[str] = None
-    processed_at: Optional[str] = None
-    model: Optional[str] = None
+    meeting_id: str
+    meeting_title: str
+    meeting_date: Optional[str] = None
+    participants: List[str] = []
+    template_used: str
+    status: str
+    analysis: str
+    participant_stats: Optional[Dict[str, Any]] = None
+    model_used: Optional[str] = None
+    timestamp: Optional[str] = None
+    total_statements: Optional[int] = None
 
 
-@router.get("/ai/recordings", response_model=List[RecordingSummaryResponse])
-async def get_recording_summaries(
+class MeetingSummary(BaseModel):
+    """Meeting summary with all analysis types"""
+    id: str
+    meeting_id: str
+    meeting_title: str
+    meeting_date: Optional[str] = None
+    participants: List[str] = []
+    web_view_link: Optional[str] = None
+    content_preview: Optional[str] = None
+    created_by: Optional[str] = None
+    analyses: Dict[str, MeetingAnalysis] = {}  # template_used -> analysis
+
+
+class MeetingListResponse(BaseModel):
+    """List of meetings with pagination"""
+    total: int
+    meetings: List[MeetingSummary]
+    limit: int
+    offset: int
+
+
+class FailedRecording(BaseModel):
+    """Failed recording document"""
+    id: str
+    name: str
+    web_view_link: Optional[str] = None
+    created_time: Optional[str] = None
+    created_by: Optional[str] = None
+    content_preview: Optional[str] = None
+
+
+# ============================================
+# Helper functions
+# ============================================
+
+def get_gemini_db():
+    """Get gemini database connection"""
+    from backend.main import mongo_manager
+    client = mongo_manager.client
+    return client["gemini"]
+
+
+def get_shared_db():
+    """Get shared database connection"""
+    from backend.main import mongo_manager
+    client = mongo_manager.client
+    return client["shared"]
+
+
+# ============================================
+# Meetings API (gemini.recordings + shared.recordings)
+# ============================================
+
+@router.get("/ai/meetings", response_model=MeetingListResponse)
+async def get_meetings(
     request: Request,
-    source_id: Optional[str] = Query(None, description="Filter by source document ID"),
-    limit: int = Query(50, ge=1, le=500),
+    search: Optional[str] = Query(None, description="Search in title or participants"),
+    participant: Optional[str] = Query(None, description="Filter by participant"),
+    template: Optional[str] = Query(None, description="Filter by template type"),
+    limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0)
 ):
     """
-    Get AI-processed recording summaries
+    Get list of meetings with AI analyses from gemini.recordings
     """
     try:
-        from backend.main import mongo_manager
-        db = mongo_manager.db
+        gemini_db = get_gemini_db()
+        shared_db = get_shared_db()
         
-        collection = db["gemini_recordings"]
+        # Build aggregation pipeline to get unique meetings
+        match_stage: Dict[str, Any] = {}
+        if search:
+            match_stage["$or"] = [
+                {"meeting_title": {"$regex": search, "$options": "i"}},
+                {"participants": {"$regex": search, "$options": "i"}}
+            ]
+        if participant:
+            match_stage["participants"] = {"$regex": participant, "$options": "i"}
+        if template:
+            match_stage["analysis.template_used"] = template
         
-        query = {}
-        if source_id:
-            query["source_id"] = source_id
+        # Get unique meeting_ids with their analyses
+        pipeline = [
+            {"$match": match_stage} if match_stage else {"$match": {}},
+            {"$sort": {"meeting_date": -1}},
+            {"$group": {
+                "_id": "$meeting_id",
+                "meeting_title": {"$first": "$meeting_title"},
+                "meeting_date": {"$first": "$meeting_date"},
+                "participants": {"$first": "$participants"},
+                "analyses": {"$push": {
+                    "id": {"$toString": "$_id"},
+                    "template_used": "$analysis.template_used",
+                    "status": "$analysis.status",
+                    "analysis": "$analysis.analysis",
+                    "participant_stats": "$analysis.participant_stats",
+                    "model_used": "$analysis.model_used",
+                    "timestamp": "$analysis.timestamp",
+                    "total_statements": "$analysis.total_statements"
+                }}
+            }},
+            {"$sort": {"meeting_date": -1}},
+            {"$skip": offset},
+            {"$limit": limit}
+        ]
         
-        cursor = collection.find(query).sort("processed_at", -1).skip(offset).limit(limit)
+        # Get total count
+        count_pipeline = [
+            {"$match": match_stage} if match_stage else {"$match": {}},
+            {"$group": {"_id": "$meeting_id"}},
+            {"$count": "total"}
+        ]
+        count_result = list(gemini_db["recordings"].aggregate(count_pipeline))
+        total = count_result[0]["total"] if count_result else 0
+        
+        # Execute main pipeline
+        results = list(gemini_db["recordings"].aggregate(pipeline))
+        
+        # Build response with shared.recordings data
+        meetings = []
+        for r in results:
+            meeting_id = r["_id"]
+            
+            # Get original recording from shared.recordings
+            shared_recording = None
+            if meeting_id:
+                try:
+                    shared_recording = shared_db["recordings"].find_one({"_id": ObjectId(meeting_id)})
+                except:
+                    pass
+            
+            # Build analyses dict by template
+            analyses_dict = {}
+            for a in r.get("analyses", []):
+                template_name = a.get("template_used", "default")
+                analyses_dict[template_name] = MeetingAnalysis(
+                    id=a.get("id", ""),
+                    meeting_id=str(meeting_id) if meeting_id else "",
+                    meeting_title=r.get("meeting_title", ""),
+                    meeting_date=r.get("meeting_date").isoformat() if r.get("meeting_date") else None,
+                    participants=r.get("participants", []),
+                    template_used=template_name,
+                    status=a.get("status", ""),
+                    analysis=a.get("analysis", "")[:500] + "..." if len(a.get("analysis", "")) > 500 else a.get("analysis", ""),
+                    participant_stats=a.get("participant_stats"),
+                    model_used=a.get("model_used"),
+                    timestamp=a.get("timestamp"),
+                    total_statements=a.get("total_statements")
+                )
+            
+            meetings.append(MeetingSummary(
+                id=str(meeting_id) if meeting_id else "",
+                meeting_id=str(meeting_id) if meeting_id else "",
+                meeting_title=r.get("meeting_title", ""),
+                meeting_date=r.get("meeting_date").isoformat() if r.get("meeting_date") else None,
+                participants=r.get("participants", []),
+                web_view_link=shared_recording.get("webViewLink") if shared_recording else None,
+                content_preview=shared_recording.get("content", "")[:200] if shared_recording else None,
+                created_by=shared_recording.get("created_by") if shared_recording else None,
+                analyses=analyses_dict
+            ))
+        
+        return MeetingListResponse(
+            total=total,
+            meetings=meetings,
+            limit=limit,
+            offset=offset
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching meetings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ai/meetings/{meeting_id}")
+async def get_meeting_detail(
+    request: Request,
+    meeting_id: str
+):
+    """
+    Get detailed meeting info with all AI analyses
+    """
+    try:
+        gemini_db = get_gemini_db()
+        shared_db = get_shared_db()
+        
+        # Get all analyses for this meeting
+        try:
+            analyses = list(gemini_db["recordings"].find({"meeting_id": ObjectId(meeting_id)}))
+        except:
+            analyses = list(gemini_db["recordings"].find({"meeting_id": meeting_id}))
+        
+        if not analyses:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        
+        # Get original recording from shared
+        try:
+            shared_recording = shared_db["recordings"].find_one({"_id": ObjectId(meeting_id)})
+        except:
+            shared_recording = None
+        
+        # Build response
+        first = analyses[0]
+        analyses_dict = {}
+        for a in analyses:
+            template_name = a.get("analysis", {}).get("template_used", "default")
+            analysis_data = a.get("analysis", {})
+            analyses_dict[template_name] = {
+                "id": str(a["_id"]),
+                "template_used": template_name,
+                "status": analysis_data.get("status", ""),
+                "analysis": analysis_data.get("analysis", ""),
+                "participant_stats": analysis_data.get("participant_stats"),
+                "model_used": analysis_data.get("model_used"),
+                "timestamp": analysis_data.get("timestamp"),
+                "total_statements": analysis_data.get("total_statements")
+            }
+        
+        return {
+            "id": meeting_id,
+            "meeting_title": first.get("meeting_title", ""),
+            "meeting_date": first.get("meeting_date").isoformat() if first.get("meeting_date") else None,
+            "participants": first.get("participants", []),
+            "web_view_link": shared_recording.get("webViewLink") if shared_recording else None,
+            "content": shared_recording.get("content") if shared_recording else None,
+            "created_by": shared_recording.get("created_by") if shared_recording else None,
+            "analyses": analyses_dict
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching meeting detail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ai/meetings/{meeting_id}/analysis/{template}")
+async def get_meeting_analysis(
+    request: Request,
+    meeting_id: str,
+    template: str
+):
+    """
+    Get specific analysis for a meeting by template type
+    
+    Templates: default, team_collaboration, action_items, knowledge_base, 
+               decision_log, quick_recap, meeting_context
+    """
+    try:
+        gemini_db = get_gemini_db()
+        
+        # Find the specific analysis
+        try:
+            query = {
+                "meeting_id": ObjectId(meeting_id),
+                "analysis.template_used": template
+            }
+        except:
+            query = {
+                "meeting_id": meeting_id,
+                "analysis.template_used": template
+            }
+        
+        doc = gemini_db["recordings"].find_one(query)
+        
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Analysis not found for template: {template}")
+        
+        analysis = doc.get("analysis", {})
+        
+        return {
+            "id": str(doc["_id"]),
+            "meeting_id": meeting_id,
+            "meeting_title": doc.get("meeting_title", ""),
+            "meeting_date": doc.get("meeting_date").isoformat() if doc.get("meeting_date") else None,
+            "participants": doc.get("participants", []),
+            "template_used": template,
+            "status": analysis.get("status", ""),
+            "analysis": analysis.get("analysis", ""),
+            "participant_stats": analysis.get("participant_stats"),
+            "model_used": analysis.get("model_used"),
+            "timestamp": analysis.get("timestamp"),
+            "total_statements": analysis.get("total_statements")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching meeting analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# Failed Recordings API
+# ============================================
+
+@router.get("/ai/failed-recordings", response_model=List[FailedRecording])
+async def get_failed_recordings(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+):
+    """
+    Get list of failed recordings from shared.failed_recordings
+    """
+    try:
+        shared_db = get_shared_db()
+        
+        cursor = shared_db["failed_recordings"].find().skip(offset).limit(limit)
         
         results = []
         for doc in cursor:
-            results.append(RecordingSummaryResponse(
+            results.append(FailedRecording(
                 id=str(doc["_id"]),
-                source_id=doc.get("source_id", ""),
-                source_collection=doc.get("source_collection", ""),
-                title=doc.get("title", ""),
-                summary=doc.get("summary", ""),
-                summary_kr=doc.get("summary_kr"),
-                key_points=doc.get("key_points"),
-                participants=doc.get("participants"),
-                duration_minutes=doc.get("duration_minutes"),
-                language=doc.get("language"),
-                processed_at=doc.get("processed_at").isoformat() if doc.get("processed_at") else None,
-                model=doc.get("model")
+                name=doc.get("name", ""),
+                web_view_link=doc.get("webViewLink"),
+                created_time=doc.get("createdTime"),
+                created_by=doc.get("created_by"),
+                content_preview=doc.get("content", "")[:200] if doc.get("content") else None
             ))
         
         return results
         
     except Exception as e:
-        logger.error(f"Error fetching recording summaries: {e}")
+        logger.error(f"Error fetching failed recordings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/ai/recordings/{source_id}", response_model=RecordingSummaryResponse)
-async def get_recording_summary_by_source(
-    request: Request,
-    source_id: str
-):
+# ============================================
+# Stats API
+# ============================================
+
+@router.get("/ai/stats")
+async def get_ai_stats(request: Request):
     """
-    Get AI-processed recording summary by source document ID
+    Get AI processing statistics
     """
     try:
-        from backend.main import mongo_manager
-        db = mongo_manager.db
+        gemini_db = get_gemini_db()
+        shared_db = get_shared_db()
         
-        collection = db["gemini_recordings"]
-        doc = collection.find_one({"source_id": source_id})
+        # Count unique meetings
+        unique_meetings = len(gemini_db["recordings"].distinct("meeting_id"))
         
-        if not doc:
-            raise HTTPException(status_code=404, detail="Recording summary not found")
+        # Count by template
+        template_stats = list(gemini_db["recordings"].aggregate([
+            {"$group": {"_id": "$analysis.template_used", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}}
+        ]))
         
-        return RecordingSummaryResponse(
-            id=str(doc["_id"]),
-            source_id=doc.get("source_id", ""),
-            source_collection=doc.get("source_collection", ""),
-            title=doc.get("title", ""),
-            summary=doc.get("summary", ""),
-            summary_kr=doc.get("summary_kr"),
-            key_points=doc.get("key_points"),
-            participants=doc.get("participants"),
-            duration_minutes=doc.get("duration_minutes"),
-            language=doc.get("language"),
-            processed_at=doc.get("processed_at").isoformat() if doc.get("processed_at") else None,
-            model=doc.get("model")
-        )
+        # Failed recordings count
+        failed_count = shared_db["failed_recordings"].count_documents({})
         
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching recording summary: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/ai/recordings", response_model=RecordingSummaryResponse)
-async def create_recording_summary(
-    request: Request,
-    summary: RecordingSummary
-):
-    """
-    Create or update an AI-processed recording summary
-    """
-    try:
-        from backend.main import mongo_manager
-        db = mongo_manager.db
+        # Original recordings count
+        original_count = shared_db["recordings"].count_documents({})
         
-        collection = db["gemini_recordings"]
-        
-        doc = summary.model_dump()
-        doc["processed_at"] = datetime.utcnow()
-        
-        # Upsert by source_id
-        result = collection.update_one(
-            {"source_id": summary.source_id},
-            {"$set": doc},
-            upsert=True
-        )
-        
-        # Get the updated/inserted document
-        updated_doc = collection.find_one({"source_id": summary.source_id})
-        
-        return RecordingSummaryResponse(
-            id=str(updated_doc["_id"]),
-            source_id=updated_doc.get("source_id", ""),
-            source_collection=updated_doc.get("source_collection", ""),
-            title=updated_doc.get("title", ""),
-            summary=updated_doc.get("summary", ""),
-            summary_kr=updated_doc.get("summary_kr"),
-            key_points=updated_doc.get("key_points"),
-            participants=updated_doc.get("participants"),
-            duration_minutes=updated_doc.get("duration_minutes"),
-            language=updated_doc.get("language"),
-            processed_at=updated_doc.get("processed_at").isoformat() if updated_doc.get("processed_at") else None,
-            model=updated_doc.get("model")
-        )
+        return {
+            "total_meetings": unique_meetings,
+            "total_analyses": gemini_db["recordings"].count_documents({}),
+            "original_recordings": original_count,
+            "failed_recordings": failed_count,
+            "templates": {t["_id"]: t["count"] for t in template_stats if t["_id"]},
+            "success_rate": round((unique_meetings / (unique_meetings + failed_count)) * 100, 1) if (unique_meetings + failed_count) > 0 else 0
+        }
         
     except Exception as e:
-        logger.error(f"Error creating recording summary: {e}")
+        logger.error(f"Error fetching AI stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -270,4 +494,3 @@ Text to translate:
     except Exception as e:
         logger.error(f"Translation error: {e}")
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
-
