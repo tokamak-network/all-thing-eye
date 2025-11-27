@@ -31,6 +31,7 @@ google-api-python-client==2.108.0  # Google Drive & Admin SDK
 google-auth==2.25.2      # Google OAuth2 authentication
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.0
+google-generativeai==0.8.3  # Gemini AI for translation
 
 # Utilities
 python-dotenv==1.0.0

@@ -57,6 +57,9 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: /app/config/google_drive/credentials.json
       GOOGLE_ADMIN_EMAIL: ${GOOGLE_ADMIN_EMAIL}
       
+      # Gemini AI (Translation)
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      
       # Admin Addresses (comma-separated)
       ADMIN_ADDRESSES: ${ADMIN_ADDRESSES}
     volumes:
