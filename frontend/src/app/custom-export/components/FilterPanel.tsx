@@ -285,6 +285,7 @@ export default function FilterPanel({
           <div className="mt-6 pt-4 border-t border-gray-200">
             <p className="text-xs font-medium text-gray-700 mb-2">Quick Presets:</p>
             <div className="grid grid-cols-3 gap-2">
+              {/* Last Week: 7 days ago to today */}
               <button
                 onClick={() => {
                   const today = new Date();
@@ -300,29 +301,27 @@ export default function FilterPanel({
               >
                 Last Week
               </button>
+              {/* Last Month: 1st to last day of previous month */}
               <button
                 onClick={() => {
                   const today = new Date();
-                  const lastMonth = new Date(today);
-                  lastMonth.setMonth(today.getMonth() - 1);
+                  const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                  const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
                   onFiltersChange({
                     ...filters,
-                    startDate: lastMonth.toISOString().split("T")[0],
-                    endDate: today.toISOString().split("T")[0],
+                    startDate: firstDayLastMonth.toISOString().split("T")[0],
+                    endDate: lastDayLastMonth.toISOString().split("T")[0],
                   });
                 }}
                 className="text-xs px-2 py-1.5 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 transition-colors"
               >
                 Last Month
               </button>
+              {/* This Month: 1st of current month to today */}
               <button
                 onClick={() => {
                   const today = new Date();
-                  const thisMonth = new Date(
-                    today.getFullYear(),
-                    today.getMonth(),
-                    1
-                  );
+                  const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
                   onFiltersChange({
                     ...filters,
                     startDate: thisMonth.toISOString().split("T")[0],
@@ -332,6 +331,43 @@ export default function FilterPanel({
                 className="text-xs px-2 py-1.5 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 transition-colors"
               >
                 This Month
+              </button>
+              {/* Last Quarter: Previous 3 months (Q1=1-3, Q2=4-6, Q3=7-9, Q4=10-12) */}
+              <button
+                onClick={() => {
+                  const today = new Date();
+                  const currentQuarter = Math.floor(today.getMonth() / 3);
+                  const lastQuarterStart = currentQuarter === 0 
+                    ? new Date(today.getFullYear() - 1, 9, 1)  // Q4 of last year
+                    : new Date(today.getFullYear(), (currentQuarter - 1) * 3, 1);
+                  const lastQuarterEnd = currentQuarter === 0
+                    ? new Date(today.getFullYear() - 1, 12, 0)  // Dec 31 of last year
+                    : new Date(today.getFullYear(), currentQuarter * 3, 0);
+                  onFiltersChange({
+                    ...filters,
+                    startDate: lastQuarterStart.toISOString().split("T")[0],
+                    endDate: lastQuarterEnd.toISOString().split("T")[0],
+                  });
+                }}
+                className="text-xs px-2 py-1.5 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 transition-colors"
+              >
+                Last Quarter
+              </button>
+              {/* This Quarter: 1st of quarter start month to today */}
+              <button
+                onClick={() => {
+                  const today = new Date();
+                  const currentQuarter = Math.floor(today.getMonth() / 3);
+                  const thisQuarterStart = new Date(today.getFullYear(), currentQuarter * 3, 1);
+                  onFiltersChange({
+                    ...filters,
+                    startDate: thisQuarterStart.toISOString().split("T")[0],
+                    endDate: today.toISOString().split("T")[0],
+                  });
+                }}
+                className="text-xs px-2 py-1.5 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 transition-colors"
+              >
+                This Quarter
               </button>
             </div>
           </div>
