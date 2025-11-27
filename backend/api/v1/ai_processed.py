@@ -23,6 +23,8 @@ router = APIRouter()
 
 class MeetingAnalysis(BaseModel):
     """Individual analysis result for a meeting"""
+    model_config = {"protected_namespaces": ()}
+    
     id: str
     meeting_id: str
     meeting_title: str
@@ -75,15 +77,17 @@ class FailedRecording(BaseModel):
 def get_gemini_db():
     """Get gemini database connection"""
     from backend.main import mongo_manager
-    client = mongo_manager.client
-    return client["gemini"]
+    # Access underlying sync client to get gemini database
+    if mongo_manager._sync_client is None:
+        mongo_manager.connect_sync()
+    return mongo_manager._sync_client["gemini"]
 
 
 def get_shared_db():
     """Get shared database connection"""
     from backend.main import mongo_manager
-    client = mongo_manager.client
-    return client["shared"]
+    # Use the shared_db property which connects to 'shared' database
+    return mongo_manager.shared_db
 
 
 # ============================================
@@ -218,48 +222,84 @@ async def get_meeting_detail(
 ):
     """
     Get detailed meeting info with all AI analyses
+    
+    meeting_id can be:
+    - MongoDB ObjectId (from shared.recordings._id)
+    - Google Drive document ID (from shared.recordings.id)
     """
     try:
         gemini_db = get_gemini_db()
         shared_db = get_shared_db()
         
-        # Get all analyses for this meeting
-        try:
-            analyses = list(gemini_db["recordings"].find({"meeting_id": ObjectId(meeting_id)}))
-        except:
-            analyses = list(gemini_db["recordings"].find({"meeting_id": meeting_id}))
+        # First, try to find the shared recording by different IDs
+        shared_recording = None
+        actual_meeting_id = None
         
-        if not analyses:
-            raise HTTPException(status_code=404, detail="Meeting not found")
-        
-        # Get original recording from shared
+        # Try as MongoDB ObjectId first
         try:
             shared_recording = shared_db["recordings"].find_one({"_id": ObjectId(meeting_id)})
+            if shared_recording:
+                actual_meeting_id = shared_recording["_id"]
         except:
-            shared_recording = None
+            pass
+        
+        # If not found, try as Google Drive ID
+        if not shared_recording:
+            shared_recording = shared_db["recordings"].find_one({"id": meeting_id})
+            if shared_recording:
+                actual_meeting_id = shared_recording["_id"]
+        
+        # Get all analyses for this meeting
+        # Note: gemini.recordings stores meeting_id as string, not ObjectId
+        analyses = []
+        if actual_meeting_id:
+            # Try both string and ObjectId formats
+            analyses = list(gemini_db["recordings"].find({"meeting_id": str(actual_meeting_id)}))
+            if not analyses:
+                analyses = list(gemini_db["recordings"].find({"meeting_id": actual_meeting_id}))
+        
+        # If still no analyses, try with the original meeting_id as string
+        if not analyses:
+            analyses = list(gemini_db["recordings"].find({"meeting_id": meeting_id}))
+        
+        if not analyses and not shared_recording:
+            raise HTTPException(status_code=404, detail="Meeting not found")
         
         # Build response
-        first = analyses[0]
         analyses_dict = {}
-        for a in analyses:
-            template_name = a.get("analysis", {}).get("template_used", "default")
-            analysis_data = a.get("analysis", {})
-            analyses_dict[template_name] = {
-                "id": str(a["_id"]),
-                "template_used": template_name,
-                "status": analysis_data.get("status", ""),
-                "analysis": analysis_data.get("analysis", ""),
-                "participant_stats": analysis_data.get("participant_stats"),
-                "model_used": analysis_data.get("model_used"),
-                "timestamp": analysis_data.get("timestamp"),
-                "total_statements": analysis_data.get("total_statements")
-            }
+        meeting_title = ""
+        meeting_date = None
+        participants = []
+        
+        if analyses:
+            first = analyses[0]
+            meeting_title = first.get("meeting_title", "")
+            meeting_date = first.get("meeting_date")
+            participants = first.get("participants", [])
+            
+            for a in analyses:
+                template_name = a.get("analysis", {}).get("template_used", "default")
+                analysis_data = a.get("analysis", {})
+                analyses_dict[template_name] = {
+                    "id": str(a["_id"]),
+                    "template_used": template_name,
+                    "status": analysis_data.get("status", ""),
+                    "analysis": analysis_data.get("analysis", ""),
+                    "participant_stats": analysis_data.get("participant_stats"),
+                    "model_used": analysis_data.get("model_used"),
+                    "timestamp": analysis_data.get("timestamp"),
+                    "total_statements": analysis_data.get("total_statements")
+                }
+        elif shared_recording:
+            # No AI analyses but we have the original recording
+            meeting_title = shared_recording.get("name", "")
+            meeting_date = shared_recording.get("createdTime")
         
         return {
             "id": meeting_id,
-            "meeting_title": first.get("meeting_title", ""),
-            "meeting_date": first.get("meeting_date").isoformat() if first.get("meeting_date") else None,
-            "participants": first.get("participants", []),
+            "meeting_title": meeting_title,
+            "meeting_date": meeting_date.isoformat() if hasattr(meeting_date, 'isoformat') else meeting_date,
+            "participants": participants,
             "web_view_link": shared_recording.get("webViewLink") if shared_recording else None,
             "content": shared_recording.get("content") if shared_recording else None,
             "created_by": shared_recording.get("created_by") if shared_recording else None,
