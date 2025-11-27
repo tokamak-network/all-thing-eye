@@ -81,6 +81,14 @@ export default function FilterPanel({
     });
   };
 
+  // Format date as YYYY-MM-DD in local timezone (not UTC)
+  const formatDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const handleMemberToggle = (memberName: string) => {
     const currentSelected = filters.selectedMembers || [];
     const newSelected = currentSelected.includes(memberName)
@@ -156,8 +164,8 @@ export default function FilterPanel({
                     lastWeek.setDate(today.getDate() - 7);
                     onFiltersChange({
                       ...filters,
-                      startDate: lastWeek.toISOString().split("T")[0],
-                      endDate: today.toISOString().split("T")[0],
+                      startDate: formatDate(lastWeek),
+                      endDate: formatDate(today),
                     });
                   }}
                   className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
@@ -171,8 +179,8 @@ export default function FilterPanel({
                     const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
                     onFiltersChange({
                       ...filters,
-                      startDate: firstDayLastMonth.toISOString().split("T")[0],
-                      endDate: lastDayLastMonth.toISOString().split("T")[0],
+                      startDate: formatDate(firstDayLastMonth),
+                      endDate: formatDate(lastDayLastMonth),
                     });
                   }}
                   className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
@@ -185,8 +193,8 @@ export default function FilterPanel({
                     const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
                     onFiltersChange({
                       ...filters,
-                      startDate: thisMonth.toISOString().split("T")[0],
-                      endDate: today.toISOString().split("T")[0],
+                      startDate: formatDate(thisMonth),
+                      endDate: formatDate(today),
                     });
                   }}
                   className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
@@ -205,8 +213,8 @@ export default function FilterPanel({
                       : new Date(today.getFullYear(), currentQuarter * 3, 0);
                     onFiltersChange({
                       ...filters,
-                      startDate: lastQuarterStart.toISOString().split("T")[0],
-                      endDate: lastQuarterEnd.toISOString().split("T")[0],
+                      startDate: formatDate(lastQuarterStart),
+                      endDate: formatDate(lastQuarterEnd),
                     });
                   }}
                   className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
@@ -220,8 +228,8 @@ export default function FilterPanel({
                     const thisQuarterStart = new Date(today.getFullYear(), currentQuarter * 3, 1);
                     onFiltersChange({
                       ...filters,
-                      startDate: thisQuarterStart.toISOString().split("T")[0],
-                      endDate: today.toISOString().split("T")[0],
+                      startDate: formatDate(thisQuarterStart),
+                      endDate: formatDate(today),
                     });
                   }}
                   className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
