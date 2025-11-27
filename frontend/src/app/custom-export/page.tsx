@@ -6,6 +6,7 @@ import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
 import AIChatPanel from "./components/AIChatPanel";
 import NotionExportPanel from "./components/NotionExportPanel";
+import { api } from "@/lib/api";
 
 export default function CustomExportPage() {
   const [activeTab, setActiveTab] = useState<"custom" | "notion">("notion");
@@ -19,10 +20,13 @@ export default function CustomExportPage() {
 
   const [filters, setFilters] = useState({
     startDate: "2025-11-01",
-    endDate: "2025-11-07",
+    endDate: "2025-11-27",
     project: "all",
     selectedMembers: [] as string[],
   });
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleFieldToggle = (fieldId: string) => {
     setSelectedFields((prev) =>
@@ -33,13 +37,49 @@ export default function CustomExportPage() {
   };
 
   const handlePreview = () => {
-    console.log("Preview clicked", { selectedFields, filters });
-    // TODO: Fetch data from API
+    // Preview is now just showing the summary, no API call needed
+    console.log("Current configuration:", { selectedFields, filters });
   };
 
-  const handleExport = () => {
-    console.log("Export clicked", { selectedFields, filters });
-    // TODO: Export as CSV
+  const handleExport = async () => {
+    if (filters.selectedMembers.length === 0) {
+      setError("Please select at least one member");
+      return;
+    }
+    if (selectedFields.length === 0) {
+      setError("Please select at least one data field");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const blob = await api.downloadCustomExportCsv({
+        selected_members: filters.selectedMembers,
+        start_date: filters.startDate,
+        end_date: filters.endDate,
+        project: filters.project !== "all" ? filters.project : undefined,
+        selected_fields: selectedFields,
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `custom_export_${filters.startDate}_${filters.endDate}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      console.error("Export error:", err);
+      setError(
+        err.response?.data?.detail || err.message || "Failed to export data"
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSaveTemplate = () => {
@@ -58,11 +98,13 @@ export default function CustomExportPage() {
               🚧 To Be Developed (TBD)
             </h3>
             <p className="text-sm text-blue-800 mb-2">
-              This feature is currently under development and will be available in a future release.
+              This feature is currently under development and will be available
+              in a future release.
             </p>
             <p className="text-sm text-blue-700">
-              <strong>What&apos;s Coming:</strong> Advanced custom data export builder with AI-powered field selection, 
-              multi-source data integration, and template saving functionality.
+              <strong>What&apos;s Coming:</strong> Advanced custom data export
+              builder with AI-powered field selection, multi-source data
+              integration, and template saving functionality.
             </p>
           </div>
         </div>
@@ -130,10 +172,18 @@ export default function CustomExportPage() {
                 onPreview={handlePreview}
                 onExport={handleExport}
                 onSaveTemplate={handleSaveTemplate}
+                isLoading={isLoading}
               />
 
-              {/* Preview Table */}
-              <PreviewTable selectedFields={selectedFields} />
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+                  ❌ {error}
+                </div>
+              )}
+
+              {/* Export Configuration Summary */}
+              <PreviewTable selectedFields={selectedFields} filters={filters} />
 
               {/* AI Chat Panel */}
               <AIChatPanel selectedFields={selectedFields} filters={filters} />

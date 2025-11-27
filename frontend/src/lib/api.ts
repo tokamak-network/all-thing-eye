@@ -23,7 +23,7 @@ class ApiClient {
     this.client.interceptors.request.use(
       (config) => {
         // Add JWT token to all requests (except /auth/login)
-        if (!config.url?.includes('/auth/login')) {
+        if (!config.url?.includes("/auth/login")) {
           const authHeader = getAuthHeader();
           if (authHeader) {
             config.headers.Authorization = authHeader;
@@ -42,10 +42,10 @@ class ApiClient {
       (error) => {
         // Handle 401 Unauthorized - clear token and redirect to login
         if (error.response?.status === 401) {
-          console.warn('🔒 Authentication failed - clearing token');
+          console.warn("🔒 Authentication failed - clearing token");
           clearToken();
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
+          if (typeof window !== "undefined") {
+            window.location.href = "/login";
           }
         }
         console.error("API Error:", error.response?.data || error.message);
@@ -95,16 +95,22 @@ class ApiClient {
     return response.data;
   }
 
-  async updateMember(memberId: string, memberData: {
-    name?: string;
-    email?: string;
-    github_id?: string;
-    slack_id?: string;
-    notion_id?: string;
-    role?: string;
-    project?: string;
-  }) {
-    const response = await this.client.patch(`/members/${memberId}`, memberData);
+  async updateMember(
+    memberId: string,
+    memberData: {
+      name?: string;
+      email?: string;
+      github_id?: string;
+      slack_id?: string;
+      notion_id?: string;
+      role?: string;
+      project?: string;
+    }
+  ) {
+    const response = await this.client.patch(
+      `/members/${memberId}`,
+      memberData
+    );
     return response.data;
   }
 
@@ -322,7 +328,11 @@ class ApiClient {
   }
 
   // Translation API
-  async translateText(text: string, targetLanguage: string = "ko", sourceLanguage?: string) {
+  async translateText(
+    text: string,
+    targetLanguage: string = "ko",
+    sourceLanguage?: string
+  ) {
     const response = await this.client.post("/ai/translate", {
       text,
       target_language: targetLanguage,
@@ -332,12 +342,12 @@ class ApiClient {
   }
 
   // AI Processed Data API - Meetings
-  async getMeetings(params?: { 
-    search?: string; 
-    participant?: string; 
+  async getMeetings(params?: {
+    search?: string;
+    participant?: string;
     template?: string;
-    limit?: number; 
-    offset?: number 
+    limit?: number;
+    offset?: number;
   }) {
     const response = await this.client.get("/ai/meetings", { params });
     return response.data;
@@ -349,7 +359,9 @@ class ApiClient {
   }
 
   async getMeetingAnalysis(meetingId: string, template: string) {
-    const response = await this.client.get(`/ai/meetings/${meetingId}/analysis/${template}`);
+    const response = await this.client.get(
+      `/ai/meetings/${meetingId}/analysis/${template}`
+    );
     return response.data;
   }
 
@@ -360,6 +372,38 @@ class ApiClient {
 
   async getAiStats() {
     const response = await this.client.get("/ai/stats");
+    return response.data;
+  }
+
+  // Custom Export API
+  async getCustomExportPreview(params: {
+    selected_members?: string[];
+    start_date?: string;
+    end_date?: string;
+    project?: string;
+    selected_fields?: string[];
+    limit?: number;
+    offset?: number;
+  }) {
+    const response = await this.client.post("/custom-export/preview", params);
+    return response.data;
+  }
+
+  async getCustomExportMembers() {
+    const response = await this.client.get("/custom-export/members");
+    return response.data;
+  }
+
+  async downloadCustomExportCsv(params: {
+    selected_members?: string[];
+    start_date?: string;
+    end_date?: string;
+    project?: string;
+    selected_fields?: string[];
+  }) {
+    const response = await this.client.post("/custom-export/csv", params, {
+      responseType: "blob",
+    });
     return response.data;
   }
 }

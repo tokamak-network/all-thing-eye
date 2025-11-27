@@ -26,6 +26,7 @@ interface FilterPanelProps {
   onPreview: () => void;
   onExport: () => void;
   onSaveTemplate: () => void;
+  isLoading?: boolean;
 }
 
 export default function FilterPanel({
@@ -34,6 +35,7 @@ export default function FilterPanel({
   onPreview,
   onExport,
   onSaveTemplate,
+  isLoading = false,
 }: FilterPanelProps) {
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -384,10 +386,24 @@ export default function FilterPanel({
             {/* Export Button */}
             <button
               onClick={onExport}
-              className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2"
+              disabled={isLoading}
+              className={`w-full px-4 py-3 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 ${
+                isLoading
+                  ? "bg-green-400 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700"
+              }`}
             >
-              <span>💾</span>
-              Export as CSV
+              {isLoading ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <span>💾</span>
+                  Export as CSV
+                </>
+              )}
             </button>
 
             {/* Save Template Button */}
