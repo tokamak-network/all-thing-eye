@@ -819,20 +819,16 @@ export default function ActivitiesPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleTranslate(
-                                    activity.activity_id,
-                                    activity.metadata.text,
-                                    "en"
-                                  );
+                                  const actId = activity.activity_id || activity.id;
+                                  if (actId) handleTranslate(actId, activity.metadata.text, "en");
                                 }}
-                                disabled={translating === activity.activity_id}
+                                disabled={translating === (activity.activity_id || activity.id)}
                                 className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                                  translations[activity.activity_id]?.lang ===
-                                  "en"
+                                  translations[activity.activity_id || activity.id]?.lang === "en"
                                     ? "bg-blue-600 text-white"
                                     : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                                 } ${
-                                  translating === activity.activity_id
+                                  translating === (activity.activity_id || activity.id)
                                     ? "opacity-50 cursor-wait"
                                     : ""
                                 }`}
@@ -842,20 +838,16 @@ export default function ActivitiesPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleTranslate(
-                                    activity.activity_id,
-                                    activity.metadata.text,
-                                    "ko"
-                                  );
+                                  const actId = activity.activity_id || activity.id;
+                                  if (actId) handleTranslate(actId, activity.metadata.text, "ko");
                                 }}
-                                disabled={translating === activity.activity_id}
+                                disabled={translating === (activity.activity_id || activity.id)}
                                 className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                                  translations[activity.activity_id]?.lang ===
-                                  "ko"
+                                  translations[activity.activity_id || activity.id]?.lang === "ko"
                                     ? "bg-blue-600 text-white"
                                     : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                                 } ${
-                                  translating === activity.activity_id
+                                  translating === (activity.activity_id || activity.id)
                                     ? "opacity-50 cursor-wait"
                                     : ""
                                 }`}
@@ -865,13 +857,13 @@ export default function ActivitiesPage() {
                             </div>
                           </div>
                           <p className="text-sm text-gray-700 whitespace-pre-wrap bg-white p-3 rounded border border-gray-200 mt-1">
-                            {translations[activity.activity_id]?.text ||
+                            {translations[activity.activity_id || activity.id]?.text ||
                               activity.metadata.text}
                           </p>
-                          {translations[activity.activity_id] && (
+                          {translations[activity.activity_id || activity.id] && (
                             <p className="text-xs text-gray-400 mt-1">
                               🌐 Translated to{" "}
-                              {translations[activity.activity_id].lang === "ko"
+                              {translations[activity.activity_id || activity.id]?.lang === "ko"
                                 ? "Korean"
                                 : "English"}
                             </p>
@@ -950,12 +942,69 @@ export default function ActivitiesPage() {
 
                       {activity.metadata?.title && (
                         <div>
-                          <span className="text-xs font-medium text-gray-500">
-                            Page Title:
-                          </span>
-                          <p className="text-sm text-gray-900">
-                            {activity.metadata.title}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-500">
+                              Page Title:
+                            </span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(
+                                    activity.id,
+                                    activity.metadata.title,
+                                    "en"
+                                  );
+                                }}
+                                disabled={translating === activity.id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.id]?.lang === "en"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                                } ${
+                                  translating === activity.id
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
+                              >
+                                EN
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(
+                                    activity.id,
+                                    activity.metadata.title,
+                                    "ko"
+                                  );
+                                }}
+                                disabled={translating === activity.id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.id]?.lang === "ko"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                                } ${
+                                  translating === activity.id
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
+                              >
+                                KR
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-900 mt-1">
+                            {translations[activity.id]?.text ||
+                              activity.metadata.title}
                           </p>
+                          {translations[activity.id] && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              🌐 Translated to{" "}
+                              {translations[activity.id].lang === "ko"
+                                ? "Korean"
+                                : "English"}
+                            </p>
+                          )}
                         </div>
                       )}
                       {activity.metadata?.comments && (
@@ -996,12 +1045,69 @@ export default function ActivitiesPage() {
                       )}
                       {activity.metadata?.doc_title && (
                         <div>
-                          <span className="text-xs font-medium text-gray-500">
-                            Document:
-                          </span>
-                          <p className="text-sm text-gray-900">
-                            {activity.metadata.doc_title}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-500">
+                              Document:
+                            </span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(
+                                    activity.id,
+                                    activity.metadata.doc_title,
+                                    "en"
+                                  );
+                                }}
+                                disabled={translating === activity.id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.id]?.lang === "en"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                                } ${
+                                  translating === activity.id
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
+                              >
+                                EN
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(
+                                    activity.id,
+                                    activity.metadata.doc_title,
+                                    "ko"
+                                  );
+                                }}
+                                disabled={translating === activity.id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.id]?.lang === "ko"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                                } ${
+                                  translating === activity.id
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
+                              >
+                                KR
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-900 mt-1">
+                            {translations[activity.id]?.text ||
+                              activity.metadata.doc_title}
                           </p>
+                          {translations[activity.id] && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              🌐 Translated to{" "}
+                              {translations[activity.id].lang === "ko"
+                                ? "Korean"
+                                : "English"}
+                            </p>
+                          )}
                         </div>
                       )}
                       {activity.metadata?.doc_type && (
@@ -1035,12 +1141,69 @@ export default function ActivitiesPage() {
 
                       {activity.metadata?.name && (
                         <div>
-                          <span className="text-xs font-medium text-gray-500">
-                            Recording Name:
-                          </span>
-                          <p className="text-sm text-gray-900">
-                            {activity.metadata.name}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-500">
+                              Recording Name:
+                            </span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(
+                                    activity.id,
+                                    activity.metadata.name,
+                                    "en"
+                                  );
+                                }}
+                                disabled={translating === activity.id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.id]?.lang === "en"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                                } ${
+                                  translating === activity.id
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
+                              >
+                                EN
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTranslate(
+                                    activity.id,
+                                    activity.metadata.name,
+                                    "ko"
+                                  );
+                                }}
+                                disabled={translating === activity.id}
+                                className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                  translations[activity.id]?.lang === "ko"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                                } ${
+                                  translating === activity.id
+                                    ? "opacity-50 cursor-wait"
+                                    : ""
+                                }`}
+                              >
+                                KR
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-900 mt-1">
+                            {translations[activity.id]?.text ||
+                              activity.metadata.name}
                           </p>
+                          {translations[activity.id] && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              🌐 Translated to{" "}
+                              {translations[activity.id].lang === "ko"
+                                ? "Korean"
+                                : "English"}
+                            </p>
+                          )}
                         </div>
                       )}
                       {activity.metadata?.size && (
