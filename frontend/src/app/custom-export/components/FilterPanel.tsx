@@ -236,6 +236,35 @@ export default function FilterPanel({
                 >
                   This Quarter
                 </button>
+                <button
+                  onClick={() => {
+                    const today = new Date();
+                    const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
+                    const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+                    onFiltersChange({
+                      ...filters,
+                      startDate: formatDate(lastYearStart),
+                      endDate: formatDate(lastYearEnd),
+                    });
+                  }}
+                  className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                >
+                  Last Year
+                </button>
+                <button
+                  onClick={() => {
+                    const today = new Date();
+                    const thisYearStart = new Date(today.getFullYear(), 0, 1);
+                    onFiltersChange({
+                      ...filters,
+                      startDate: formatDate(thisYearStart),
+                      endDate: formatDate(today),
+                    });
+                  }}
+                  className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                >
+                  This Year
+                </button>
               </div>
             </div>
 
