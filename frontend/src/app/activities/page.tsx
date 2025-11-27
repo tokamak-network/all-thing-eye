@@ -26,6 +26,17 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Helper to check if string is UUID format
+function isUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+// Helper to check if string is Notion-prefixed
+function isNotionPrefix(str: string): boolean {
+  return str.startsWith('Notion-');
+}
+
 export default function ActivitiesPage() {
   const [allActivities, setAllActivities] = useState<ActivityListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,14 +48,16 @@ export default function ActivitiesPage() {
   const [showTranscript, setShowTranscript] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [allMembers, setAllMembers] = useState<string[]>([]);
+  // Notion UUID to member name mapping
+  const [notionUuidMap, setNotionUuidMap] = useState<Record<string, string>>({});
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Fetch all members from DB (runs once on mount)
+  // Fetch all members and Notion UUID mappings from DB (runs once on mount)
   useEffect(() => {
-    async function fetchMembers() {
+    async function fetchMembersAndMappings() {
       try {
         const response = await apiClient.getMembers({ limit: 1000 });
         // Response is directly an array of members
@@ -53,12 +66,35 @@ export default function ActivitiesPage() {
           .filter((name: string) => name)
           .sort();
         setAllMembers(memberNames);
+
+        // Fetch member_identifiers for Notion UUID mapping
+        try {
+          const identifiersResponse = await apiClient.get('/database/collections/member_identifiers/documents', {
+            limit: 1000,
+          });
+          const documents = identifiersResponse.documents || [];
+          
+          // Build UUID -> member_name mapping for Notion
+          const uuidMap: Record<string, string> = {};
+          documents.forEach((doc: any) => {
+            if (doc.source === 'notion' && doc.identifier_value && doc.member_name) {
+              // Map full UUID
+              uuidMap[doc.identifier_value.toLowerCase()] = doc.member_name;
+              // Also map short UUID (first 8 chars) for "Notion-xxx" format
+              const shortUuid = doc.identifier_value.split('-')[0].toLowerCase();
+              uuidMap[shortUuid] = doc.member_name;
+            }
+          });
+          setNotionUuidMap(uuidMap);
+        } catch (err) {
+          console.error('Error fetching member identifiers:', err);
+        }
       } catch (err: any) {
         console.error('Error fetching members:', err);
       }
     }
 
-    fetchMembers();
+    fetchMembersAndMappings();
   }, []);
 
   // Fetch activities with filters (including member filter from backend)
@@ -106,6 +142,27 @@ export default function ActivitiesPage() {
 
   const toggleActivity = (activityId: string) => {
     setExpandedActivity(expandedActivity === activityId ? null : activityId);
+  };
+
+  // Convert Notion UUID or "Notion-xxx" format to member name
+  const resolveMemberName = (memberName: string, sourceType: string): string => {
+    // Only apply conversion for Notion source
+    if (sourceType !== 'notion') return memberName;
+    
+    // Check if it's a full UUID
+    if (isUUID(memberName)) {
+      const resolved = notionUuidMap[memberName.toLowerCase()];
+      return resolved || memberName;
+    }
+    
+    // Check if it's "Notion-xxx" format
+    if (isNotionPrefix(memberName)) {
+      const shortUuid = memberName.replace('Notion-', '').toLowerCase();
+      const resolved = notionUuidMap[shortUuid];
+      return resolved || memberName;
+    }
+    
+    return memberName;
   };
 
   const handleViewRecordingDetail = async (recordingId: string) => {
@@ -392,7 +449,7 @@ export default function ActivitiesPage() {
                       )}
                       
                       <p className="text-sm font-medium text-gray-900">
-                        {activity.member_name}
+                        {resolveMemberName(activity.member_name, activity.source_type)}
                       </p>
                     </div>
                     <div className="mt-2 text-sm text-gray-600">
