@@ -8,7 +8,7 @@ interface AIChatPanelProps {
     startDate: string;
     endDate: string;
     project: string;
-    members: string;
+    selectedMembers: string[];
   };
 }
 
