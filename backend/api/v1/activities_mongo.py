@@ -31,10 +31,10 @@ async def load_member_mappings(db) -> dict:
     
     Returns:
         Dict with structure: {
-            'github': {'username': 'MemberName', ...},
-            'slack': {'U12345': 'MemberName', ...},
-            'notion': {'notion-id': 'MemberName', ...},
-            'drive': {'email@domain.com': 'MemberName', ...}
+            'github': {'username_lower': {'original': 'Username', 'member': 'MemberName'}, ...},
+            'slack': {'U12345': {'original': 'U12345', 'member': 'MemberName'}, ...},
+            'notion': {'notion-id': {'original': 'notion-id', 'member': 'MemberName'}, ...},
+            'drive': {'email_lower': {'original': 'email@domain.com', 'member': 'MemberName'}, ...}
         }
     """
     global _member_mapping_cache
@@ -58,13 +58,17 @@ async def load_member_mappings(db) -> dict:
             member_name = identifier.get("member_name")
             
             if source and identifier_value and member_name:
-                # Case-insensitive key for GitHub and email
+                # Case-insensitive key for GitHub and email, but keep original value
                 if source in ['github', 'drive']:
                     key = identifier_value.lower()
                 else:
                     key = identifier_value
                 
-                mappings[source][key] = member_name
+                # Store both original identifier and member name
+                mappings[source][key] = {
+                    'original': identifier_value,
+                    'member': member_name
+                }
         
         _member_mapping_cache = mappings
         logger.info(f"Loaded member mappings: GitHub={len(mappings['github'])}, Slack={len(mappings['slack'])}, Notion={len(mappings['notion'])}, Drive={len(mappings['drive'])}")
@@ -96,7 +100,11 @@ def get_mapped_member_name(mappings: dict, source: str, identifier: str) -> str:
     else:
         key = identifier
     
-    name = mappings[source].get(key, identifier)
+    mapping_entry = mappings[source].get(key)
+    if mapping_entry and isinstance(mapping_entry, dict):
+        name = mapping_entry.get('member', identifier)
+    else:
+        name = identifier
     
     # Ensure first letter is capitalized for consistency
     if name and isinstance(name, str):
@@ -115,16 +123,24 @@ def get_identifiers_for_member(mappings: dict, source: str, member_name: str) ->
         member_name: Member display name (e.g., "Ale")
     
     Returns:
-        List of identifiers for this member in the source
+        List of original identifiers for this member in the source
     """
     if not member_name or source not in mappings:
         return []
     
     identifiers = []
-    for identifier, name in mappings[source].items():
+    for key, mapping_entry in mappings[source].items():
+        if isinstance(mapping_entry, dict):
+            stored_member = mapping_entry.get('member', '')
+            original_identifier = mapping_entry.get('original', key)
+        else:
+            # Backward compatibility if entry is just a string
+            stored_member = mapping_entry
+            original_identifier = key
+        
         # Case-insensitive comparison
-        if name.lower() == member_name.lower():
-            identifiers.append(identifier)
+        if stored_member.lower() == member_name.lower():
+            identifiers.append(original_identifier)
     
     return identifiers
 
@@ -167,6 +183,9 @@ async def get_activities(
         db = mongo.async_db
         activities = []
         
+        # IMPORTANT: Store filter member_name separately to avoid overwriting in loops
+        filter_member_name = member_name
+        
         # Load member mappings once for all activities (performance optimization)
         member_mappings = await load_member_mappings(db)
         
@@ -186,14 +205,14 @@ async def get_activities(
                 if not activity_type or activity_type == 'commit':
                     commits = db["github_commits"]
                     query = {}
-                    if member_name:
+                    if filter_member_name:
                         # Reverse lookup: Find identifiers for this member name
-                        identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                        identifiers = get_identifiers_for_member(member_mappings, 'github', filter_member_name)
                         if identifiers:
                             query['author_name'] = {'$in': identifiers}
                         else:
                             # No identifiers found, query won't match anything
-                            query['author_name'] = member_name
+                            query['author_name'] = filter_member_name
                     if date_filter:
                         query['date'] = date_filter
                     
@@ -212,11 +231,11 @@ async def get_activities(
                         
                         # Map GitHub username to member name
                         github_username = commit.get('author_name', '')
-                        member_name = get_mapped_member_name(member_mappings, 'github', github_username)
+                        display_member_name = get_mapped_member_name(member_mappings, 'github', github_username)
                         
                         activities.append(ActivityResponse(
                             id=str(commit['_id']),
-                            member_name=member_name,
+                            member_name=display_member_name,
                             source_type='github',
                             activity_type='commit',
                             timestamp=timestamp_str,
@@ -234,13 +253,13 @@ async def get_activities(
                 if not activity_type or activity_type == 'pull_request':
                     prs = db["github_pull_requests"]
                     query = {}
-                    if member_name:
+                    if filter_member_name:
                         # Reverse lookup: Find identifiers for this member name
-                        identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                        identifiers = get_identifiers_for_member(member_mappings, 'github', filter_member_name)
                         if identifiers:
                             query['author'] = {'$in': identifiers}
                         else:
-                            query['author'] = member_name
+                            query['author'] = filter_member_name
                     if date_filter:
                         query['created_at'] = date_filter
                     
@@ -254,14 +273,14 @@ async def get_activities(
                         
                         # Map GitHub username to member name
                         github_username = pr.get('author', '')
-                        member_name = get_mapped_member_name(member_mappings, 'github', github_username)
+                        display_member_name = get_mapped_member_name(member_mappings, 'github', github_username)
                         
                         # PR URL
                         pr_url = pr.get('url')
                         
                         activities.append(ActivityResponse(
                             id=str(pr['_id']),
-                            member_name=member_name,
+                            member_name=display_member_name,
                             source_type='github',
                             activity_type='pull_request',
                             timestamp=timestamp_str,
@@ -277,18 +296,17 @@ async def get_activities(
             elif source == 'slack':
                 messages = db["slack_messages"]
                 query = {}
-                if member_name:
+                if filter_member_name:
                     # Reverse lookup: Find user_ids and emails for this member name
-                    identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
+                    identifiers = get_identifiers_for_member(member_mappings, 'slack', filter_member_name)
+                    # Build $or conditions for multiple search fields
+                    or_conditions = []
                     if identifiers:
-                        # Search by user_id or user_email
-                        query['$or'] = [
-                            {'user_id': {'$in': identifiers}},
-                            {'user_email': {'$in': identifiers}}
-                        ]
-                    else:
-                        # Fallback to name search
-                        query['user_name'] = member_name
+                        or_conditions.append({'user_id': {'$in': identifiers}})
+                        or_conditions.append({'user_email': {'$in': identifiers}})
+                    # Always add user_name search as fallback (case-insensitive)
+                    or_conditions.append({'user_name': {'$regex': f'^{filter_member_name}$', '$options': 'i'}})
+                    query['$or'] = or_conditions
                 if date_filter:
                     query['posted_at'] = date_filter
                 
@@ -307,11 +325,11 @@ async def get_activities(
                     is_thread_reply = thread_ts and str(thread_ts) != str(ts)
                     
                     if is_thread_reply:
-                        activity_type = 'thread_reply'
+                        slack_activity_type = 'thread_reply'
                     elif has_files:
-                        activity_type = 'file_share'
+                        slack_activity_type = 'file_share'
                     else:
-                        activity_type = 'message'
+                        slack_activity_type = 'message'
                     
                     # Build Slack message URL
                     channel_id = msg.get('channel_id', '')
@@ -329,25 +347,25 @@ async def get_activities(
                     slack_user_name = msg.get('user_name', '')
                     
                     # Try mapping in order: user_id, user_email, then fall back to user_name
-                    member_name = slack_user_name.capitalize() if slack_user_name else slack_user_id
+                    display_member_name = slack_user_name.capitalize() if slack_user_name else slack_user_id
                     
                     # Try to find better mapping
                     if slack_user_id:
                         mapped = get_mapped_member_name(member_mappings, 'slack', slack_user_id)
                         if mapped and mapped != slack_user_id:
-                            member_name = mapped
+                            display_member_name = mapped
                     
-                    if member_name == slack_user_id or not member_name:  # Still using ID, try email
+                    if display_member_name == slack_user_id or not display_member_name:  # Still using ID, try email
                         if slack_user_email:
                             mapped = get_mapped_member_name(member_mappings, 'slack', slack_user_email)
                             if mapped and '@' not in mapped:
-                                member_name = mapped
+                                display_member_name = mapped
                     
                     activities.append(ActivityResponse(
                         id=str(msg['_id']),
-                        member_name=member_name,
+                        member_name=display_member_name,
                         source_type='slack',
-                        activity_type=activity_type,
+                        activity_type=slack_activity_type,
                         timestamp=timestamp_str,
                         metadata={
                             'channel': msg.get('channel_name'),
@@ -365,14 +383,17 @@ async def get_activities(
             elif source == 'notion':
                 pages = db["notion_pages"]
                 query = {}
-                if member_name:
+                if filter_member_name:
                     # Reverse lookup: Find UUIDs for this member name
-                    identifiers = get_identifiers_for_member(member_mappings, 'notion', member_name)
+                    identifiers = get_identifiers_for_member(member_mappings, 'notion', filter_member_name)
+                    # Build $or conditions for multiple search fields
+                    or_conditions = []
                     if identifiers:
-                        query['created_by.id'] = {'$in': identifiers}
-                    else:
-                        # Fallback to name search (less reliable)
-                        query['created_by.name'] = {"$regex": f"^{member_name}", "$options": "i"}
+                        or_conditions.append({'created_by.id': {'$in': identifiers}})
+                        or_conditions.append({'created_by.email': {'$in': identifiers}})
+                    # Always add name search as fallback (case-insensitive)
+                    or_conditions.append({'created_by.name': {"$regex": f"^{filter_member_name}", "$options": "i"}})
+                    query['$or'] = or_conditions
                 if date_filter:
                     query['created_time'] = date_filter
                 
@@ -391,37 +412,37 @@ async def get_activities(
                     notion_user_id = notion_user.get('id', '')
                     
                     # Priority 1: Map by email (most reliable)
-                    member_name = None
+                    display_member_name = None
                     if notion_user_email:
-                        member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_email)
-                        if member_name and '@' not in member_name:
+                        display_member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_email)
+                        if display_member_name and '@' not in display_member_name:
                             # Successfully mapped to members.yaml name
                             pass
                         else:
-                            member_name = None
+                            display_member_name = None
                     
                     # Priority 2: Map by UUID
-                    if not member_name and notion_user_id:
-                        member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_id)
-                        if member_name and member_name != notion_user_id and 'Notion-' not in member_name:
+                    if not display_member_name and notion_user_id:
+                        display_member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_id)
+                        if display_member_name and display_member_name != notion_user_id and 'Notion-' not in display_member_name:
                             # Successfully mapped
                             pass
                         else:
-                            member_name = None
+                            display_member_name = None
                     
                     # Priority 3: Extract first name from full name (fallback)
-                    if not member_name and notion_user_name:
+                    if not display_member_name and notion_user_name:
                         # "Manish Kumar" → "Manish", "Jaden Kong" → "Jaden"
                         first_name = notion_user_name.split()[0] if ' ' in notion_user_name else notion_user_name
-                        member_name = first_name.capitalize() if first_name else None
+                        display_member_name = first_name.capitalize() if first_name else None
                     
                     # Priority 4: Use short UUID if nothing else works
-                    if not member_name:
-                        member_name = f"Notion-{notion_user_id[:8]}" if notion_user_id else "Unknown"
+                    if not display_member_name:
+                        display_member_name = f"Notion-{notion_user_id[:8]}" if notion_user_id else "Unknown"
                     
                     activities.append(ActivityResponse(
                         id=str(page['_id']),
-                        member_name=member_name,
+                        member_name=display_member_name,
                         source_type='notion',
                         activity_type='page_created',
                         timestamp=timestamp_str,
@@ -434,14 +455,14 @@ async def get_activities(
             elif source == 'drive':
                 drive_activities = db["drive_activities"]
                 query = {}
-                if member_name:
+                if filter_member_name:
                     # Reverse lookup: Find emails for this member name
-                    identifiers = get_identifiers_for_member(member_mappings, 'drive', member_name)
+                    identifiers = get_identifiers_for_member(member_mappings, 'drive', filter_member_name)
                     if identifiers:
                         query['user_email'] = {'$in': identifiers}
                     else:
                         # Fallback to regex search
-                        query['user_email'] = {"$regex": member_name, "$options": "i"}
+                        query['user_email'] = {"$regex": filter_member_name, "$options": "i"}
                 if date_filter:
                     query['timestamp'] = date_filter
                 
@@ -457,16 +478,16 @@ async def get_activities(
                     user_email = activity.get('user_email', '')
                     
                     # Try mapping first
-                    member_name = get_mapped_member_name(member_mappings, 'drive', user_email) if user_email else ''
+                    display_member_name = get_mapped_member_name(member_mappings, 'drive', user_email) if user_email else ''
                     
                     # If mapping returns the email itself (not mapped), extract username and capitalize
-                    if not member_name or '@' in member_name:
+                    if not display_member_name or '@' in display_member_name:
                         username = user_email.split('@')[0] if user_email else 'Unknown'
-                        member_name = username.capitalize() if username else 'Unknown'
+                        display_member_name = username.capitalize() if username else 'Unknown'
                     
                     activities.append(ActivityResponse(
                         id=str(activity['_id']),
-                        member_name=member_name,
+                        member_name=display_member_name,
                         source_type='drive',
                         activity_type=activity.get('event_name', 'activity'),
                         timestamp=timestamp_str,
@@ -481,8 +502,8 @@ async def get_activities(
                 shared_db = mongo.shared_async_db
                 recordings = shared_db["recordings"]
                 query = {}
-                if member_name:
-                    query['createdBy'] = {"$regex": member_name, "$options": "i"}
+                if filter_member_name:
+                    query['createdBy'] = {"$regex": filter_member_name, "$options": "i"}
                 if date_filter:
                     query['modifiedTime'] = date_filter
                 
@@ -532,7 +553,7 @@ async def get_activities(
             filters={
                 'source_type': source_type,
                 'activity_type': activity_type,
-                'member_name': member_name,
+                'member_name': filter_member_name,
                 'start_date': start_date,
                 'end_date': end_date,
                 'limit': limit,
