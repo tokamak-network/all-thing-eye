@@ -6,12 +6,15 @@ Provides filtered raw activity data for custom export builder
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from typing import Optional, List
+from typing import Optional, List, Dict, Set
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from bson import ObjectId
 import csv
 import io
+import os
+import requests
+import yaml
 
 from src.utils.logger import get_logger
 
@@ -65,6 +68,106 @@ def get_source_from_field(field: str) -> str:
     elif field.startswith("member."):
         return "member"
     return ""
+
+
+def get_project_repositories_from_teams(project_key: str) -> Set[str]:
+    """
+    Get repositories for a project using GitHub Teams API
+    
+    Args:
+        project_key: Project key (e.g., "project-ooo", "project-trh")
+    
+    Returns:
+        Set of repository names (without org prefix)
+    """
+    github_token = os.getenv("GITHUB_TOKEN")
+    github_org = os.getenv("GITHUB_ORG", "tokamak-network")
+    
+    if not github_token:
+        logger.warning("GITHUB_TOKEN not set, falling back to config.yaml")
+        return get_project_repositories_from_config(project_key)
+    
+    # Extract team slug from project key (e.g., "project-ooo" -> "project-ooo")
+    team_slug = project_key
+    
+    try:
+        # GitHub API: List team repositories
+        url = f"https://api.github.com/orgs/{github_org}/teams/{team_slug}/repos"
+        headers = {
+            "Authorization": f"token {github_token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        repos = set()
+        page = 1
+        per_page = 100
+        
+        while True:
+            params = {"page": page, "per_page": per_page}
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            
+            if response.status_code == 404:
+                # Team doesn't exist, fall back to config
+                logger.warning(f"Team {team_slug} not found, using config.yaml")
+                return get_project_repositories_from_config(project_key)
+            
+            if response.status_code != 200:
+                logger.warning(f"GitHub API error {response.status_code}, falling back to config.yaml")
+                return get_project_repositories_from_config(project_key)
+            
+            data = response.json()
+            if not data:
+                break
+            
+            # Extract repository names (remove org prefix)
+            for repo in data:
+                full_name = repo.get("full_name", "")
+                if "/" in full_name:
+                    repo_name = full_name.split("/", 1)[1]
+                    repos.add(repo_name)
+            
+            # Check if there are more pages
+            if len(data) < per_page:
+                break
+            page += 1
+        
+        logger.info(f"Found {len(repos)} repositories for {project_key} via GitHub Teams API")
+        return repos
+        
+    except Exception as e:
+        logger.warning(f"Error fetching GitHub Teams data: {e}, falling back to config.yaml")
+        return get_project_repositories_from_config(project_key)
+
+
+def get_project_repositories_from_config(project_key: str) -> Set[str]:
+    """
+    Get repositories for a project from config.yaml (fallback)
+    
+    Args:
+        project_key: Project key (e.g., "project-ooo", "project-trh")
+    
+    Returns:
+        Set of repository names
+    """
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config", "config.yaml")
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        
+        project_config = config.get("projects", {}).get(project_key, {})
+        repositories = project_config.get("repositories", [])
+        
+        # Also include DRB repositories if project is TRH
+        if project_key == "project-trh":
+            drb_config = config.get("projects", {}).get("project-drb", {})
+            drb_repos = drb_config.get("repositories", [])
+            repositories.extend(drb_repos)
+        
+        return set(repositories) if repositories else set()
+        
+    except Exception as e:
+        logger.error(f"Error reading config.yaml: {e}")
+        return set()
 
 
 @router.post("/custom-export/preview")
@@ -124,7 +227,7 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
         # Query each source
         for source in sources_needed:
             if source == "github":
-                results.extend(await fetch_github_data(db, members_to_filter, date_filter, member_info_map))
+                results.extend(await fetch_github_data(db, members_to_filter, date_filter, member_info_map, body.project))
             elif source == "slack":
                 results.extend(await fetch_slack_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "notion":
@@ -162,9 +265,26 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def fetch_github_data(db, members: List[str], date_filter: dict, member_info_map: dict) -> List[dict]:
-    """Fetch GitHub commits and PRs for selected members"""
+async def fetch_github_data(db, members: List[str], date_filter: dict, member_info_map: dict, project: Optional[str] = None) -> List[dict]:
+    """
+    Fetch GitHub commits and PRs for selected members
+    
+    Args:
+        db: MongoDB database
+        members: List of member names
+        date_filter: Date range filter
+        member_info_map: Map of member names to info
+        project: Optional project key to filter by repositories (e.g., "project-ooo")
+    """
     results = []
+    
+    # Get project repositories if project is specified
+    project_repos = None
+    if project and project != "all":
+        project_repos = get_project_repositories_from_teams(project)
+        if not project_repos:
+            logger.warning(f"No repositories found for project {project}, returning empty results")
+            return []
     
     for member_name in members:
         identifiers = get_identifiers_for_member(member_name, db)
@@ -180,6 +300,10 @@ async def fetch_github_data(db, members: List[str], date_filter: dict, member_in
         
         if date_filter:
             commit_query["date"] = date_filter
+        
+        # Add repository filter if project is specified
+        if project_repos:
+            commit_query["repository"] = {"$in": list(project_repos)}
         
         # Fetch commits (no limit for full export)
         commits = list(db["github_commits"].find(commit_query).sort("date", -1))
@@ -207,6 +331,10 @@ async def fetch_github_data(db, members: List[str], date_filter: dict, member_in
         
         if date_filter:
             pr_query["created_at"] = date_filter
+        
+        # Add repository filter if project is specified
+        if project_repos:
+            pr_query["repository"] = {"$in": list(project_repos)}
         
         prs = list(db["github_pull_requests"].find(pr_query).sort("created_at", -1))
         for pr in prs:
@@ -427,7 +555,7 @@ async def export_custom_csv(request: Request, body: CustomExportRequest):
         results = []
         for source in sources_needed:
             if source == "github":
-                results.extend(await fetch_github_data(db, members_to_filter, date_filter, member_info_map))
+                results.extend(await fetch_github_data(db, members_to_filter, date_filter, member_info_map, body.project))
             elif source == "slack":
                 results.extend(await fetch_slack_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "notion":

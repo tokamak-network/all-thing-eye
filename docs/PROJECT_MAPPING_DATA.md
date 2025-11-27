@@ -170,35 +170,44 @@ Please fill in the data for each project. This data will be used to:
 
 ---
 
-## Project: TRH
+## Project: TRH (includes DRB)
+
+> **Note**: DRB is a sub-project of TRH and is tracked together.
 
 ### Basic Info
 
-| Field        | Value         |
-| ------------ | ------------- |
-| Project Key  | `project-trh` |
-| Project Name | Project TRH   |
-| Lead         | Praveen       |
-| Description  | _(TBD)_       |
+| Field        | Value                      |
+| ------------ | -------------------------- |
+| Project Key  | `project-trh`              |
+| Project Name | Project TRH                |
+| Lead         | Praveen                    |
+| Description  | TRH Project (includes DRB) |
+| Sub-projects | DRB                        |
 
 ### Slack
 
-| Field        | Value         |
-| ------------ | ------------- |
-| Channel Name | `project_trh` |
-| Channel ID   | _(TBD)_       |
+| Field              | Value         |
+| ------------------ | ------------- |
+| Channel Name (TRH) | `project_trh` |
+| Channel ID (TRH)   | _(TBD)_       |
+| Channel Name (DRB) | `project-drb` |
+| Channel ID (DRB)   | _(TBD)_       |
 
 ### GitHub Repositories
 
-| Repository Name | Description |
-| --------------- | ----------- |
-| _(TBD)_         |             |
+> Use GitHub Team `project-trh` to get repository list automatically.
+
+| Repository Name | Description | Sub-project |
+| --------------- | ----------- | ----------- |
+| _(TBD)_         |             | TRH         |
+| _(TBD)_         |             | DRB         |
 
 ### Google Drive Folders
 
-| Folder Name | Purpose |
-| ----------- | ------- |
-| _(TBD)_     |         |
+| Folder Name | Purpose | Sub-project |
+| ----------- | ------- | ----------- |
+| _(TBD)_     |         | TRH         |
+| _(TBD)_     |         | DRB         |
 
 ### Notion
 
@@ -209,62 +218,36 @@ Please fill in the data for each project. This data will be used to:
 
 ### Team Members
 
-| Member Name  | Role         |
-| ------------ | ------------ |
-| Praveen      | Project Lead |
-| _(add more)_ |              |
-|              |              |
-
----
-
-## Project: DRB
-
-### Basic Info
-
-| Field        | Value         |
-| ------------ | ------------- |
-| Project Key  | `project-drb` |
-| Project Name | Project DRB   |
-| Lead         | _(TBD)_       |
-| Description  | _(TBD)_       |
-
-### Slack
-
-| Field        | Value         |
-| ------------ | ------------- |
-| Channel Name | `project-drb` |
-| Channel ID   | _(TBD)_       |
-
-### GitHub Repositories
-
-| Repository Name | Description |
-| --------------- | ----------- |
-| _(TBD)_         |             |
-
-### Google Drive Folders
-
-| Folder Name | Purpose |
-| ----------- | ------- |
-| _(TBD)_     |         |
-
-### Notion
-
-| Field          | Value   |
-| -------------- | ------- |
-| Database ID(s) | _(TBD)_ |
-| Parent Page ID | _(TBD)_ |
-
-### Team Members
-
-| Member Name  | Role         |
-| ------------ | ------------ |
-| _(TBD)_      | Project Lead |
-| _(add more)_ |              |
-|              |              |
+| Member Name  | Role         | Sub-project |
+| ------------ | ------------ | ----------- |
+| Praveen      | Project Lead | TRH         |
+| _(add more)_ |              |             |
 
 ---
 
 ## How to Get IDs
+
+### GitHub Repositories (via Teams)
+
+**Recommended**: Use GitHub Organization Teams to automatically map repositories to projects.
+
+Each project has a corresponding team in the GitHub organization with the same name:
+
+- `project-ooo` team → Project OOO repositories
+- `project-eco` team → Project ECO repositories
+- `project-syb` team → Project SYB repositories
+- `project-trh` team → Project TRH repositories (includes DRB)
+
+To get team-repository mappings:
+
+```bash
+# List all teams and their repositories
+python scripts/get_github_teams.py
+
+# Or use GitHub API directly
+curl -H "Authorization: token $GITHUB_TOKEN" \
+  "https://api.github.com/orgs/tokamak-network/teams/{team_slug}/repos"
+```
 
 ### Slack Channel ID
 
