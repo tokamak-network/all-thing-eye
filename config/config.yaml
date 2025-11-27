@@ -20,26 +20,26 @@ mongodb:
   # Connection URI format: mongodb://[username:password@]host[:port][/database][?options]
   uri: ${MONGODB_URI:mongodb://localhost:27017}
   database: ${MONGODB_DATABASE:ati}
-  
+
   # Shared Database (for recordings and other shared data)
-  shared_uri: ${MONGODB_SHARED_URI:}  # If empty, uses same as main URI
+  shared_uri: ${MONGODB_SHARED_URI:} # If empty, uses same as main URI
   shared_database: ${MONGODB_SHARED_DATABASE:shared}
-  
+
   # Connection Pool Settings
   max_pool_size: 100
   min_pool_size: 10
   max_idle_time_ms: 45000
   wait_queue_timeout_ms: 5000
-  
+
   # Write Concern (data durability)
   write_concern:
-    w: "majority"  # Wait for majority of replica set
-    j: true        # Wait for journal commit
+    w: "majority" # Wait for majority of replica set
+    j: true # Wait for journal commit
     wtimeout: 5000 # Timeout in ms
-  
+
   # Read Preference
-  read_preference: "primaryPreferred"  # primary, primaryPreferred, secondary, secondaryPreferred, nearest
-  
+  read_preference: "primaryPreferred" # primary, primaryPreferred, secondary, secondaryPreferred, nearest
+
   # Collections (databases within MongoDB)
   collections:
     # Main collections
@@ -47,26 +47,26 @@ mongodb:
     member_identifiers: "member_identifiers"
     member_activities: "member_activities"
     data_collections: "data_collections"
-    
+
     # Plugin-specific collections
     github_commits: "github_commits"
     github_pull_requests: "github_pull_requests"
     github_issues: "github_issues"
     github_repositories: "github_repositories"
-    
+
     slack_messages: "slack_messages"
     slack_reactions: "slack_reactions"
     slack_channels: "slack_channels"
     slack_users: "slack_users"
-    
+
     notion_pages: "notion_pages"
     notion_comments: "notion_comments"
     notion_databases: "notion_databases"
-    
+
     drive_activities: "drive_activities"
     drive_folders: "drive_folders"
     drive_documents: "drive_documents"
-  
+
   # Indexing
   auto_create_indexes: true
 
@@ -178,15 +178,10 @@ projects:
     slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
     lead: "Praveen"
     repositories: [] # TBD
-    description: "TBD"
-
-  project-drb:
-    name: "Project DRB"
-    slack_channel: "project-drb"
-    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
-    lead: "TBD"
-    repositories: [] # TBD
-    description: "TBD"
+    description: "TRH Project (includes DRB sub-project)"
+    # DRB is a sub-project of TRH, tracked together
+    sub_projects:
+      - drb
 
 # Member Index
 member_index:

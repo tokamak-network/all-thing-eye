@@ -58,13 +58,13 @@ export default function FilterPanel({
         setMembers(memberList);
 
         // Use static project list (API for projects not implemented yet)
+        // Note: DRB is part of TRH project
         setProjects([
           { id: "all", name: "All Projects" },
           { id: "project-ooo", name: "Project OOO" },
           { id: "project-eco", name: "Project ECO" },
           { id: "project-syb", name: "Project SYB" },
           { id: "project-trh", name: "Project TRH" },
-          { id: "project-drb", name: "Project DRB" },
         ]);
       } catch (error) {
         console.error("Failed to fetch filter data:", error);
