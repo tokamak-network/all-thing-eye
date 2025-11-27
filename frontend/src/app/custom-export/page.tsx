@@ -21,7 +21,7 @@ export default function CustomExportPage() {
     startDate: "2025-11-01",
     endDate: "2025-11-07",
     project: "all",
-    members: "all",
+    selectedMembers: [] as string[],
   });
 
   const handleFieldToggle = (fieldId: string) => {
