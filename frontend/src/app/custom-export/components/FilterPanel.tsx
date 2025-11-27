@@ -55,31 +55,15 @@ export default function FilterPanel({
           .sort((a: Member, b: Member) => a.name.localeCompare(b.name));
         setMembers(memberList);
 
-        // Fetch projects from API or use static list
-        try {
-          const projectsResponse = await api.getProjects();
-          if (projectsResponse && projectsResponse.length > 0) {
-            setProjects([
-              { id: "all", name: "All Projects" },
-              ...projectsResponse.map((p: any) => ({
-                id: p.key || p.id,
-                name: p.name,
-                slack_channel: p.slack_channel,
-                repositories: p.repositories,
-              })),
-            ]);
-          }
-        } catch {
-          // Fallback to static list
-          setProjects([
-            { id: "all", name: "All Projects" },
-            { id: "project-ooo", name: "Project OOO" },
-            { id: "project-eco", name: "Project ECO" },
-            { id: "project-syb", name: "Project SYB" },
-            { id: "project-trh", name: "Project TRH" },
-            { id: "project-drb", name: "Project DRB" },
-          ]);
-        }
+        // Use static project list (API for projects not implemented yet)
+        setProjects([
+          { id: "all", name: "All Projects" },
+          { id: "project-ooo", name: "Project OOO" },
+          { id: "project-eco", name: "Project ECO" },
+          { id: "project-syb", name: "Project SYB" },
+          { id: "project-trh", name: "Project TRH" },
+          { id: "project-drb", name: "Project DRB" },
+        ]);
       } catch (error) {
         console.error("Failed to fetch filter data:", error);
       } finally {
