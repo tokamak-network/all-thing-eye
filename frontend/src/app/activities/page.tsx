@@ -819,16 +819,28 @@ export default function ActivitiesPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const actId = activity.activity_id || activity.id;
-                                  if (actId) handleTranslate(actId, activity.metadata.text, "en");
+                                  const actId =
+                                    activity.activity_id || activity.id;
+                                  if (actId)
+                                    handleTranslate(
+                                      actId,
+                                      activity.metadata.text,
+                                      "en"
+                                    );
                                 }}
-                                disabled={translating === (activity.activity_id || activity.id)}
+                                disabled={
+                                  translating ===
+                                  (activity.activity_id || activity.id)
+                                }
                                 className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                                  translations[activity.activity_id || activity.id]?.lang === "en"
+                                  translations[
+                                    activity.activity_id || activity.id
+                                  ]?.lang === "en"
                                     ? "bg-blue-600 text-white"
                                     : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                                 } ${
-                                  translating === (activity.activity_id || activity.id)
+                                  translating ===
+                                  (activity.activity_id || activity.id)
                                     ? "opacity-50 cursor-wait"
                                     : ""
                                 }`}
@@ -838,16 +850,28 @@ export default function ActivitiesPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const actId = activity.activity_id || activity.id;
-                                  if (actId) handleTranslate(actId, activity.metadata.text, "ko");
+                                  const actId =
+                                    activity.activity_id || activity.id;
+                                  if (actId)
+                                    handleTranslate(
+                                      actId,
+                                      activity.metadata.text,
+                                      "ko"
+                                    );
                                 }}
-                                disabled={translating === (activity.activity_id || activity.id)}
+                                disabled={
+                                  translating ===
+                                  (activity.activity_id || activity.id)
+                                }
                                 className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                                  translations[activity.activity_id || activity.id]?.lang === "ko"
+                                  translations[
+                                    activity.activity_id || activity.id
+                                  ]?.lang === "ko"
                                     ? "bg-blue-600 text-white"
                                     : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                                 } ${
-                                  translating === (activity.activity_id || activity.id)
+                                  translating ===
+                                  (activity.activity_id || activity.id)
                                     ? "opacity-50 cursor-wait"
                                     : ""
                                 }`}
@@ -857,13 +881,16 @@ export default function ActivitiesPage() {
                             </div>
                           </div>
                           <p className="text-sm text-gray-700 whitespace-pre-wrap bg-white p-3 rounded border border-gray-200 mt-1">
-                            {translations[activity.activity_id || activity.id]?.text ||
-                              activity.metadata.text}
+                            {translations[activity.activity_id || activity.id]
+                              ?.text || activity.metadata.text}
                           </p>
-                          {translations[activity.activity_id || activity.id] && (
+                          {translations[
+                            activity.activity_id || activity.id
+                          ] && (
                             <p className="text-xs text-gray-400 mt-1">
                               🌐 Translated to{" "}
-                              {translations[activity.activity_id || activity.id]?.lang === "ko"
+                              {translations[activity.activity_id || activity.id]
+                                ?.lang === "ko"
                                 ? "Korean"
                                 : "English"}
                             </p>

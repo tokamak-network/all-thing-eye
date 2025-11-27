@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import re
 import os
 import ssl
+import time
 import certifi
 import pytz
 from slack_sdk import WebClient
@@ -386,79 +387,99 @@ class SlackPluginMongo(DataSourcePlugin):
         channel_id: str, 
         thread_ts: str,
         oldest: str = None,
-        latest: str = None
+        latest: str = None,
+        max_retries: int = 3
     ) -> List[Dict[str, Any]]:
-        """Fetch replies in a thread"""
+        """Fetch replies in a thread (with rate limit handling)"""
         replies = []
         
         oldest_ts = float(oldest) if oldest else 0
         latest_ts = float(latest) if latest else float('inf')
         
-        try:
-            response = self.client.conversations_replies(
-                channel=channel_id,
-                ts=thread_ts,
-                limit=1000
-            )
-            
-            for msg in response['messages']:
-                # Skip the parent message
-                if msg['ts'] == thread_ts:
-                    continue
-                
-                if msg.get('subtype') in ['bot_message']:
-                    continue
-                
-                # Filter by date range
-                msg_ts = float(msg['ts'])
-                if msg_ts < oldest_ts or msg_ts > latest_ts:
-                    continue
-                
-                reply_timestamp = datetime.fromtimestamp(msg_ts, tz=pytz.UTC)
-                user_id = msg.get('user', '')
-                
-                # Extract reactions
-                reactions = []
-                if self.include_reactions and 'reactions' in msg:
-                    for reaction in msg['reactions']:
-                        reactions.append({
-                            'reaction': reaction['name'],
-                            'count': reaction['count'],
-                            'users': reaction.get('users', [])
-                        })
-                
-                # Extract links
-                links = self._extract_links_from_text(msg.get('text', ''))
-                
-                # Extract files
-                files = []
-                if self.include_files and 'files' in msg:
-                    for file_obj in msg['files']:
-                        files.append({
-                            'id': file_obj['id'],
-                            'name': file_obj.get('name', ''),
-                            'url_private': file_obj.get('url_private', ''),
-                            'size': file_obj.get('size', 0)
-                        })
-                
-                reply_data = {
-                    'ts': msg['ts'],
-                    'channel_id': channel_id,
-                    'channel_name': self.channel_name_map.get(channel_id, ''),
-                    'user_id': user_id,
-                    'user_name': self.user_name_map.get(user_id, ''),
-                    'text': msg.get('text', ''),
-                    'thread_ts': thread_ts,
-                    'reply_count': 0,
-                    'reactions': reactions,
-                    'links': links,
-                    'files': files,
-                    'posted_at': reply_timestamp,
-                }
-                replies.append(reply_data)
+        # Rate limiting: add small delay between thread fetches
+        time.sleep(0.3)
         
-        except SlackApiError as e:
-            print(f"\n   ⚠️  Error fetching thread replies: {e.response['error']}")
+        for attempt in range(max_retries):
+            try:
+                response = self.client.conversations_replies(
+                    channel=channel_id,
+                    ts=thread_ts,
+                    limit=1000
+                )
+                
+                for msg in response['messages']:
+                    # Skip the parent message
+                    if msg['ts'] == thread_ts:
+                        continue
+                    
+                    if msg.get('subtype') in ['bot_message']:
+                        continue
+                    
+                    # Filter by date range
+                    msg_ts = float(msg['ts'])
+                    if msg_ts < oldest_ts or msg_ts > latest_ts:
+                        continue
+                    
+                    reply_timestamp = datetime.fromtimestamp(msg_ts, tz=pytz.UTC)
+                    user_id = msg.get('user', '')
+                    
+                    # Extract reactions
+                    reactions = []
+                    if self.include_reactions and 'reactions' in msg:
+                        for reaction in msg['reactions']:
+                            reactions.append({
+                                'reaction': reaction['name'],
+                                'count': reaction['count'],
+                                'users': reaction.get('users', [])
+                            })
+                    
+                    # Extract links
+                    links = self._extract_links_from_text(msg.get('text', ''))
+                    
+                    # Extract files
+                    files = []
+                    if self.include_files and 'files' in msg:
+                        for file_obj in msg['files']:
+                            files.append({
+                                'id': file_obj['id'],
+                                'name': file_obj.get('name', ''),
+                                'url_private': file_obj.get('url_private', ''),
+                                'size': file_obj.get('size', 0)
+                            })
+                    
+                    reply_data = {
+                        'ts': msg['ts'],
+                        'channel_id': channel_id,
+                        'channel_name': self.channel_name_map.get(channel_id, ''),
+                        'user_id': user_id,
+                        'user_name': self.user_name_map.get(user_id, ''),
+                        'text': msg.get('text', ''),
+                        'thread_ts': thread_ts,
+                        'reply_count': 0,
+                        'reactions': reactions,
+                        'links': links,
+                        'files': files,
+                        'posted_at': reply_timestamp,
+                    }
+                    replies.append(reply_data)
+                
+                # Success - break out of retry loop
+                break
+                
+            except SlackApiError as e:
+                error_code = e.response['error']
+                
+                if error_code == 'ratelimited':
+                    # Get retry-after from headers, default to exponential backoff
+                    retry_after = int(e.response.headers.get('Retry-After', 2 ** attempt))
+                    print(f"\n   ⏳ Rate limited, waiting {retry_after}s (attempt {attempt + 1}/{max_retries})...", end='', flush=True)
+                    time.sleep(retry_after)
+                    
+                    if attempt == max_retries - 1:
+                        print(f"\n   ⚠️  Max retries reached for thread {thread_ts}")
+                else:
+                    print(f"\n   ⚠️  Error fetching thread replies: {error_code}")
+                    break  # Don't retry for non-rate-limit errors
         
         return replies
     
