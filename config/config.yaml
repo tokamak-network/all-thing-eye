@@ -137,51 +137,28 @@ plugins:
     member_list:
 
 # Projects Configuration
+# Note: Only basic fields are kept here. Full project configuration is managed in MongoDB.
+# This serves as initial seed data. Use MongoDB API to update project details.
 projects:
   project-ooo:
-    name: "Project OOO (Zero-Knowledge Proof)"
+    name: "Project OOO"
     slack_channel: "project-ooo"
-    slack_channel_id: "C07JN9XR570"
     lead: "Jake"
-    repositories:
-      - "Tokamak-zk-EVM"
-      - "tokamak-zk-evm-docs"
-      - "Tokamak-zkp-channel-manager"
-    drive_folders: # Google Drive folder names for this project
-      - "Meet Recordings"
-      - "singapore core"
-      - "Project OOO"
-    description: "Zero-knowledge proof implementation and synthesizer architecture"
 
   project-eco:
-    name: "Project ECO (Ecosystem Development)"
+    name: "Project ECO"
     slack_channel: "project-eco"
-    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
     lead: "Jason"
-    repositories:
-      - "ecosystem-hub"
-      - "grants-program"
-      - "community-portal"
-    description: "Ecosystem development and community engagement"
 
   project-syb:
-    name: "Project SYB (Sybil)"
-    slack_channel: "project-sybil" # Actual channel name
-    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
+    name: "Project SYB"
+    slack_channel: "project-sybil"
     lead: "Jamie"
-    repositories: [] # TBD
-    description: "TBD"
 
   project-trh:
     name: "Project TRH"
-    slack_channel: "project_trh" # Fixed: underscore not hyphen
-    slack_channel_id: "TBD" # TODO: Update after running get_slack_channels.py
+    slack_channel: "project_trh"
     lead: "Praveen"
-    repositories: [] # TBD
-    description: "TRH Project (includes DRB sub-project)"
-    # DRB is a sub-project of TRH, tracked together
-    sub_projects:
-      - drb
 
 # Member Index
 member_index:

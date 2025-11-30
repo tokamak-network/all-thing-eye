@@ -581,3 +581,47 @@ class NotionComment(BaseModel):
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
 
+
+# =============================================================================
+# Projects Collection
+# =============================================================================
+
+class Project(BaseModel):
+    """Project configuration document"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    key: str = Field(..., unique=True)  # e.g., "project-ooo", "project-trh"
+    name: str  # Display name
+    description: Optional[str] = None
+    
+    # Slack configuration
+    slack_channel: Optional[str] = None  # Channel name
+    slack_channel_id: Optional[str] = None  # Channel ID
+    
+    # Project lead
+    lead: Optional[str] = None
+    
+    # GitHub repositories (auto-synced from Teams API)
+    repositories: List[str] = Field(default_factory=list)
+    repositories_synced_at: Optional[datetime] = None
+    github_team_slug: Optional[str] = None  # GitHub team slug for auto-sync
+    
+    # Google Drive folders
+    drive_folders: List[str] = Field(default_factory=list)
+    
+    # Notion pages (under dev Internal)
+    notion_page_ids: List[str] = Field(default_factory=list)  # Notion page IDs
+    notion_parent_page_id: Optional[str] = None  # Parent page ID (dev Internal)
+    
+    # Sub-projects
+    sub_projects: List[str] = Field(default_factory=list)  # e.g., ["drb"] for TRH
+    
+    # Metadata
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+

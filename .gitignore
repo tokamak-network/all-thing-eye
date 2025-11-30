@@ -62,6 +62,7 @@ test_jwt_local.sh
 *.sqlite3
 data/databases/
 data/backups/
+backups/
 
 # Logs
 *.log

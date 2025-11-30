@@ -57,14 +57,18 @@ export default function FilterPanel({
           .sort((a: Member, b: Member) => a.name.localeCompare(b.name));
         setMembers(memberList);
 
-        // Use static project list (API for projects not implemented yet)
-        // Note: DRB is part of TRH project
+        // Fetch projects
+        const projectsResponse = await api.getProjects();
+        const projectList = projectsResponse.projects.map((p: any) => ({
+          id: p.key,
+          name: p.name,
+          slack_channel: p.slack_channel,
+          repositories: p.repositories,
+        }));
+
         setProjects([
           { id: "all", name: "All Projects" },
-          { id: "project-ooo", name: "Project OOO" },
-          { id: "project-eco", name: "Project ECO" },
-          { id: "project-syb", name: "Project SYB" },
-          { id: "project-trh", name: "Project TRH" },
+          ...projectList,
         ]);
       } catch (error) {
         console.error("Failed to fetch filter data:", error);
