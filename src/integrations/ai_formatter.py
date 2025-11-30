@@ -31,7 +31,9 @@ class AIPromptFormatter:
     def format_member_performance(
         self,
         member_data: Dict[str, Any],
-        include_details: bool = False
+        include_details: bool = False,
+        token_optimized: bool = False,
+        max_items: int = 5
     ) -> str:
         """
         Format member performance data for AI analysis
@@ -39,6 +41,8 @@ class AIPromptFormatter:
         Args:
             member_data: Member activity data from QueryEngine
             include_details: Whether to include detailed commit/PR lists
+            token_optimized: If True, use compact format to reduce tokens
+            max_items: Maximum items to include when token_optimized=True
             
         Returns:
             Formatted prompt string
@@ -73,24 +77,33 @@ class AIPromptFormatter:
 {self._format_file_stats(stats.get('files', {}))}
 
 ## Repository Contributions
-{self._format_top_repositories(member_data.get('top_repositories', []))}
+{self._format_top_repositories(member_data.get('top_repositories', []), max_items if token_optimized else 5)}
 
 ## Most Modified Files
-{self._format_top_files(member_data.get('top_files', []))}
+{self._format_top_files(member_data.get('top_files', []), max_items if token_optimized else 10)}
 """
         
         if include_details:
+            # Limit items when token optimized
+            commit_limit = max_items if token_optimized else 10
+            pr_limit = max_items if token_optimized else None
+            issue_limit = max_items if token_optimized else None
+            
+            commits = member_data.get('commits', [])[:commit_limit]
+            prs = member_data.get('pull_requests', [])[:pr_limit] if pr_limit else member_data.get('pull_requests', [])
+            issues = member_data.get('issues', [])[:issue_limit] if issue_limit else member_data.get('issues', [])
+            
             prompt += f"""
 ## Detailed Activity Log
 
-### Recent Commits (Top 10)
-{self._format_commit_details(member_data.get('commits', [])[:10])}
+### Recent Commits (Top {commit_limit})
+{self._format_commit_details(commits, compact=token_optimized)}
 
 ### Recent Pull Requests
-{self._format_pr_details(member_data.get('pull_requests', []))}
+{self._format_pr_details(prs, compact=token_optimized)}
 
 ### Recent Issues
-{self._format_issue_details(member_data.get('issues', []))}
+{self._format_issue_details(issues, compact=token_optimized)}
 """
         
         prompt += """
@@ -327,13 +340,13 @@ Please provide insights on the technical depth and impact of this developer's co
         return f"""- **Total File Changes**: {files.get('total_modified', 0)}
 - **Unique Files Modified**: {files.get('unique_files', 0)}"""
     
-    def _format_top_repositories(self, repos: List[Dict[str, Any]]) -> str:
+    def _format_top_repositories(self, repos: List[Dict[str, Any]], max_items: int = 5) -> str:
         """Format top repositories"""
         if not repos:
             return "- No repository data"
         
         lines = []
-        for i, repo in enumerate(repos[:5], 1):
+        for i, repo in enumerate(repos[:max_items], 1):
             lines.append(
                 f"{i}. **{repo['repository']}**: "
                 f"{repo['commits']} commits, {repo['pull_requests']} PRs"
@@ -341,13 +354,13 @@ Please provide insights on the technical depth and impact of this developer's co
         
         return '\n'.join(lines)
     
-    def _format_top_files(self, files: List[Dict[str, Any]]) -> str:
+    def _format_top_files(self, files: List[Dict[str, Any]], max_items: int = 10) -> str:
         """Format top modified files"""
         if not files:
             return "- No file modification data"
         
         lines = []
-        for i, file in enumerate(files[:10], 1):
+        for i, file in enumerate(files[:max_items], 1):
             lines.append(
                 f"{i}. `{file['filename']}`: "
                 f"{file['modifications']} changes "
@@ -356,7 +369,7 @@ Please provide insights on the technical depth and impact of this developer's co
         
         return '\n'.join(lines)
     
-    def _format_commit_details(self, commits: List[Dict[str, Any]]) -> str:
+    def _format_commit_details(self, commits: List[Dict[str, Any]], compact: bool = False) -> str:
         """Format detailed commit information"""
         if not commits:
             return "- No commits in period"
@@ -364,17 +377,24 @@ Please provide insights on the technical depth and impact of this developer's co
         lines = []
         for i, commit in enumerate(commits, 1):
             message = commit.get('message', '').split('\n')[0][:80]
-            lines.append(
-                f"{i}. [{commit['sha'][:7]}]({commit.get('url', '#')}) "
-                f"{message}\n"
-                f"   - Repository: {commit['repository_name']}\n"
-                f"   - Changes: +{commit['additions']} -{commit['deletions']}\n"
-                f"   - Date: {commit['committed_at']}"
-            )
+            if compact:
+                # Compact format: minimal info
+                lines.append(
+                    f"{i}. {commit['sha'][:7]}: {message[:50]} "
+                    f"(+{commit['additions']}/-{commit['deletions']})"
+                )
+            else:
+                lines.append(
+                    f"{i}. [{commit['sha'][:7]}]({commit.get('url', '#')}) "
+                    f"{message}\n"
+                    f"   - Repository: {commit['repository_name']}\n"
+                    f"   - Changes: +{commit['additions']} -{commit['deletions']}\n"
+                    f"   - Date: {commit['committed_at']}"
+                )
         
-        return '\n\n'.join(lines)
+        return '\n\n'.join(lines) if not compact else '\n'.join(lines)
     
-    def _format_pr_details(self, prs: List[Dict[str, Any]]) -> str:
+    def _format_pr_details(self, prs: List[Dict[str, Any]], compact: bool = False) -> str:
         """Format detailed pull request information"""
         if not prs:
             return "- No pull requests in period"
@@ -382,17 +402,24 @@ Please provide insights on the technical depth and impact of this developer's co
         lines = []
         for i, pr in enumerate(prs, 1):
             status = "✅ Merged" if pr.get('merged_at') else f"📌 {pr['state'].title()}"
-            lines.append(
-                f"{i}. [{pr['repository_name']}#{pr['number']}]({pr.get('url', '#')}) "
-                f"{pr['title']}\n"
-                f"   - Status: {status}\n"
-                f"   - Changes: +{pr['additions']} -{pr['deletions']}\n"
-                f"   - Created: {pr['created_at']}"
-            )
+            if compact:
+                # Compact format: minimal info
+                lines.append(
+                    f"{i}. #{pr['number']}: {pr['title'][:60]} "
+                    f"({status}, +{pr['additions']}/-{pr['deletions']})"
+                )
+            else:
+                lines.append(
+                    f"{i}. [{pr['repository_name']}#{pr['number']}]({pr.get('url', '#')}) "
+                    f"{pr['title']}\n"
+                    f"   - Status: {status}\n"
+                    f"   - Changes: +{pr['additions']} -{pr['deletions']}\n"
+                    f"   - Created: {pr['created_at']}"
+                )
         
-        return '\n\n'.join(lines)
+        return '\n\n'.join(lines) if not compact else '\n'.join(lines)
     
-    def _format_issue_details(self, issues: List[Dict[str, Any]]) -> str:
+    def _format_issue_details(self, issues: List[Dict[str, Any]], compact: bool = False) -> str:
         """Format detailed issue information"""
         if not issues:
             return "- No issues in period"
@@ -400,14 +427,20 @@ Please provide insights on the technical depth and impact of this developer's co
         lines = []
         for i, issue in enumerate(issues, 1):
             status = "✅ Closed" if issue.get('closed_at') else "📌 Open"
-            lines.append(
-                f"{i}. [{issue['repository_name']}#{issue['number']}]({issue.get('url', '#')}) "
-                f"{issue['title']}\n"
-                f"   - Status: {status}\n"
-                f"   - Created: {issue['created_at']}"
-            )
+            if compact:
+                # Compact format: minimal info
+                lines.append(
+                    f"{i}. #{issue['number']}: {issue['title'][:60]} ({status})"
+                )
+            else:
+                lines.append(
+                    f"{i}. [{issue['repository_name']}#{issue['number']}]({issue.get('url', '#')}) "
+                    f"{issue['title']}\n"
+                    f"   - Status: {status}\n"
+                    f"   - Created: {issue['created_at']}"
+                )
         
-        return '\n\n'.join(lines)
+        return '\n\n'.join(lines) if not compact else '\n'.join(lines)
     
     def export_as_json(self, member_data: Dict[str, Any]) -> str:
         """
