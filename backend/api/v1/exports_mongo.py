@@ -12,7 +12,7 @@ import json
 import csv
 import io
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
 
 from src.utils.logger import get_logger
@@ -168,11 +168,17 @@ async def export_collection_csv(
             if timestamp_field:
                 date_filter = {}
                 if start_date:
-                    date_filter['$gte'] = datetime.fromisoformat(start_date)
+                    try:
+                        date_filter['$gte'] = datetime.fromisoformat(start_date)
+                    except ValueError:
+                        date_filter['$gte'] = start_date
                 if end_date:
-                    # Include the entire end day
-                    end_datetime = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
-                    date_filter['$lte'] = end_datetime
+                    try:
+                        # Add 1 day to include the entire end date
+                        end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+                        date_filter['$lt'] = end_dt
+                    except ValueError:
+                        date_filter['$lte'] = end_date + "T23:59:59"
                 
                 if date_filter:
                     query_filter[timestamp_field] = date_filter
@@ -326,10 +332,17 @@ async def export_collection_toon(
             if timestamp_field:
                 date_filter = {}
                 if start_date:
-                    date_filter['$gte'] = datetime.fromisoformat(start_date)
+                    try:
+                        date_filter['$gte'] = datetime.fromisoformat(start_date)
+                    except ValueError:
+                        date_filter['$gte'] = start_date
                 if end_date:
-                    end_datetime = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
-                    date_filter['$lte'] = end_datetime
+                    try:
+                        # Add 1 day to include the entire end date
+                        end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+                        date_filter['$lt'] = end_dt
+                    except ValueError:
+                        date_filter['$lte'] = end_date + "T23:59:59"
                 
                 if date_filter:
                     query_filter[timestamp_field] = date_filter
@@ -509,13 +522,20 @@ async def export_activities(
         if start_date:
             if 'timestamp' not in match_filter:
                 match_filter['timestamp'] = {}
-            match_filter['timestamp']['$gte'] = datetime.fromisoformat(start_date)
+            try:
+                match_filter['timestamp']['$gte'] = datetime.fromisoformat(start_date)
+            except ValueError:
+                match_filter['timestamp']['$gte'] = start_date
         
         if end_date:
             if 'timestamp' not in match_filter:
                 match_filter['timestamp'] = {}
-            end_datetime = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
-            match_filter['timestamp']['$lte'] = end_datetime
+            try:
+                # Add 1 day to include the entire end date
+                end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+                match_filter['timestamp']['$lt'] = end_dt
+            except ValueError:
+                match_filter['timestamp']['$lte'] = end_date + "T23:59:59"
         
         if match_filter:
             pipeline.append({'$match': match_filter})
@@ -760,10 +780,17 @@ async def export_bulk_collections(
                         if timestamp_field:
                             date_filter = {}
                             if start_date:
-                                date_filter['$gte'] = datetime.fromisoformat(start_date)
+                                try:
+                                    date_filter['$gte'] = datetime.fromisoformat(start_date)
+                                except ValueError:
+                                    date_filter['$gte'] = start_date
                             if end_date:
-                                end_datetime = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
-                                date_filter['$lte'] = end_datetime
+                                try:
+                                    # Add 1 day to include the entire end date
+                                    end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+                                    date_filter['$lt'] = end_dt
+                                except ValueError:
+                                    date_filter['$lte'] = end_date + "T23:59:59"
                             
                             if date_filter:
                                 query_filter[timestamp_field] = date_filter

@@ -342,12 +342,27 @@ async def get_member_detail(
         from bson import ObjectId
         try:
             member_obj_id = ObjectId(member_id)
-        except:
-            raise HTTPException(status_code=400, detail="Invalid member ID format")
+        except Exception as e:
+            logger.error(f"Invalid member ID format: {member_id}, error: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid member ID format: {member_id}")
         
+        # Try to find member by ObjectId first
         member = await db["members"].find_one({"_id": member_obj_id})
+        
+        # If not found, try to find by string ID (in case _id is stored as string)
         if not member:
-            raise HTTPException(status_code=404, detail=f"Member with ID {member_id} not found")
+            member = await db["members"].find_one({"_id": member_id})
+        
+        # If still not found, log available members for debugging
+        if not member:
+            # Get first few members for debugging
+            sample_members = await db["members"].find({}).limit(5).to_list(length=5)
+            sample_ids = [str(m.get("_id")) for m in sample_members]
+            logger.warning(f"Member with ID {member_id} not found. Sample member IDs: {sample_ids}")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Member with ID {member_id} not found. Please check if the member exists in the database."
+            )
         
         member_name = member.get("name")
         
@@ -477,7 +492,7 @@ async def get_member_activities(
     activity_type: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    limit: int = 100,
+    limit: int = 200,
     offset: int = 0,
     _admin: str = Depends(require_admin)
 ) -> Dict[str, Any]:
@@ -513,67 +528,219 @@ async def get_member_activities(
         
         member_name = member.get("name")
         
-        # Build query for member_activities collection - try both string and ObjectId
-        base_query = {
-            "$or": [
-                {"member_id": member_id},
-                {"member_id": member_obj_id}
-            ]
-        }
-        
-        query = base_query.copy()
-        
-        if source_type:
-            query["source_type"] = source_type
-        
-        if activity_type:
-            query["activity_type"] = activity_type
-        
-        if start_date:
-            query["timestamp"] = {"$gte": start_date}
-        
-        if end_date:
-            if "timestamp" not in query:
-                query["timestamp"] = {}
-            elif isinstance(query["timestamp"], dict):
-                query["timestamp"]["$lte"] = end_date
-            else:
-                # If timestamp was already a single value, convert to range
-                query["timestamp"] = {
-                    "$gte": query["timestamp"],
-                    "$lte": end_date
-                }
-        
-        # Get total count
-        total = await db["member_activities"].count_documents(query)
-        
-        # Get activities from member_activities collection
-        activities_cursor = (
-            db["member_activities"]
-            .find(query)
-            .sort("timestamp", -1)
-            .skip(offset)
-            .limit(limit)
+        # Import helper functions from activities_mongo
+        from backend.api.v1.activities_mongo import (
+            load_member_mappings,
+            get_identifiers_for_member,
+            get_mapped_member_name
         )
         
+        # Load member mappings for filtering
+        member_mappings = await load_member_mappings(db)
+        
         activities = []
-        async for activity in activities_cursor:
-            # Parse metadata if it's a string
-            metadata = activity.get("metadata", {})
-            if isinstance(metadata, str):
-                try:
-                    import json
-                    metadata = json.loads(metadata)
-                except:
-                    metadata = {}
+        
+        # Build date filter
+        date_filter = {}
+        if start_date:
+            date_filter['$gte'] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        if end_date:
+            date_filter['$lte'] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        
+        # Determine which sources to query (same logic as activities API)
+        sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive']
+        
+        for source in sources_to_query:
+            if source == 'github':
+                # GitHub commits
+                if not activity_type or activity_type == 'commit':
+                    commits = db["github_commits"]
+                    query = {}
+                    # Find identifiers for this member name
+                    identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                    if identifiers:
+                        query['author_name'] = {'$in': identifiers}
+                    else:
+                        query['author_name'] = member_name
+                    if date_filter:
+                        query['date'] = date_filter
+                    
+                    async for commit in commits.find(query).sort("date", -1).limit(limit):
+                        commit_date = commit.get('date')
+                        if isinstance(commit_date, datetime):
+                            timestamp_str = commit_date.isoformat() + 'Z' if commit_date.tzinfo is None else commit_date.isoformat()
+                        else:
+                            timestamp_str = str(commit_date) if commit_date else ''
+                        
+                        repo_name = commit.get('repository', '')
+                        sha = commit.get('sha', '')
+                        commit_url = commit.get('url') or (f"https://github.com/tokamak-network/{repo_name}/commit/{sha}" if repo_name and sha else None)
+                        
+                        activities.append({
+                            "id": str(commit['_id']),
+                            "source_type": "github",
+                            "activity_type": "commit",
+                            "timestamp": timestamp_str,
+                            "metadata": {
+                                "sha": sha,
+                                "message": commit.get('message'),
+                                "repository": repo_name,
+                                "additions": commit.get('additions', 0),
+                                "deletions": commit.get('deletions', 0),
+                                "url": commit_url
+                            }
+                        })
+                
+                # GitHub PRs
+                if not activity_type or activity_type == 'pull_request':
+                    prs = db["github_pull_requests"]
+                    query = {}
+                    identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                    if identifiers:
+                        query['author'] = {'$in': identifiers}
+                    else:
+                        query['author'] = member_name
+                    if date_filter:
+                        query['created_at'] = date_filter
+                    
+                    async for pr in prs.find(query).sort("created_at", -1).limit(limit):
+                        created_at = pr.get('created_at')
+                        if isinstance(created_at, datetime):
+                            timestamp_str = created_at.isoformat() + 'Z' if created_at.tzinfo is None else created_at.isoformat()
+                        else:
+                            timestamp_str = str(created_at) if created_at else ''
+                        
+                        activities.append({
+                            "id": str(pr['_id']),
+                            "source_type": "github",
+                            "activity_type": "pull_request",
+                            "timestamp": timestamp_str,
+                            "metadata": {
+                                "number": pr.get('number'),
+                                "title": pr.get('title'),
+                                "repository": pr.get('repository'),
+                                "state": pr.get('state'),
+                                "url": pr.get('url')
+                            }
+                        })
             
-            activities.append({
-                "id": str(activity.get("_id")),
-                "source_type": activity.get("source_type", "unknown"),
-                "activity_type": activity.get("activity_type", "unknown"),
-                "timestamp": activity.get("timestamp"),
-                "metadata": metadata
-            })
+            elif source == 'slack':
+                messages = db["slack_messages"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
+                or_conditions = []
+                if identifiers:
+                    or_conditions.append({'user_id': {'$in': identifiers}})
+                    or_conditions.append({'user_email': {'$in': identifiers}})
+                or_conditions.append({'user_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
+                query['$or'] = or_conditions
+                if date_filter:
+                    query['posted_at'] = date_filter
+                
+                async for msg in messages.find(query).sort("posted_at", -1).limit(limit):
+                    posted_at = msg.get('posted_at')
+                    if isinstance(posted_at, datetime):
+                        timestamp_str = posted_at.isoformat() + 'Z' if posted_at.tzinfo is None else posted_at.isoformat()
+                    else:
+                        timestamp_str = str(posted_at) if posted_at else ''
+                    
+                    channel_id = msg.get('channel_id', '')
+                    ts = msg.get('ts', '')
+                    if channel_id and ts:
+                        ts_formatted = ts.replace('.', '')
+                        slack_url = f"https://tokamak-network.slack.com/archives/{channel_id}/p{ts_formatted}"
+                    else:
+                        slack_url = None
+                    
+                    activities.append({
+                        "id": str(msg['_id']),
+                        "source_type": "slack",
+                        "activity_type": "message",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "channel": msg.get('channel_name'),
+                            "channel_id": channel_id,
+                            "text": msg.get('text', '')[:500],
+                            "url": slack_url
+                        }
+                    })
+            
+            elif source == 'notion':
+                pages = db["notion_pages"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'notion', member_name)
+                or_conditions = []
+                if identifiers:
+                    or_conditions.append({'created_by.id': {'$in': identifiers}})
+                    or_conditions.append({'created_by.email': {'$in': identifiers}})
+                or_conditions.append({'created_by.name': {"$regex": f"^{member_name}", "$options": "i"}})
+                query['$or'] = or_conditions
+                if date_filter:
+                    query['created_time'] = date_filter
+                
+                async for page in pages.find(query).sort("created_time", -1).limit(limit):
+                    created_time = page.get('created_time')
+                    if isinstance(created_time, datetime):
+                        timestamp_str = created_time.isoformat() + 'Z' if created_time.tzinfo is None else created_time.isoformat()
+                    else:
+                        timestamp_str = str(created_time) if created_time else ''
+                    
+                    activities.append({
+                        "id": str(page['_id']),
+                        "source_type": "notion",
+                        "activity_type": "page",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "title": page.get('title'),
+                            "url": page.get('url')
+                        }
+                    })
+            
+            elif source == 'drive' or source == 'google_drive':
+                drive_activities = db["drive_activities"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'drive', member_name)
+                if identifiers:
+                    query['user_email'] = {'$in': identifiers}
+                else:
+                    query['user_email'] = {"$regex": member_name, "$options": "i"}
+                if date_filter:
+                    query['timestamp'] = date_filter
+                
+                async for activity in drive_activities.find(query).sort("timestamp", -1).limit(limit):
+                    timestamp_val = activity.get('timestamp')
+                    if isinstance(timestamp_val, datetime):
+                        timestamp_str = timestamp_val.isoformat() + 'Z' if timestamp_val.tzinfo is None else timestamp_val.isoformat()
+                    else:
+                        timestamp_str = str(timestamp_val) if timestamp_val else ''
+                    
+                    activities.append({
+                        "id": str(activity['_id']),
+                        "source_type": "google_drive",
+                        "activity_type": "activity",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "primary_action": activity.get('action'),
+                            "target_name": activity.get('doc_title'),
+                            "doc_type": activity.get('doc_type')
+                        }
+                    })
+        
+        # Sort all activities by timestamp descending
+        def sort_key(activity):
+            if not activity.get("timestamp"):
+                return datetime.min
+            try:
+                ts = activity["timestamp"].replace('Z', '+00:00')
+                return datetime.fromisoformat(ts)
+            except:
+                return datetime.min
+        
+        activities.sort(key=sort_key, reverse=True)
+        
+        # Apply offset and limit
+        total = len(activities)
+        activities = activities[offset:offset+limit]
         
         return {
             "member_id": member_id,
@@ -645,56 +812,193 @@ async def generate_member_summary(
         
         member_name = member.get("name")
         
-        # Build query for member_activities collection - try both string and ObjectId
-        base_query = {
-            "$or": [
-                {"member_id": member_id},
-                {"member_id": member_obj_id}
-            ]
-        }
-        
-        query = base_query.copy()
-        
-        if start_date:
-            query["timestamp"] = {"$gte": start_date}
-        
-        if end_date:
-            if "timestamp" not in query:
-                query["timestamp"] = {}
-            elif isinstance(query["timestamp"], dict):
-                query["timestamp"]["$lte"] = end_date
-            else:
-                query["timestamp"] = {
-                    "$gte": query["timestamp"],
-                    "$lte": end_date
-                }
-        
-        # Get activities from member_activities collection (limit to 100 for summary)
-        activities_cursor = (
-            db["member_activities"]
-            .find(query)
-            .sort("timestamp", -1)
-            .limit(100)
+        # Import helper functions from activities_mongo
+        from backend.api.v1.activities_mongo import (
+            load_member_mappings,
+            get_identifiers_for_member
         )
         
+        # Load member mappings for filtering
+        member_mappings = await load_member_mappings(db)
+        
         activities = []
-        async for activity in activities_cursor:
-            # Parse metadata if it's a string
-            metadata = activity.get("metadata", {})
-            if isinstance(metadata, str):
-                try:
-                    import json
-                    metadata = json.loads(metadata)
-                except:
-                    metadata = {}
+        
+        # Build date filter
+        date_filter = {}
+        if start_date:
+            date_filter['$gte'] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        if end_date:
+            date_filter['$lte'] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        
+        # Query all sources (limit to 100 total for summary)
+        sources_to_query = ['github', 'slack', 'notion', 'drive']
+        
+        for source in sources_to_query:
+            if source == 'github':
+                # Commits
+                commits = db["github_commits"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                if identifiers:
+                    query['author_name'] = {'$in': identifiers}
+                else:
+                    query['author_name'] = member_name
+                if date_filter:
+                    query['date'] = date_filter
+                
+                async for commit in commits.find(query).sort("date", -1).limit(30):
+                    commit_date = commit.get('date')
+                    if isinstance(commit_date, datetime):
+                        timestamp_str = commit_date.isoformat() + 'Z' if commit_date.tzinfo is None else commit_date.isoformat()
+                    else:
+                        timestamp_str = str(commit_date) if commit_date else ''
+                    
+                    activities.append({
+                        "id": str(commit['_id']),
+                        "source_type": "github",
+                        "activity_type": "commit",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "message": commit.get('message'),
+                            "repository": commit.get('repository'),
+                            "additions": commit.get('additions', 0),
+                            "deletions": commit.get('deletions', 0)
+                        }
+                    })
+                
+                # PRs
+                prs = db["github_pull_requests"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+                if identifiers:
+                    query['author'] = {'$in': identifiers}
+                else:
+                    query['author'] = member_name
+                if date_filter:
+                    query['created_at'] = date_filter
+                
+                async for pr in prs.find(query).sort("created_at", -1).limit(20):
+                    created_at = pr.get('created_at')
+                    if isinstance(created_at, datetime):
+                        timestamp_str = created_at.isoformat() + 'Z' if created_at.tzinfo is None else created_at.isoformat()
+                    else:
+                        timestamp_str = str(created_at) if created_at else ''
+                    
+                    activities.append({
+                        "id": str(pr['_id']),
+                        "source_type": "github",
+                        "activity_type": "pull_request",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "number": pr.get('number'),
+                            "title": pr.get('title'),
+                            "repository": pr.get('repository'),
+                            "state": pr.get('state')
+                        }
+                    })
             
-            activities.append({
-                "id": str(activity.get("_id")),
-                "source_type": activity.get("source_type", "unknown"),
-                "activity_type": activity.get("activity_type", "unknown"),
-                "timestamp": activity.get("timestamp"),
-                "metadata": metadata
-            })
+            elif source == 'slack':
+                messages = db["slack_messages"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
+                or_conditions = []
+                if identifiers:
+                    or_conditions.append({'user_id': {'$in': identifiers}})
+                    or_conditions.append({'user_email': {'$in': identifiers}})
+                or_conditions.append({'user_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
+                query['$or'] = or_conditions
+                if date_filter:
+                    query['posted_at'] = date_filter
+                
+                async for msg in messages.find(query).sort("posted_at", -1).limit(30):
+                    posted_at = msg.get('posted_at')
+                    if isinstance(posted_at, datetime):
+                        timestamp_str = posted_at.isoformat() + 'Z' if posted_at.tzinfo is None else posted_at.isoformat()
+                    else:
+                        timestamp_str = str(posted_at) if posted_at else ''
+                    
+                    activities.append({
+                        "id": str(msg['_id']),
+                        "source_type": "slack",
+                        "activity_type": "message",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "text": msg.get('text', '')[:500],
+                            "channel_name": msg.get('channel_name')
+                        }
+                    })
+            
+            elif source == 'notion':
+                pages = db["notion_pages"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'notion', member_name)
+                or_conditions = []
+                if identifiers:
+                    or_conditions.append({'created_by.id': {'$in': identifiers}})
+                    or_conditions.append({'created_by.email': {'$in': identifiers}})
+                or_conditions.append({'created_by.name': {"$regex": f"^{member_name}", "$options": "i"}})
+                query['$or'] = or_conditions
+                if date_filter:
+                    query['created_time'] = date_filter
+                
+                async for page in pages.find(query).sort("created_time", -1).limit(20):
+                    created_time = page.get('created_time')
+                    if isinstance(created_time, datetime):
+                        timestamp_str = created_time.isoformat() + 'Z' if created_time.tzinfo is None else created_time.isoformat()
+                    else:
+                        timestamp_str = str(created_time) if created_time else ''
+                    
+                    activities.append({
+                        "id": str(page['_id']),
+                        "source_type": "notion",
+                        "activity_type": "page",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "title": page.get('title')
+                        }
+                    })
+            
+            elif source == 'drive':
+                drive_activities = db["drive_activities"]
+                query = {}
+                identifiers = get_identifiers_for_member(member_mappings, 'drive', member_name)
+                if identifiers:
+                    query['user_email'] = {'$in': identifiers}
+                else:
+                    query['user_email'] = {"$regex": member_name, "$options": "i"}
+                if date_filter:
+                    query['timestamp'] = date_filter
+                
+                async for activity in drive_activities.find(query).sort("timestamp", -1).limit(20):
+                    timestamp_val = activity.get('timestamp')
+                    if isinstance(timestamp_val, datetime):
+                        timestamp_str = timestamp_val.isoformat() + 'Z' if timestamp_val.tzinfo is None else timestamp_val.isoformat()
+                    else:
+                        timestamp_str = str(timestamp_val) if timestamp_val else ''
+                    
+                    activities.append({
+                        "id": str(activity['_id']),
+                        "source_type": "google_drive",
+                        "activity_type": "activity",
+                        "timestamp": timestamp_str,
+                        "metadata": {
+                            "primary_action": activity.get('action'),
+                            "target_name": activity.get('doc_title')
+                        }
+                    })
+        
+        # Sort all activities by timestamp descending
+        def sort_key(activity):
+            if not activity.get("timestamp"):
+                return datetime.min
+            try:
+                ts = activity["timestamp"].replace('Z', '+00:00')
+                return datetime.fromisoformat(ts)
+            except:
+                return datetime.min
+        
+        activities.sort(key=sort_key, reverse=True)
+        activities = activities[:100]  # Limit to 100 for summary
         
         if not activities:
             return {
