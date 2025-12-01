@@ -1352,13 +1352,70 @@ export default function ActivitiesPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">
-                  📹{" "}
-                  {recordingDetail?.name ||
-                    meetingAnalysis?.meeting_title ||
-                    "Loading..."}
-                </h2>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    📹{" "}
+                    {translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`]?.text ||
+                      recordingDetail?.name ||
+                      meetingAnalysis?.meeting_title ||
+                      "Loading..."}
+                  </h2>
+                  {(recordingDetail?.name || meetingAnalysis?.meeting_title) && (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          const recordingId = recordingDetail?.id || meetingAnalysis?.id;
+                          const name = recordingDetail?.name || meetingAnalysis?.meeting_title;
+                          if (recordingId && name) {
+                            handleTranslate(`recording_name_${recordingId}`, name, "en");
+                          }
+                        }}
+                        disabled={translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`}
+                        className={`text-xs px-2 py-1 rounded transition-colors ${
+                          translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "en"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                        } ${
+                          translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`
+                            ? "opacity-50 cursor-wait"
+                            : ""
+                        }`}
+                      >
+                        EN
+                      </button>
+                      <button
+                        onClick={() => {
+                          const recordingId = recordingDetail?.id || meetingAnalysis?.id;
+                          const name = recordingDetail?.name || meetingAnalysis?.meeting_title;
+                          if (recordingId && name) {
+                            handleTranslate(`recording_name_${recordingId}`, name, "ko");
+                          }
+                        }}
+                        disabled={translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`}
+                        className={`text-xs px-2 py-1 rounded transition-colors ${
+                          translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "ko"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                        } ${
+                          translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`
+                            ? "opacity-50 cursor-wait"
+                            : ""
+                        }`}
+                      >
+                        KR
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`] && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    🌐 Translated to{" "}
+                    {translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`].lang === "ko"
+                      ? "Korean"
+                      : "English"}
+                  </p>
+                )}
                 {(recordingDetail || meetingAnalysis) && (
                   <p className="text-sm text-gray-500 mt-1">
                     {recordingDetail?.created_by ||
@@ -1451,8 +1508,66 @@ export default function ActivitiesPage() {
               ) : selectedTemplate === "transcript" ? (
                 // Show transcript only when explicitly selected
                 <div className="prose max-w-none">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-700">Transcript</h3>
+                    {(meetingAnalysis?.content || recordingDetail?.content) && (
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => {
+                            const recordingId = recordingDetail?.id || meetingAnalysis?.id;
+                            const content = meetingAnalysis?.content || recordingDetail?.content;
+                            if (recordingId && content) {
+                              handleTranslate(`recording_transcript_${recordingId}`, content, "en");
+                            }
+                          }}
+                          disabled={translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`}
+                          className={`text-xs px-2 py-1 rounded transition-colors ${
+                            translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "en"
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                          } ${
+                            translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`
+                              ? "opacity-50 cursor-wait"
+                              : ""
+                          }`}
+                        >
+                          EN
+                        </button>
+                        <button
+                          onClick={() => {
+                            const recordingId = recordingDetail?.id || meetingAnalysis?.id;
+                            const content = meetingAnalysis?.content || recordingDetail?.content;
+                            if (recordingId && content) {
+                              handleTranslate(`recording_transcript_${recordingId}`, content, "ko");
+                            }
+                          }}
+                          disabled={translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`}
+                          className={`text-xs px-2 py-1 rounded transition-colors ${
+                            translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "ko"
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                          } ${
+                            translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`
+                              ? "opacity-50 cursor-wait"
+                              : ""
+                          }`}
+                        >
+                          KR
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`] && (
+                    <p className="text-xs text-gray-400 mb-2">
+                      🌐 Translated to{" "}
+                      {translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`].lang === "ko"
+                        ? "Korean"
+                        : "English"}
+                    </p>
+                  )}
                   <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans bg-gray-50 p-4 rounded">
-                    {meetingAnalysis?.content ||
+                    {translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`]?.text ||
+                      meetingAnalysis?.content ||
                       recordingDetail?.content ||
                       "No transcript available"}
                   </pre>
@@ -1553,21 +1668,104 @@ export default function ActivitiesPage() {
 
                   {/* Analysis Content */}
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-3">
-                      {selectedTemplate === "default" && "📊 Analysis"}
-                      {selectedTemplate === "team_collaboration" &&
-                        "🤝 Team Collaboration Analysis"}
-                      {selectedTemplate === "action_items" && "✅ Action Items"}
-                      {selectedTemplate === "knowledge_base" &&
-                        "📚 Knowledge Base Entry"}
-                      {selectedTemplate === "decision_log" && "📋 Decision Log"}
-                      {selectedTemplate === "quick_recap" && "⚡ Quick Recap"}
-                      {selectedTemplate === "meeting_context" &&
-                        "🎯 Meeting Context"}
-                    </h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium text-gray-900">
+                        {selectedTemplate === "default" && "📊 Analysis"}
+                        {selectedTemplate === "team_collaboration" &&
+                          "🤝 Team Collaboration Analysis"}
+                        {selectedTemplate === "action_items" && "✅ Action Items"}
+                        {selectedTemplate === "knowledge_base" &&
+                          "📚 Knowledge Base Entry"}
+                        {selectedTemplate === "decision_log" && "📋 Decision Log"}
+                        {selectedTemplate === "quick_recap" && "⚡ Quick Recap"}
+                        {selectedTemplate === "meeting_context" &&
+                          "🎯 Meeting Context"}
+                      </h4>
+                      {meetingAnalysis.analyses[selectedTemplate].analysis && (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => {
+                              const recordingId = recordingDetail?.id || meetingAnalysis?.id;
+                              const analysisText = meetingAnalysis.analyses[selectedTemplate].analysis;
+                              if (recordingId && analysisText) {
+                                handleTranslate(
+                                  `recording_analysis_${recordingId}_${selectedTemplate}`,
+                                  analysisText,
+                                  "en"
+                                );
+                              }
+                            }}
+                            disabled={
+                              translating ===
+                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                            }
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              translations[
+                                `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                              ]?.lang === "en"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                            } ${
+                              translating ===
+                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                                ? "opacity-50 cursor-wait"
+                                : ""
+                            }`}
+                          >
+                            EN
+                          </button>
+                          <button
+                            onClick={() => {
+                              const recordingId = recordingDetail?.id || meetingAnalysis?.id;
+                              const analysisText = meetingAnalysis.analyses[selectedTemplate].analysis;
+                              if (recordingId && analysisText) {
+                                handleTranslate(
+                                  `recording_analysis_${recordingId}_${selectedTemplate}`,
+                                  analysisText,
+                                  "ko"
+                                );
+                              }
+                            }}
+                            disabled={
+                              translating ===
+                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                            }
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              translations[
+                                `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                              ]?.lang === "ko"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                            } ${
+                              translating ===
+                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                                ? "opacity-50 cursor-wait"
+                                : ""
+                            }`}
+                          >
+                            KR
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {translations[
+                      `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                    ] && (
+                      <p className="text-xs text-gray-400 mb-2">
+                        🌐 Translated to{" "}
+                        {translations[
+                          `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                        ].lang === "ko"
+                          ? "Korean"
+                          : "English"}
+                      </p>
+                    )}
                     <div className="prose max-w-none">
                       <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
-                        {meetingAnalysis.analyses[selectedTemplate].analysis ||
+                        {translations[
+                          `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                        ]?.text ||
+                          meetingAnalysis.analyses[selectedTemplate].analysis ||
                           "No analysis available"}
                       </pre>
                     </div>
