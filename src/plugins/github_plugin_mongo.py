@@ -166,6 +166,11 @@ class GitHubPluginMongo(DataSourcePlugin):
             saved_commits = self._save_commits(collected_data['commits'])
             print(f"   💾 Saved {saved_commits} commits to MongoDB")
             
+            # 6. Sync project repositories from GitHub Teams
+            print("\n6️⃣ Syncing project repositories from GitHub Teams...")
+            synced_projects = self._sync_project_repositories()
+            print(f"   ✅ Synced repositories for {synced_projects} projects")
+            
             return [collected_data]
             
         except Exception as e:
@@ -200,6 +205,135 @@ class GitHubPluginMongo(DataSourcePlugin):
                 print(f"      ⚠️  Error saving repository {repo.get('name')}: {e}")
         
         return saved_count
+    
+    def _sync_project_repositories(self) -> int:
+        """
+        Sync project repositories from GitHub Teams API to MongoDB projects collection
+        
+        This method:
+        1. Fetches all active projects from MongoDB
+        2. For each project, calls GitHub Teams API to get repositories
+        3. Updates the project's repositories field in MongoDB
+        
+        Returns:
+            Number of projects successfully synced
+        """
+        try:
+            db = self.mongo.get_database_sync()
+            projects_collection = db["projects"]
+            
+            # Get all active projects
+            projects = list(projects_collection.find({"is_active": True}))
+            
+            if not projects:
+                print("      ℹ️  No active projects found in MongoDB")
+                return 0
+            
+            synced_count = 0
+            github_token = self.token
+            github_org = self.org_name
+            
+            if not github_token:
+                print("      ⚠️  GITHUB_TOKEN not set, skipping repository sync")
+                return 0
+            
+            for project in projects:
+                project_key = project.get("key")
+                github_team_slug = project.get("github_team_slug") or project_key
+                
+                if not project_key:
+                    continue
+                
+                try:
+                    # Fetch repositories from GitHub Teams API
+                    repos = self._get_repositories_from_team(github_org, github_team_slug, github_token)
+                    
+                    if repos is None:
+                        # Team doesn't exist or API error, skip
+                        continue
+                    
+                    # Update project in MongoDB
+                    now = datetime.utcnow()
+                    projects_collection.update_one(
+                        {"key": project_key},
+                        {
+                            "$set": {
+                                "repositories": repos,
+                                "repositories_synced_at": now,
+                                "updated_at": now
+                            }
+                        }
+                    )
+                    
+                    synced_count += 1
+                    print(f"      ✅ {project_key}: {len(repos)} repositories")
+                    
+                except Exception as e:
+                    print(f"      ⚠️  Error syncing {project_key}: {e}")
+                    continue
+            
+            return synced_count
+            
+        except Exception as e:
+            print(f"      ❌ Error syncing project repositories: {e}")
+            return 0
+    
+    def _get_repositories_from_team(self, org: str, team_slug: str, token: str) -> Optional[List[str]]:
+        """
+        Get repositories for a GitHub team using Teams API
+        
+        Args:
+            org: GitHub organization name
+            team_slug: Team slug (e.g., "project-ooo")
+            token: GitHub API token
+        
+        Returns:
+            List of repository names (without org prefix), or None if error
+        """
+        try:
+            url = f"https://api.github.com/orgs/{org}/teams/{team_slug}/repos"
+            headers = {
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            
+            repos = set()
+            page = 1
+            per_page = 100
+            
+            while True:
+                params = {"page": page, "per_page": per_page}
+                response = requests.get(url, headers=headers, params=params, timeout=10)
+                
+                if response.status_code == 404:
+                    # Team doesn't exist
+                    return None
+                
+                if response.status_code != 200:
+                    # API error
+                    return None
+                
+                data = response.json()
+                if not data:
+                    break
+                
+                # Extract repository names (remove org prefix)
+                for repo in data:
+                    full_name = repo.get("full_name", "")
+                    if "/" in full_name:
+                        repo_name = full_name.split("/", 1)[1]
+                        repos.add(repo_name)
+                
+                # Check if there are more pages
+                if len(data) < per_page:
+                    break
+                page += 1
+            
+            return sorted(list(repos))
+            
+        except Exception as e:
+            print(f"      ⚠️  Error fetching repositories for team {team_slug}: {e}")
+            return None
     
     def _save_commits(self, commits: List[Dict[str, Any]]) -> int:
         """Save commits to MongoDB"""

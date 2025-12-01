@@ -170,27 +170,6 @@ def get_project_repositories_from_config(project_key: str) -> Set[str]:
         return set()
 
 
-def get_project_config(project_key: str) -> dict:
-    """
-    Get full project config from config.yaml
-    
-    Args:
-        project_key: Project key (e.g., "project-ooo")
-    
-    Returns:
-        Project configuration dictionary
-    """
-    try:
-        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config", "config.yaml")
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-        
-        return config.get("projects", {}).get(project_key, {})
-    except Exception as e:
-        logger.error(f"Error reading config.yaml: {e}")
-        return {}
-
-
 @router.post("/custom-export/preview")
 async def get_custom_export_preview(request: Request, body: CustomExportRequest):
     """
@@ -250,11 +229,11 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
             if source == "github":
                 results.extend(await fetch_github_data(db, members_to_filter, date_filter, member_info_map, body.project))
             elif source == "slack":
-                results.extend(await fetch_slack_data(db, members_to_filter, date_filter, member_info_map, body.project))
+                results.extend(await fetch_slack_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "notion":
                 results.extend(await fetch_notion_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "drive":
-                results.extend(await fetch_drive_data(db, members_to_filter, date_filter, member_info_map, body.project))
+                results.extend(await fetch_drive_data(db, members_to_filter, date_filter, member_info_map))
         
         # Sort by timestamp descending
         results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -374,25 +353,10 @@ async def fetch_github_data(db, members: List[str], date_filter: dict, member_in
     return results
 
 
-async def fetch_slack_data(db, members: List[str], date_filter: dict, member_info_map: dict, project: Optional[str] = None) -> List[dict]:
+async def fetch_slack_data(db, members: List[str], date_filter: dict, member_info_map: dict) -> List[dict]:
     """Fetch Slack messages for selected members"""
     results = []
     
-    # Get project channel ID if project is specified
-    channel_id = None
-    if project and project != "all":
-        project_config = get_project_config(project)
-        channel_id = project_config.get("slack_channel_id")
-        # If project has no channel ID, we might want to return empty or just ignore filtering?
-        # Assuming if project is selected, we only want messages from that project's channel.
-        if not channel_id or channel_id == "TBD":
-            logger.warning(f"No Slack channel ID found for project {project}")
-            # If strict filtering is desired, return empty. 
-            # But maybe the user just wants to filter by members? 
-            # Usually project filter implies "only activities in this project context".
-            # So returning empty is safer than returning all messages.
-            return []
-            
     for member_name in members:
         identifiers = get_identifiers_for_member(member_name, db)
         member_info = member_info_map.get(member_name, {})
@@ -409,10 +373,6 @@ async def fetch_slack_data(db, members: List[str], date_filter: dict, member_inf
         
         if date_filter:
             query["posted_at"] = date_filter
-            
-        # Add channel filter
-        if channel_id:
-            query["channel_id"] = channel_id
         
         messages = list(db["slack_messages"].find(query).sort("posted_at", -1))
         for msg in messages:
@@ -478,12 +438,9 @@ async def fetch_notion_data(db, members: List[str], date_filter: dict, member_in
     return results
 
 
-async def fetch_drive_data(db, members: List[str], date_filter: dict, member_info_map: dict, project: Optional[str] = None) -> List[dict]:
+async def fetch_drive_data(db, members: List[str], date_filter: dict, member_info_map: dict) -> List[dict]:
     """Fetch Google Drive activities for selected members"""
     results = []
-    
-    # Note: Drive filtering by project is not fully implemented yet 
-    # as we need to map files to project folders.
     
     for member_name in members:
         identifiers = get_identifiers_for_member(member_name, db)
@@ -600,11 +557,11 @@ async def export_custom_csv(request: Request, body: CustomExportRequest):
             if source == "github":
                 results.extend(await fetch_github_data(db, members_to_filter, date_filter, member_info_map, body.project))
             elif source == "slack":
-                results.extend(await fetch_slack_data(db, members_to_filter, date_filter, member_info_map, body.project))
+                results.extend(await fetch_slack_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "notion":
                 results.extend(await fetch_notion_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "drive":
-                results.extend(await fetch_drive_data(db, members_to_filter, date_filter, member_info_map, body.project))
+                results.extend(await fetch_drive_data(db, members_to_filter, date_filter, member_info_map))
         
         # Sort by timestamp
         results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
