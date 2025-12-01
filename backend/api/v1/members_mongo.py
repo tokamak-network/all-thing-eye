@@ -379,6 +379,15 @@ async def get_member_detail(
             source = identifier.get("source", identifier.get("identifier_type"))
             identifiers[source] = identifier["identifier_value"]
         
+        # Import helper functions from activities_mongo for accurate member filtering
+        from backend.api.v1.activities_mongo import (
+            load_member_mappings,
+            get_identifiers_for_member
+        )
+        
+        # Load member mappings for accurate filtering
+        member_mappings = await load_member_mappings(db)
+        
         # Get activity statistics
         activity_stats = {
             "total_activities": 0,
@@ -387,10 +396,31 @@ async def get_member_detail(
             "recent_activities": []
         }
         
-        # GitHub statistics
-        github_commits = await db["github_commits"].count_documents({"author_name": member_name})
-        github_prs = await db["github_pull_requests"].count_documents({"user_login": member_name})
-        github_issues = await db["github_issues"].count_documents({"user_login": member_name})
+        # GitHub statistics - use member_mappings for accurate filtering
+        github_identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
+        github_query = {}
+        if github_identifiers:
+            github_query['author_name'] = {'$in': github_identifiers}
+        else:
+            github_query['author_name'] = member_name
+        
+        github_commits = await db["github_commits"].count_documents(github_query)
+        
+        # PRs - use author field
+        pr_query = {}
+        if github_identifiers:
+            pr_query['author'] = {'$in': github_identifiers}
+        else:
+            pr_query['author'] = member_name
+        github_prs = await db["github_pull_requests"].count_documents(pr_query)
+        
+        # Issues
+        issue_query = {}
+        if github_identifiers:
+            issue_query['author'] = {'$in': github_identifiers}
+        else:
+            issue_query['author'] = member_name
+        github_issues = await db["github_issues"].count_documents(issue_query)
         
         if github_commits + github_prs + github_issues > 0:
             activity_stats["by_source"]["github"] = {
@@ -401,19 +431,43 @@ async def get_member_detail(
             }
             activity_stats["total_activities"] += github_commits + github_prs + github_issues
         
-        # Slack statistics
+        # Slack statistics - use member_mappings for accurate filtering
+        slack_identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
         slack_email = identifiers.get("slack") or identifiers.get("email")
-        if slack_email:
-            slack_messages = await db["slack_messages"].count_documents({"user_email": slack_email})
-            if slack_messages > 0:
-                activity_stats["by_source"]["slack"] = {
-                    "total": slack_messages,
-                    "messages": slack_messages
-                }
-                activity_stats["total_activities"] += slack_messages
         
-        # Notion statistics
-        notion_pages = await db["notion_pages"].count_documents({"created_by": member_name})
+        slack_query = {}
+        if slack_identifiers:
+            or_conditions = []
+            or_conditions.append({'user_id': {'$in': slack_identifiers}})
+            or_conditions.append({'user_email': {'$in': slack_identifiers}})
+            or_conditions.append({'user_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
+            slack_query['$or'] = or_conditions
+        elif slack_email:
+            slack_query['user_email'] = slack_email
+        else:
+            slack_query['user_name'] = {'$regex': f'^{member_name}$', '$options': 'i'}
+        
+        slack_messages = await db["slack_messages"].count_documents(slack_query)
+        if slack_messages > 0:
+            activity_stats["by_source"]["slack"] = {
+                "total": slack_messages,
+                "messages": slack_messages
+            }
+            activity_stats["total_activities"] += slack_messages
+        
+        # Notion statistics - use member_mappings for accurate filtering
+        notion_identifiers = get_identifiers_for_member(member_mappings, 'notion', member_name)
+        notion_query = {}
+        if notion_identifiers:
+            or_conditions = []
+            or_conditions.append({'created_by.id': {'$in': notion_identifiers}})
+            or_conditions.append({'created_by.email': {'$in': notion_identifiers}})
+            or_conditions.append({'created_by.name': {"$regex": f"^{member_name}", "$options": "i"}})
+            notion_query['$or'] = or_conditions
+        else:
+            notion_query['created_by.name'] = {"$regex": f"^{member_name}", "$options": "i"}
+        
+        notion_pages = await db["notion_pages"].count_documents(notion_query)
         if notion_pages > 0:
             activity_stats["by_source"]["notion"] = {
                 "total": notion_pages,
@@ -421,8 +475,19 @@ async def get_member_detail(
             }
             activity_stats["total_activities"] += notion_pages
         
-        # Drive statistics
-        drive_activities = await db["drive_activities"].count_documents({"actor_email": identifiers.get("email")})
+        # Drive statistics - use member_mappings for accurate filtering
+        drive_identifiers = get_identifiers_for_member(member_mappings, 'drive', member_name)
+        drive_email = identifiers.get("email")
+        
+        drive_query = {}
+        if drive_identifiers:
+            drive_query['user_email'] = {'$in': drive_identifiers}
+        elif drive_email:
+            drive_query['user_email'] = drive_email
+        else:
+            drive_query['user_email'] = {"$regex": member_name, "$options": "i"}
+        
+        drive_activities = await db["drive_activities"].count_documents(drive_query)
         if drive_activities > 0:
             activity_stats["by_source"]["drive"] = {
                 "total": drive_activities,
@@ -794,7 +859,7 @@ async def generate_member_summary(
         
         # Configure Gemini
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Get member activities
         mongo = get_mongo()
