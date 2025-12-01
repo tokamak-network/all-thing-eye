@@ -146,8 +146,17 @@ export default function ActivitiesPage() {
     fetchActivities();
   }, [sourceFilter, memberFilter, itemsPerPage]); // Reload when any filter changes
 
-  // Activities are already filtered by backend, no client-side filtering needed
-  const filteredActivities = allActivities ? allActivities.activities : [];
+  // Activities are already filtered by backend, but we need to filter out Kevin's Google Drive activities (noise)
+  const filteredActivities = allActivities
+    ? allActivities.activities.filter(
+        (activity) =>
+          !(
+            activity.source_type === "drive" &&
+            activity.member_name &&
+            activity.member_name.toLowerCase() === "kevin"
+          )
+      )
+    : [];
 
   // Paginate filtered activities
   const totalItems = filteredActivities.length;

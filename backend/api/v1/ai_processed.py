@@ -470,67 +470,107 @@ async def translate_text(
     translation_request: TranslationRequest
 ):
     """
-    Translate text using Gemini API
+    Translate text using DeepL API
     
     Supports:
     - Auto language detection
     - EN ↔ KO translation
+    - Fast translation for large texts
     """
     try:
         import os
-        import google.generativeai as genai
+        import httpx
+        from dotenv import load_dotenv
+        from pathlib import Path
         
-        # Get Gemini API key from environment
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        # Ensure .env file is loaded (in case it wasn't loaded at startup)
+        project_root = Path(__file__).parent.parent.parent.parent
+        env_path = project_root / '.env'
+        load_dotenv(dotenv_path=env_path, override=False)
+        
+        # Get DeepL API key from environment
+        api_key = os.getenv("DEEPL_API_KEY")
         if not api_key:
+            logger.error(f"DEEPL_API_KEY not found. .env path: {env_path}")
             raise HTTPException(
                 status_code=501,
-                detail="GEMINI_API_KEY not configured"
+                detail="DEEPL_API_KEY not configured"
             )
-        
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
         
         text = translation_request.text
         target = translation_request.target_language
         
-        # Language names for prompt
-        lang_names = {
-            "ko": "Korean",
-            "en": "English",
-            "ja": "Japanese",
-            "zh": "Chinese",
+        # DeepL language codes (uppercase)
+        deepl_lang_map = {
+            "ko": "KO",
+            "en": "EN",
+            "ja": "JA",
+            "zh": "ZH",
         }
-        target_name = lang_names.get(target, target)
+        target_lang = deepl_lang_map.get(target.lower(), target.upper())
         
-        # Create translation prompt
-        prompt = f"""Translate the following text to {target_name}. 
-Only output the translated text, nothing else. Do not add any explanations or notes.
-
-Text to translate:
-{text}"""
-        
-        response = model.generate_content(prompt)
-        translated_text = response.text.strip()
-        
-        # Detect source language (simple heuristic)
+        # Detect source language (simple heuristic if not provided)
         def detect_language(text: str) -> str:
             korean_chars = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
             if korean_chars > len(text) * 0.3:
-                return "ko"
-            return "en"
+                return "KO"
+            return "EN"
         
-        source_lang = translation_request.source_language or detect_language(text)
+        source_lang = translation_request.source_language
+        if source_lang:
+            source_lang = deepl_lang_map.get(source_lang.lower(), source_lang.upper())
+        else:
+            source_lang = detect_language(text)
+        
+        # Determine API endpoint (free or paid)
+        # DeepL free API uses api-free.deepl.com, paid uses api.deepl.com
+        # Check if API key is for free tier (ends with :fx) or paid tier
+        api_url = "https://api-free.deepl.com/v2/translate"
+        if not api_key.endswith(":fx"):
+            api_url = "https://api.deepl.com/v2/translate"
+        
+        # Prepare request data
+        data = {
+            "auth_key": api_key,
+            "text": text,
+            "target_lang": target_lang,
+        }
+        
+        # Add source language if specified
+        if source_lang:
+            data["source_lang"] = source_lang
+        
+        # Call DeepL API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(api_url, data=data)
+            response.raise_for_status()
+            result = response.json()
+        
+        # Extract translated text
+        if "translations" in result and len(result["translations"]) > 0:
+            translated_text = result["translations"][0]["text"]
+            detected_source = result["translations"][0].get("detected_source_language", source_lang)
+        else:
+            raise ValueError("No translation in DeepL API response")
+        
+        # Convert DeepL language codes back to lowercase for response
+        source_lang_lower = detected_source.lower() if detected_source else source_lang.lower()
         
         return TranslationResponse(
             original_text=text,
             translated_text=translated_text,
-            source_language=source_lang,
-            target_language=target
+            source_language=source_lang_lower,
+            target_language=target.lower()
         )
         
     except HTTPException:
         raise
+    except httpx.HTTPStatusError as e:
+        logger.error(f"DeepL API HTTP error: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"DeepL API error: {e.response.text}"
+        )
     except Exception as e:
-        logger.error(f"Translation error: {e}")
+        logger.error(f"Translation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
