@@ -128,35 +128,35 @@ export default function FilterPanel({
         </div>
       ) : (
         <>
-          {/* Filters */}
-          <div className="space-y-4 mb-6">
-            {/* Date Range */}
+      {/* Filters */}
+      <div className="space-y-4 mb-6">
+        {/* Date Range */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            📅 Date Range
+          </label>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                📅 Date Range
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <input
-                    type="date"
-                    value={filters.startDate}
-                    onChange={(e) =>
-                      handleFilterChange("startDate", e.target.value)
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">From</p>
-                </div>
-                <div>
-                  <input
-                    type="date"
-                    value={filters.endDate}
-                    onChange={(e) => handleFilterChange("endDate", e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">To</p>
-                </div>
-              </div>
+              <input
+                type="date"
+                value={filters.startDate}
+                onChange={(e) =>
+                  handleFilterChange("startDate", e.target.value)
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">From</p>
+            </div>
+            <div>
+              <input
+                type="date"
+                value={filters.endDate}
+                onChange={(e) => handleFilterChange("endDate", e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">To</p>
+            </div>
+          </div>
               {/* Quick Presets */}
               <div className="flex flex-wrap gap-1.5 mt-3">
                 <button
@@ -268,37 +268,37 @@ export default function FilterPanel({
                   This Year
                 </button>
               </div>
-            </div>
+        </div>
 
-            {/* Project Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                🎯 Project
-              </label>
-              <select
-                value={filters.project}
-                onChange={(e) => handleFilterChange("project", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Project Filter */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            🎯 Project
+          </label>
+          <select
+            value={filters.project}
+            onChange={(e) => handleFilterChange("project", e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
             {/* Members Filter - Multi-select Checkboxes */}
-            <div>
+        <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  👤 Members
+            👤 Members
                   {selectedCount > 0 && (
                     <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
                       {selectedCount} selected
                     </span>
                   )}
-                </label>
+          </label>
                 <button
                   onClick={() => setMembersExpanded(!membersExpanded)}
                   className="text-sm text-gray-500 hover:text-gray-700"
@@ -322,7 +322,7 @@ export default function FilterPanel({
                       <button
                         onClick={handleSelectAll}
                         className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                      >
+          >
                         Select All ({filteredMembers.length})
                       </button>
                       <button
@@ -363,29 +363,29 @@ export default function FilterPanel({
                               {member.name}
                             </span>
                           </label>
-                        ))}
+            ))}
                       </div>
                     )}
                   </div>
                 </div>
               )}
-            </div>
-          </div>
+        </div>
+      </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-2">
-            {/* Preview Button */}
-            <button
-              onClick={onPreview}
-              className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
-            >
-              <span>🔍</span>
-              Preview Results
-            </button>
+      {/* Action Buttons */}
+      <div className="space-y-2">
+        {/* Preview Button */}
+        <button
+          onClick={onPreview}
+          className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+        >
+          <span>🔍</span>
+          Preview Results
+        </button>
 
-            {/* Export Button */}
-            <button
-              onClick={onExport}
+        {/* Export Button */}
+        <button
+          onClick={onExport}
               disabled={isLoading}
               className={`w-full px-4 py-3 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 ${
                 isLoading
@@ -400,21 +400,21 @@ export default function FilterPanel({
                 </>
               ) : (
                 <>
-                  <span>💾</span>
-                  Export as CSV
+          <span>💾</span>
+          Export as CSV
                 </>
               )}
-            </button>
+        </button>
 
-            {/* Save Template Button */}
-            <button
-              onClick={onSaveTemplate}
-              className="w-full px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium flex items-center justify-center gap-2"
-            >
+        {/* Save Template Button */}
+        <button
+          onClick={onSaveTemplate}
+          className="w-full px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium flex items-center justify-center gap-2"
+        >
               <span>📋</span>
-              Save as Template
-            </button>
-          </div>
+          Save as Template
+        </button>
+      </div>
 
         </>
       )}

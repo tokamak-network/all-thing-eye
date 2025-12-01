@@ -553,6 +553,39 @@ class NotionDatabase(BaseModel):
         json_encoders = {ObjectId: str}
 
 
+class Translation(BaseModel):
+    """
+    Translation cache document
+    
+    Stores translated text to avoid redundant API calls
+    """
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    
+    # Unique key: hash of original_text + source_lang + target_lang
+    cache_key: str = Field(..., unique=True)
+    
+    # Original content
+    original_text: str
+    source_language: str  # e.g., "ko", "en"
+    
+    # Translated content
+    translated_text: str
+    target_language: str  # e.g., "ko", "en"
+    
+    # Translation metadata
+    translation_provider: str = "deepl"  # "deepl", "gemini", etc.
+    detected_source_language: Optional[str] = None  # Auto-detected if not provided
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
 class NotionComment(BaseModel):
     """Notion comment document"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")

@@ -470,16 +470,18 @@ async def translate_text(
     translation_request: TranslationRequest
 ):
     """
-    Translate text using DeepL API
+    Translate text using DeepL API with caching
     
     Supports:
     - Auto language detection
     - EN ↔ KO translation
     - Fast translation for large texts
+    - Translation caching in MongoDB to avoid redundant API calls
     """
     try:
         import os
         import httpx
+        import hashlib
         from dotenv import load_dotenv
         from pathlib import Path
         
@@ -522,6 +524,39 @@ async def translate_text(
         else:
             source_lang = detect_language(text)
         
+        # Convert to lowercase for cache key
+        source_lang_lower = source_lang.lower()
+        target_lang_lower = target_lang.lower()
+        
+        # Generate cache key: hash of (original_text + source_lang + target_lang)
+        cache_key_str = f"{text}|{source_lang_lower}|{target_lang_lower}"
+        cache_key = hashlib.sha256(cache_key_str.encode('utf-8')).hexdigest()
+        
+        # Try to get cached translation from MongoDB
+        try:
+            from backend.main import mongo_manager
+            if mongo_manager._sync_client is None:
+                mongo_manager.connect_sync()
+            db = mongo_manager._sync_client[mongo_manager.database_name]
+            translations_collection = db["translations"]
+            
+            # Check cache
+            cached = translations_collection.find_one({"cache_key": cache_key})
+            if cached:
+                logger.info(f"Translation cache hit for key: {cache_key[:16]}...")
+                return TranslationResponse(
+                    original_text=cached["original_text"],
+                    translated_text=cached["translated_text"],
+                    source_language=cached["source_language"],
+                    target_language=cached["target_language"]
+                )
+        except Exception as cache_error:
+            logger.warning(f"Failed to check translation cache: {cache_error}")
+            # Continue with API call if cache check fails
+        
+        # Cache miss - call DeepL API
+        logger.info(f"Translation cache miss, calling DeepL API for key: {cache_key[:16]}...")
+        
         # Determine API endpoint (free or paid)
         # DeepL free API uses api-free.deepl.com, paid uses api.deepl.com
         # Check if API key is for free tier (ends with :fx) or paid tier
@@ -554,13 +589,36 @@ async def translate_text(
             raise ValueError("No translation in DeepL API response")
         
         # Convert DeepL language codes back to lowercase for response
-        source_lang_lower = detected_source.lower() if detected_source else source_lang.lower()
+        detected_source_lower = detected_source.lower() if detected_source else source_lang.lower()
+        
+        # Save to cache
+        try:
+            translation_doc = {
+                "cache_key": cache_key,
+                "original_text": text,
+                "source_language": detected_source_lower,
+                "translated_text": translated_text,
+                "target_language": target_lang_lower,
+                "translation_provider": "deepl",
+                "detected_source_language": detected_source if detected_source else None,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            translations_collection.update_one(
+                {"cache_key": cache_key},
+                {"$set": translation_doc},
+                upsert=True
+            )
+            logger.info(f"Translation cached with key: {cache_key[:16]}...")
+        except Exception as save_error:
+            logger.warning(f"Failed to save translation to cache: {save_error}")
+            # Continue even if cache save fails
         
         return TranslationResponse(
             original_text=text,
             translated_text=translated_text,
-            source_language=source_lang_lower,
-            target_language=target.lower()
+            source_language=detected_source_lower,
+            target_language=target_lang_lower
         )
         
     except HTTPException:

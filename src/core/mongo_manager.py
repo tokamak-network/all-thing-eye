@@ -308,6 +308,12 @@ class MongoDBManager:
             activities.create_index([('member_id', 1), ('timestamp', -1)])
             activities.create_index([('source_type', 1), ('activity_type', 1)])
             
+            # Translations collection (for translation caching)
+            translations = db.get_collection('translations')
+            translations.create_index('cache_key', unique=True)
+            translations.create_index([('source_language', 1), ('target_language', 1)])
+            translations.create_index('created_at')
+            
             # GitHub collections
             github_commits = db[self.collections.get('github_commits', 'github_commits')]
             github_commits.create_index('sha', unique=True)
