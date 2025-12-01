@@ -124,6 +124,34 @@ class ApiClient {
     return response.data;
   }
 
+  async getMemberActivities(
+    memberId: string,
+    params?: {
+      source_type?: string;
+      activity_type?: string;
+      start_date?: string;
+      end_date?: string;
+      limit?: number;
+      offset?: number;
+    }
+  ) {
+    const response = await this.client.get(`/members/${memberId}/activities`, {
+      params,
+    });
+    return response.data;
+  }
+
+  async generateMemberSummary(
+    memberId: string,
+    params?: {
+      start_date?: string;
+      end_date?: string;
+    }
+  ) {
+    const response = await this.client.post(`/members/${memberId}/summary`, params || {});
+    return response.data;
+  }
+
   // Activities API
   async getActivities(params?: {
     source_type?: string;

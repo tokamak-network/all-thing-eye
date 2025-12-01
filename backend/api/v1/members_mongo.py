@@ -351,8 +351,13 @@ async def get_member_detail(
         
         member_name = member.get("name")
         
-        # Get identifiers
-        identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
+        # Get identifiers - try both string and ObjectId
+        identifiers_cursor = db["member_identifiers"].find({
+            "$or": [
+                {"member_id": member_id},
+                {"member_id": member_obj_id}
+            ]
+        })
         identifiers = {}
         async for identifier in identifiers_cursor:
             # Use source as key for consistency
@@ -462,6 +467,325 @@ async def get_member_detail(
     except Exception as e:
         logger.error(f"Error fetching member detail: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch member detail: {str(e)}")
+
+
+@router.get("/members/{member_id}/activities")
+async def get_member_activities(
+    member_id: str,
+    request: Request,
+    source_type: Optional[str] = None,
+    activity_type: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    _admin: str = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Get activities for a specific member with detailed information
+    
+    Args:
+        member_id: Member ID
+        source_type: Filter by source (github, slack, notion, google_drive)
+        activity_type: Filter by activity type
+        start_date: Filter by start date (ISO format)
+        end_date: Filter by end date (ISO format)
+        limit: Maximum number of activities to return
+        offset: Number of activities to skip
+    
+    Returns:
+        List of member activities with detailed information
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Check if member exists
+        from bson import ObjectId
+        try:
+            member_obj_id = ObjectId(member_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid member ID format")
+        
+        member = await db["members"].find_one({"_id": member_obj_id})
+        if not member:
+            raise HTTPException(status_code=404, detail=f"Member with ID {member_id} not found")
+        
+        member_name = member.get("name")
+        
+        # Build query for member_activities collection - try both string and ObjectId
+        base_query = {
+            "$or": [
+                {"member_id": member_id},
+                {"member_id": member_obj_id}
+            ]
+        }
+        
+        query = base_query.copy()
+        
+        if source_type:
+            query["source_type"] = source_type
+        
+        if activity_type:
+            query["activity_type"] = activity_type
+        
+        if start_date:
+            query["timestamp"] = {"$gte": start_date}
+        
+        if end_date:
+            if "timestamp" not in query:
+                query["timestamp"] = {}
+            elif isinstance(query["timestamp"], dict):
+                query["timestamp"]["$lte"] = end_date
+            else:
+                # If timestamp was already a single value, convert to range
+                query["timestamp"] = {
+                    "$gte": query["timestamp"],
+                    "$lte": end_date
+                }
+        
+        # Get total count
+        total = await db["member_activities"].count_documents(query)
+        
+        # Get activities from member_activities collection
+        activities_cursor = (
+            db["member_activities"]
+            .find(query)
+            .sort("timestamp", -1)
+            .skip(offset)
+            .limit(limit)
+        )
+        
+        activities = []
+        async for activity in activities_cursor:
+            # Parse metadata if it's a string
+            metadata = activity.get("metadata", {})
+            if isinstance(metadata, str):
+                try:
+                    import json
+                    metadata = json.loads(metadata)
+                except:
+                    metadata = {}
+            
+            activities.append({
+                "id": str(activity.get("_id")),
+                "source_type": activity.get("source_type", "unknown"),
+                "activity_type": activity.get("activity_type", "unknown"),
+                "timestamp": activity.get("timestamp"),
+                "metadata": metadata
+            })
+        
+        return {
+            "member_id": member_id,
+            "member_name": member_name,
+            "total": total,
+            "activities": activities
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching member activities: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch member activities: {str(e)}")
+
+
+class SummaryRequest(BaseModel):
+    """Request model for member summary generation"""
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+@router.post("/members/{member_id}/summary")
+async def generate_member_summary(
+    member_id: str,
+    request: Request,
+    summary_request: Optional[SummaryRequest] = None,
+    _admin: str = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Generate AI-powered summary of member activities using Gemini
+    
+    Args:
+        member_id: Member ID
+        summary_request: Optional request body with start_date and end_date
+    
+    Returns:
+        AI-generated summary of member activities
+    """
+    try:
+        import os
+        import google.generativeai as genai
+        
+        # Extract dates from request
+        start_date = summary_request.start_date if summary_request else None
+        end_date = summary_request.end_date if summary_request else None
+        
+        # Get Gemini API key
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+        
+        # Configure Gemini
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Get member activities
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        from bson import ObjectId
+        try:
+            member_obj_id = ObjectId(member_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid member ID format")
+        
+        member = await db["members"].find_one({"_id": member_obj_id})
+        if not member:
+            raise HTTPException(status_code=404, detail=f"Member with ID {member_id} not found")
+        
+        member_name = member.get("name")
+        
+        # Build query for member_activities collection - try both string and ObjectId
+        base_query = {
+            "$or": [
+                {"member_id": member_id},
+                {"member_id": member_obj_id}
+            ]
+        }
+        
+        query = base_query.copy()
+        
+        if start_date:
+            query["timestamp"] = {"$gte": start_date}
+        
+        if end_date:
+            if "timestamp" not in query:
+                query["timestamp"] = {}
+            elif isinstance(query["timestamp"], dict):
+                query["timestamp"]["$lte"] = end_date
+            else:
+                query["timestamp"] = {
+                    "$gte": query["timestamp"],
+                    "$lte": end_date
+                }
+        
+        # Get activities from member_activities collection (limit to 100 for summary)
+        activities_cursor = (
+            db["member_activities"]
+            .find(query)
+            .sort("timestamp", -1)
+            .limit(100)
+        )
+        
+        activities = []
+        async for activity in activities_cursor:
+            # Parse metadata if it's a string
+            metadata = activity.get("metadata", {})
+            if isinstance(metadata, str):
+                try:
+                    import json
+                    metadata = json.loads(metadata)
+                except:
+                    metadata = {}
+            
+            activities.append({
+                "id": str(activity.get("_id")),
+                "source_type": activity.get("source_type", "unknown"),
+                "activity_type": activity.get("activity_type", "unknown"),
+                "timestamp": activity.get("timestamp"),
+                "metadata": metadata
+            })
+        
+        if not activities:
+            return {
+                "member_id": member_id,
+                "member_name": member_name,
+                "summary": f"{member_name} has no activities in the specified period.",
+                "period": {
+                    "start": start_date,
+                    "end": end_date
+                }
+            }
+        
+        # Format activities for AI prompt
+        activities_text = []
+        by_source = {}
+        
+        for activity in activities:
+            source = activity.get("source_type", "unknown")
+            activity_type = activity.get("activity_type", "unknown")
+            timestamp = activity.get("timestamp", "")
+            metadata = activity.get("metadata", {})
+            
+            if source not in by_source:
+                by_source[source] = []
+            
+            activity_desc = f"- {activity_type} at {timestamp}"
+            if source == "github":
+                if activity_type == "commit":
+                    activity_desc += f": {metadata.get('message', '')[:100]} in {metadata.get('repository', '')} (+{metadata.get('additions', 0)}/-{metadata.get('deletions', 0)} lines)"
+                elif activity_type == "pull_request":
+                    activity_desc += f": PR #{metadata.get('number', '')} - {metadata.get('title', '')[:100]} in {metadata.get('repository', '')} ({metadata.get('state', '')})"
+                elif activity_type == "issue":
+                    activity_desc += f": Issue #{metadata.get('number', '')} - {metadata.get('title', '')[:100]} in {metadata.get('repository', '')} ({metadata.get('state', '')})"
+            elif source == "slack":
+                activity_desc += f": {metadata.get('text', '')[:100]} in {metadata.get('channel_name', '')}"
+            elif source == "notion":
+                activity_desc += f": {metadata.get('title', '')[:100]}"
+            elif source == "google_drive":
+                activity_desc += f": {metadata.get('primary_action', '')} on {metadata.get('target_name', '')}"
+            
+            by_source[source].append(activity_desc)
+        
+        # Build prompt
+        prompt = f"""Analyze the following activities for team member {member_name} and provide a comprehensive summary.
+
+## Activities by Source
+
+"""
+        for source, source_activities in by_source.items():
+            prompt += f"### {source.upper()}\n"
+            prompt += "\n".join(source_activities[:20])  # Limit to 20 per source
+            prompt += "\n\n"
+        
+        prompt += f"""
+## Analysis Request
+
+Please provide:
+1. **Overall Activity Assessment**: Evaluate the member's overall activity level and engagement
+2. **Work Patterns**: Identify patterns in their work (e.g., focus areas, collaboration style)
+3. **Key Contributions**: Highlight significant contributions or achievements
+4. **Activity Distribution**: Analyze how activities are distributed across different sources
+5. **Trends and Insights**: Identify any trends or notable patterns in their work
+
+Provide a clear, concise summary in English that would be useful for performance review or team insights.
+"""
+        
+        # Generate summary using Gemini
+        try:
+            response = model.generate_content(prompt)
+            summary = response.text
+        except Exception as e:
+            logger.error(f"Error generating Gemini summary: {e}")
+            summary = f"Error generating summary: {str(e)}"
+        
+        return {
+            "member_id": member_id,
+            "member_name": member_name,
+            "summary": summary,
+            "period": {
+                "start": start_date,
+                "end": end_date
+            },
+            "activity_count": len(activities),
+            "sources": list(by_source.keys())
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating member summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
 
 
 @router.delete("/members/{member_id}")

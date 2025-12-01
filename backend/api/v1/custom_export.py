@@ -70,9 +70,54 @@ def get_source_from_field(field: str) -> str:
     return ""
 
 
+def get_project_repositories_from_mongodb(project_key: str) -> Set[str]:
+    """
+    Get repositories for a project from MongoDB projects collection
+    
+    Repositories are automatically synced from GitHub Teams during daily data collection.
+    
+    Args:
+        project_key: Project key (e.g., "project-ooo", "project-trh")
+    
+    Returns:
+        Set of repository names (without org prefix)
+    """
+    try:
+        mongo = get_mongo()
+        if mongo._sync_client is None:
+            mongo.connect_sync()
+        db = mongo._sync_client[mongo.database_name]
+        projects_collection = db["projects"]
+        
+        # Get project from MongoDB
+        project = projects_collection.find_one({"key": project_key, "is_active": True})
+        
+        if not project:
+            logger.warning(f"Project {project_key} not found in MongoDB, falling back to config.yaml")
+            return get_project_repositories_from_config(project_key)
+        
+        repositories = project.get("repositories", [])
+        
+        if repositories:
+            logger.info(f"Found {len(repositories)} repositories for {project_key} from MongoDB")
+            return set(repositories)
+        else:
+            # If repositories list is empty, might not be synced yet, fall back to config
+            logger.warning(f"No repositories found for {project_key} in MongoDB, falling back to config.yaml")
+            return get_project_repositories_from_config(project_key)
+            
+    except Exception as e:
+        logger.warning(f"Error reading from MongoDB: {e}, falling back to config.yaml")
+        return get_project_repositories_from_config(project_key)
+
+
 def get_project_repositories_from_teams(project_key: str) -> Set[str]:
     """
-    Get repositories for a project using GitHub Teams API
+    Get repositories for a project using GitHub Teams API (legacy, kept for manual sync)
+    
+    Note: This is now only used for manual repository sync via API endpoint.
+    For normal operations, use get_project_repositories_from_mongodb() which reads
+    from the automatically synced MongoDB projects collection.
     
     Args:
         project_key: Project key (e.g., "project-ooo", "project-trh")
@@ -279,9 +324,10 @@ async def fetch_github_data(db, members: List[str], date_filter: dict, member_in
     results = []
     
     # Get project repositories if project is specified
+    # Read from MongoDB (automatically synced from GitHub Teams during data collection)
     project_repos = None
     if project and project != "all":
-        project_repos = get_project_repositories_from_teams(project)
+        project_repos = get_project_repositories_from_mongodb(project)
         if not project_repos:
             logger.warning(f"No repositories found for project {project}, returning empty results")
             return []

@@ -50,7 +50,7 @@ export default function FilterPanel({
         setLoading(true);
         
         // Fetch members
-        const membersResponse = await api.getMembers({ limit: 1000 });
+        const membersResponse = await api.getMembers({ limit: 100 });
         const memberList = membersResponse
           .map((m: any) => ({ name: m.name, email: m.email }))
           .filter((m: Member) => m.name)

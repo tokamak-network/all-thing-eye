@@ -74,7 +74,7 @@ export default function ActivitiesPage() {
   useEffect(() => {
     async function fetchMembersAndMappings() {
       try {
-        const response = await apiClient.getMembers({ limit: 1000 });
+        const response = await apiClient.getMembers({ limit: 100 });
         // Response is directly an array of members
         const memberNames = response
           .map((m: any) => m.name)
@@ -87,7 +87,7 @@ export default function ActivitiesPage() {
           const identifiersResponse = await apiClient.get(
             "/database/collections/member_identifiers/documents",
             {
-              limit: 1000,
+              limit: 100,
             }
           );
           const documents = identifiersResponse.documents || [];
