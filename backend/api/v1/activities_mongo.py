@@ -193,20 +193,24 @@ async def get_activities(
         sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
         
         # Build date filter
+        # MongoDB stores datetimes as timezone-naive (assumed UTC)
+        # Convert to timezone-naive UTC for MongoDB query compatibility
         date_filter = {}
         if start_date:
-            # Ensure timezone-aware datetime
+            # Parse datetime and convert to UTC timezone-naive for MongoDB
             start_str = start_date.replace('Z', '+00:00') if start_date.endswith('Z') else start_date
             start_dt = datetime.fromisoformat(start_str)
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            # Convert to UTC if timezone-aware, then remove timezone info for MongoDB
+            if start_dt.tzinfo is not None:
+                start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
             date_filter['$gte'] = start_dt
         if end_date:
-            # Ensure timezone-aware datetime
+            # Parse datetime and convert to UTC timezone-naive for MongoDB
             end_str = end_date.replace('Z', '+00:00') if end_date.endswith('Z') else end_date
             end_dt = datetime.fromisoformat(end_str)
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            # Convert to UTC if timezone-aware, then remove timezone info for MongoDB
+            if end_dt.tzinfo is not None:
+                end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
             date_filter['$lte'] = end_dt
         
         for source in sources_to_query:
@@ -648,20 +652,25 @@ async def get_activities_summary(
         summary = {}
         
         # Build date filter
+        # Build date filter
+        # MongoDB stores datetimes as timezone-naive (assumed UTC)
+        # So we need to convert to timezone-naive for query compatibility
         date_filter = {}
         if start_date:
-            # Ensure timezone-aware datetime
+            # Parse datetime and convert to UTC timezone-naive for MongoDB
             start_str = start_date.replace('Z', '+00:00') if start_date.endswith('Z') else start_date
             start_dt = datetime.fromisoformat(start_str)
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            # Convert to UTC if timezone-aware, then remove timezone info for MongoDB
+            if start_dt.tzinfo is not None:
+                start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
             date_filter['$gte'] = start_dt
         if end_date:
-            # Ensure timezone-aware datetime
+            # Parse datetime and convert to UTC timezone-naive for MongoDB
             end_str = end_date.replace('Z', '+00:00') if end_date.endswith('Z') else end_date
             end_dt = datetime.fromisoformat(end_str)
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            # Convert to UTC if timezone-aware, then remove timezone info for MongoDB
+            if end_dt.tzinfo is not None:
+                end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
             date_filter['$lte'] = end_dt
         
         sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
