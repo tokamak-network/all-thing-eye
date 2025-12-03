@@ -448,6 +448,174 @@ async def get_ai_stats(request: Request):
 
 
 # ============================================
+# Recordings Daily Analysis API
+# ============================================
+
+class RecordingsDailyResponse(BaseModel):
+    """Daily recordings analysis response"""
+    id: str
+    status: str
+    target_date: str
+    meeting_count: int
+    meeting_titles: List[str]
+    date_range: Dict[str, Any]  # start and end can be datetime or string
+    total_meeting_time: str
+    total_meeting_time_seconds: int
+    template_used: str
+    template_version: Optional[str] = None
+    model_used: str
+    timestamp: str
+    target_meetings: List[Dict[str, Any]]
+    analysis: Dict[str, Any]  # Contains summary, participants, full_analysis_text
+
+
+class RecordingsDailyListResponse(BaseModel):
+    """List of daily recordings analyses"""
+    total: int
+    analyses: List[RecordingsDailyResponse]
+    limit: int
+    offset: int
+
+
+@router.get("/ai/recordings-daily", response_model=RecordingsDailyListResponse)
+async def get_recordings_daily(
+    request: Request,
+    start_date: Optional[str] = Query(None, description="Start date filter (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD)"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+):
+    """
+    Get list of daily recordings analyses from gemini.recordings_daily
+    """
+    try:
+        gemini_db = get_gemini_db()
+        
+        # Build query
+        query: Dict[str, Any] = {}
+        if start_date or end_date:
+            date_query: Dict[str, Any] = {}
+            if start_date:
+                date_query["$gte"] = start_date
+            if end_date:
+                date_query["$lte"] = end_date
+            query["target_date"] = date_query
+        
+        # Get total count
+        total = gemini_db["recordings_daily"].count_documents(query)
+        
+        # Get documents
+        cursor = gemini_db["recordings_daily"].find(query).sort("target_date", -1).skip(offset).limit(limit)
+        
+        def convert_value(v):
+            """Convert MongoDB types to JSON-serializable types"""
+            if isinstance(v, ObjectId):
+                return str(v)
+            elif isinstance(v, datetime):
+                return v.isoformat()
+            elif isinstance(v, dict):
+                return {k: convert_value(val) for k, val in v.items()}
+            elif isinstance(v, list):
+                return [convert_value(item) for item in v]
+            return v
+        
+        analyses = []
+        for doc in cursor:
+            # Convert ObjectId to string
+            doc_id = str(doc["_id"])
+            
+            # Convert all datetime fields to ISO strings
+            converted_doc = convert_value(doc)
+            
+            # Ensure date_range is properly converted
+            date_range = converted_doc.get("date_range", {})
+            
+            analyses.append(RecordingsDailyResponse(
+                id=doc_id,
+                status=converted_doc.get("status", ""),
+                target_date=converted_doc.get("target_date", ""),
+                meeting_count=converted_doc.get("meeting_count", 0),
+                meeting_titles=converted_doc.get("meeting_titles", []),
+                date_range=date_range,
+                total_meeting_time=converted_doc.get("total_meeting_time", ""),
+                total_meeting_time_seconds=converted_doc.get("total_meeting_time_seconds", 0),
+                template_used=converted_doc.get("template_used", ""),
+                template_version=converted_doc.get("template_version"),
+                model_used=converted_doc.get("model_used", ""),
+                timestamp=converted_doc.get("timestamp", ""),
+                target_meetings=converted_doc.get("target_meetings", []),
+                analysis=converted_doc.get("analysis", {})
+            ))
+        
+        return RecordingsDailyListResponse(
+            total=total,
+            analyses=analyses,
+            limit=limit,
+            offset=offset
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching recordings daily: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ai/recordings-daily/{date}", response_model=RecordingsDailyResponse)
+async def get_recordings_daily_by_date(
+    request: Request,
+    date: str  # YYYY-MM-DD format
+):
+    """
+    Get daily recordings analysis for a specific date
+    """
+    try:
+        gemini_db = get_gemini_db()
+        
+        doc = gemini_db["recordings_daily"].find_one({"target_date": date})
+        
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"No analysis found for date: {date}")
+        
+        def convert_value(v):
+            """Convert MongoDB types to JSON-serializable types"""
+            if isinstance(v, ObjectId):
+                return str(v)
+            elif isinstance(v, datetime):
+                return v.isoformat()
+            elif isinstance(v, dict):
+                return {k: convert_value(val) for k, val in v.items()}
+            elif isinstance(v, list):
+                return [convert_value(item) for item in v]
+            return v
+        
+        # Convert all MongoDB types to JSON-serializable
+        converted_doc = convert_value(doc)
+        doc_id = str(doc["_id"])
+        
+        return RecordingsDailyResponse(
+            id=doc_id,
+            status=converted_doc.get("status", ""),
+            target_date=converted_doc.get("target_date", ""),
+            meeting_count=converted_doc.get("meeting_count", 0),
+            meeting_titles=converted_doc.get("meeting_titles", []),
+            date_range=converted_doc.get("date_range", {}),
+            total_meeting_time=converted_doc.get("total_meeting_time", ""),
+            total_meeting_time_seconds=converted_doc.get("total_meeting_time_seconds", 0),
+            template_used=converted_doc.get("template_used", ""),
+            template_version=converted_doc.get("template_version"),
+            model_used=converted_doc.get("model_used", ""),
+            timestamp=converted_doc.get("timestamp", ""),
+            target_meetings=converted_doc.get("target_meetings", []),
+            analysis=converted_doc.get("analysis", {})
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching recordings daily by date: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
 # Translation API (using Gemini)
 # ============================================
 

@@ -403,6 +403,22 @@ class ApiClient {
     return response.data;
   }
 
+  // Recordings Daily Analysis API
+  async getRecordingsDaily(params?: {
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const response = await this.client.get("/ai/recordings-daily", { params });
+    return response.data;
+  }
+
+  async getRecordingsDailyByDate(date: string) {
+    const response = await this.client.get(`/ai/recordings-daily/${date}`);
+    return response.data;
+  }
+
   // Custom Export API
   async getCustomExportPreview(params: {
     selected_members?: string[];

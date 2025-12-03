@@ -56,7 +56,8 @@ COLLECTION_MAP = {
     'slack': ['slack_channels', 'slack_messages'],
     'notion': ['notion_pages', 'notion_databases', 'notion_comments'],
     'google_drive': ['drive_files', 'drive_activities'],
-    'other': ['recordings']  # Changed from 'shared' to 'other' to match Database page grouping
+    'other': ['recordings'],  # Changed from 'shared' to 'other' to match Database page grouping
+    'gemini': ['recordings_daily']  # AI-processed daily analyses
 }
 
 
@@ -73,6 +74,11 @@ async def get_tables(request: Request):
         db = mongo.async_db  # Main database
         shared_db = mongo.shared_async_db  # Shared database
         
+        # Get gemini database
+        from backend.api.v1.ai_processed import get_gemini_db
+        gemini_db_sync = get_gemini_db()
+        gemini_collections = gemini_db_sync.list_collection_names()
+        
         # Get collection names from both databases
         main_collections = await db.list_collection_names()
         shared_collections = await shared_db.list_collection_names()
@@ -84,6 +90,9 @@ async def get_tables(request: Request):
             if source == 'other':
                 # Check shared database for 'other' collections
                 existing = [col for col in expected_collections if col in shared_collections]
+            elif source == 'gemini':
+                # Check gemini database
+                existing = [col for col in expected_collections if col in gemini_collections]
             else:
                 # Check main database
                 existing = [col for col in expected_collections if col in main_collections]
@@ -130,6 +139,18 @@ async def export_collection_csv(
         # Select database based on source
         if source == 'other':
             db = mongo.shared_async_db
+        elif source == 'gemini':
+            # For gemini database, use sync operations
+            from backend.api.v1.ai_processed import get_gemini_db
+            gemini_db_sync = get_gemini_db()
+            # Validate collection exists in gemini database
+            all_collections = gemini_db_sync.list_collection_names()
+            if collection not in all_collections:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Collection '{collection}' not found in gemini database"
+                )
+            db = None  # Will handle separately with sync operations
         else:
             db = mongo.async_db
         
@@ -140,55 +161,77 @@ async def export_collection_csv(
                 detail=f"Invalid source. Must be one of: {', '.join(COLLECTION_MAP.keys())}"
             )
         
-        # Validate collection exists
-        all_collections = await db.list_collection_names()
-        if collection not in all_collections:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Collection '{collection}' not found"
-            )
+        # Validate collection exists (for non-gemini databases)
+        if db:
+            all_collections = await db.list_collection_names()
+            if collection not in all_collections:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Collection '{collection}' not found"
+                )
         
         # Build query filter
         query_filter = {}
         
         # Date filtering
         if start_date or end_date:
-            # Determine timestamp field
-            timestamp_fields = ['timestamp', 'posted_at', 'created_at', 'updated_at', 'committed_at']
-            timestamp_field = None
-            
-            # Check which timestamp field exists in the collection
-            sample_doc = await db[collection].find_one({})
-            if sample_doc:
-                for field in timestamp_fields:
-                    if field in sample_doc:
-                        timestamp_field = field
-                        break
-            
-            if timestamp_field:
+            # Determine timestamp field based on collection type
+            if source == 'gemini' and collection == 'recordings_daily':
+                # For recordings_daily, use target_date field
                 date_filter = {}
                 if start_date:
-                    try:
-                        date_filter['$gte'] = datetime.fromisoformat(start_date)
-                    except ValueError:
-                        date_filter['$gte'] = start_date
+                    date_filter['$gte'] = start_date
                 if end_date:
-                    try:
-                        # Add 1 day to include the entire end date
-                        end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
-                        date_filter['$lt'] = end_dt
-                    except ValueError:
-                        date_filter['$lte'] = end_date + "T23:59:59"
-                
+                    date_filter['$lte'] = end_date
                 if date_filter:
-                    query_filter[timestamp_field] = date_filter
+                    query_filter['target_date'] = date_filter
+            else:
+                # For other collections, use common timestamp fields
+                timestamp_fields = ['timestamp', 'posted_at', 'created_at', 'updated_at', 'committed_at', 'target_date']
+                timestamp_field = None
+                
+                # Check which timestamp field exists in the collection
+                if source == 'gemini':
+                    sample_doc = gemini_db_sync[collection].find_one({})
+                else:
+                    sample_doc = await db[collection].find_one({})
+                
+                if sample_doc:
+                    for field in timestamp_fields:
+                        if field in sample_doc:
+                            timestamp_field = field
+                            break
+                
+                if timestamp_field:
+                    date_filter = {}
+                    if start_date:
+                        try:
+                            date_filter['$gte'] = datetime.fromisoformat(start_date)
+                        except ValueError:
+                            date_filter['$gte'] = start_date
+                    if end_date:
+                        try:
+                            # Add 1 day to include the entire end date
+                            end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+                            date_filter['$lt'] = end_dt
+                        except ValueError:
+                            date_filter['$lte'] = end_date + "T23:59:59"
+                    
+                    if date_filter:
+                        query_filter[timestamp_field] = date_filter
         
         # Query MongoDB
-        cursor = db[collection].find(query_filter)
-        if limit:
-            cursor = cursor.limit(limit)
-        
-        documents = await cursor.to_list(length=limit or 10000)
+        if source == 'gemini':
+            # Use sync operations for gemini database
+            cursor = gemini_db_sync[collection].find(query_filter)
+            if limit:
+                cursor = cursor.limit(limit)
+            documents = list(cursor)
+        else:
+            cursor = db[collection].find(query_filter)
+            if limit:
+                cursor = cursor.limit(limit)
+            documents = await cursor.to_list(length=limit or 10000)
         
         if not documents:
             # Empty collection - return empty CSV with basic header

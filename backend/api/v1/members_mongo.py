@@ -608,12 +608,37 @@ async def get_member_activities(
         # Build date filter
         date_filter = {}
         if start_date:
-            date_filter['$gte'] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            # Parse date string (format: yyyy-MM-dd) and set to start of day
+            try:
+                if 'T' in start_date or ' ' in start_date:
+                    # Already has time component
+                    start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                else:
+                    # Date only, set to start of day (00:00:00)
+                    start_dt = datetime.fromisoformat(f"{start_date}T00:00:00")
+                date_filter['$gte'] = start_dt
+            except Exception as e:
+                logger.warning(f"Failed to parse start_date {start_date}: {e}")
+        
         if end_date:
-            date_filter['$lte'] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            # Parse date string (format: yyyy-MM-dd) and set to end of day (23:59:59)
+            try:
+                if 'T' in end_date or ' ' in end_date:
+                    # Already has time component
+                    end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                else:
+                    # Date only, set to end of day (23:59:59.999999)
+                    end_dt = datetime.fromisoformat(f"{end_date}T23:59:59.999999")
+                date_filter['$lte'] = end_dt
+            except Exception as e:
+                logger.warning(f"Failed to parse end_date {end_date}: {e}")
         
         # Determine which sources to query (same logic as activities API)
         sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive']
+        
+        # When date filter is applied, fetch more data from each source to ensure we get all relevant activities
+        # Then we'll sort and limit after combining all sources
+        source_limit = limit * 10 if date_filter else limit
         
         for source in sources_to_query:
             if source == 'github':
@@ -630,7 +655,7 @@ async def get_member_activities(
                     if date_filter:
                         query['date'] = date_filter
                     
-                    async for commit in commits.find(query).sort("date", -1).limit(limit):
+                    async for commit in commits.find(query).sort("date", -1).limit(source_limit):
                         commit_date = commit.get('date')
                         if isinstance(commit_date, datetime):
                             timestamp_str = commit_date.isoformat() + 'Z' if commit_date.tzinfo is None else commit_date.isoformat()
@@ -668,7 +693,7 @@ async def get_member_activities(
                     if date_filter:
                         query['created_at'] = date_filter
                     
-                    async for pr in prs.find(query).sort("created_at", -1).limit(limit):
+                    async for pr in prs.find(query).sort("created_at", -1).limit(source_limit):
                         created_at = pr.get('created_at')
                         if isinstance(created_at, datetime):
                             timestamp_str = created_at.isoformat() + 'Z' if created_at.tzinfo is None else created_at.isoformat()
@@ -702,7 +727,7 @@ async def get_member_activities(
                 if date_filter:
                     query['posted_at'] = date_filter
                 
-                async for msg in messages.find(query).sort("posted_at", -1).limit(limit):
+                async for msg in messages.find(query).sort("posted_at", -1).limit(source_limit):
                     posted_at = msg.get('posted_at')
                     if isinstance(posted_at, datetime):
                         timestamp_str = posted_at.isoformat() + 'Z' if posted_at.tzinfo is None else posted_at.isoformat()
@@ -743,7 +768,7 @@ async def get_member_activities(
                 if date_filter:
                     query['created_time'] = date_filter
                 
-                async for page in pages.find(query).sort("created_time", -1).limit(limit):
+                async for page in pages.find(query).sort("created_time", -1).limit(source_limit):
                     created_time = page.get('created_time')
                     if isinstance(created_time, datetime):
                         timestamp_str = created_time.isoformat() + 'Z' if created_time.tzinfo is None else created_time.isoformat()
@@ -772,7 +797,7 @@ async def get_member_activities(
                 if date_filter:
                     query['timestamp'] = date_filter
                 
-                async for activity in drive_activities.find(query).sort("timestamp", -1).limit(limit):
+                async for activity in drive_activities.find(query).sort("timestamp", -1).limit(source_limit):
                     timestamp_val = activity.get('timestamp')
                     if isinstance(timestamp_val, datetime):
                         timestamp_str = timestamp_val.isoformat() + 'Z' if timestamp_val.tzinfo is None else timestamp_val.isoformat()
@@ -891,9 +916,30 @@ async def generate_member_summary(
         # Build date filter
         date_filter = {}
         if start_date:
-            date_filter['$gte'] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            # Parse date string (format: yyyy-MM-dd) and set to start of day
+            try:
+                if 'T' in start_date or ' ' in start_date:
+                    # Already has time component
+                    start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                else:
+                    # Date only, set to start of day (00:00:00)
+                    start_dt = datetime.fromisoformat(f"{start_date}T00:00:00")
+                date_filter['$gte'] = start_dt
+            except Exception as e:
+                logger.warning(f"Failed to parse start_date {start_date}: {e}")
+        
         if end_date:
-            date_filter['$lte'] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            # Parse date string (format: yyyy-MM-dd) and set to end of day (23:59:59)
+            try:
+                if 'T' in end_date or ' ' in end_date:
+                    # Already has time component
+                    end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                else:
+                    # Date only, set to end of day (23:59:59.999999)
+                    end_dt = datetime.fromisoformat(f"{end_date}T23:59:59.999999")
+                date_filter['$lte'] = end_dt
+            except Exception as e:
+                logger.warning(f"Failed to parse end_date {end_date}: {e}")
         
         # Query all sources (limit to 100 total for summary)
         sources_to_query = ['github', 'slack', 'notion', 'drive']

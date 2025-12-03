@@ -11,6 +11,7 @@ import {
   FolderIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
+import DateRangePicker from "@/components/DateRangePicker";
 
 // Helper function to safely format timestamps
 function formatTimestamp(timestamp: string, formatStr: string): string {
@@ -77,6 +78,8 @@ export default function MemberDetailPage() {
   const [member, setMember] = useState<MemberDetail | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [selectedSource, setSelectedSource] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +105,7 @@ export default function MemberDetailPage() {
 
   useEffect(() => {
     loadActivities();
-  }, [memberId, selectedSource]);
+  }, [memberId, selectedSource, startDate, endDate]);
 
   const loadMemberDetail = async () => {
     try {
@@ -133,6 +136,8 @@ export default function MemberDetailPage() {
       const data = await apiClient.getMemberActivities(memberId, {
         source_type: backendSourceType,
         limit: loadLimit,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
       });
       setActivities(data.activities || []);
       setCurrentPage(1); // Reset to first page when filter changes
@@ -495,6 +500,18 @@ export default function MemberDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Date Range Filter */}
+        <DateRangePicker
+          startDate={startDate}
+          endDate={endDate}
+          onDateChange={(start, end) => {
+            setStartDate(start);
+            setEndDate(end);
+            setCurrentPage(1); // Reset to first page when date changes
+          }}
+          className="mb-4"
+        />
 
         {/* Filters and Pagination Controls */}
         <div className="bg-white rounded-lg shadow p-4">

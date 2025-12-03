@@ -295,6 +295,7 @@ export default function ActivitiesPage() {
       notion: "bg-blue-100 text-blue-800",
       drive: "bg-green-100 text-green-800",
       recordings: "bg-red-100 text-red-800",
+      recordings_daily: "bg-orange-100 text-orange-800",
     };
     return colors[source] || "bg-gray-100 text-gray-800";
   };
@@ -306,6 +307,7 @@ export default function ActivitiesPage() {
       notion: "📝",
       drive: "📁",
       recordings: "📹",
+      recordings_daily: "📊",
     };
     return icons[source] || "📋";
   };
@@ -333,6 +335,7 @@ export default function ActivitiesPage() {
             <option value="notion">📝 Notion</option>
             <option value="drive">📁 Google Drive</option>
             <option value="recordings">📹 Recordings</option>
+            <option value="recordings_daily">📊 Daily Analysis</option>
           </select>
           <select
             value={memberFilter}
@@ -1156,6 +1159,75 @@ export default function ActivitiesPage() {
                           </p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Recordings Daily Analysis Details */}
+                  {activity.source_type === "recordings_daily" && (
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">
+                          Target Date:
+                        </span>
+                        <p className="text-sm text-gray-900">
+                          {activity.metadata?.target_date}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">
+                          Meetings Analyzed:
+                        </span>
+                        <p className="text-sm text-gray-900">
+                          {activity.metadata?.meeting_count || 0}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">
+                          Total Time:
+                        </span>
+                        <p className="text-sm text-gray-900">
+                          {activity.metadata?.total_meeting_time || "N/A"}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium text-gray-500">
+                          Status:
+                        </span>
+                        <span
+                          className={`ml-2 px-2 py-1 text-xs rounded-full ${
+                            activity.metadata?.status === "success"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {activity.metadata?.status || "unknown"}
+                        </span>
+                      </div>
+                      {activity.metadata?.meeting_titles &&
+                        activity.metadata.meeting_titles.length > 0 && (
+                          <div>
+                            <span className="text-xs font-medium text-gray-500">
+                              Meeting Titles:
+                            </span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {activity.metadata.meeting_titles
+                                .slice(0, 3)
+                                .map((title: string, idx: number) => (
+                                  <span
+                                    key={idx}
+                                    className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                                  >
+                                    {title}
+                                  </span>
+                                ))}
+                              {activity.metadata.meeting_titles.length > 3 && (
+                                <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                                  +{activity.metadata.meeting_titles.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                     </div>
                   )}
 

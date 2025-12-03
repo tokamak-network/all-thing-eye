@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, subDays, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
+import { format, subDays } from 'date-fns';
 
 interface DateRangePickerProps {
   startDate: string;
@@ -34,44 +34,74 @@ export default function DateRangePicker({
     }
   };
 
+  // Format date as YYYY-MM-DD
+  const formatDate = (date: Date): string => {
+    return format(date, 'yyyy-MM-dd');
+  };
+
   const handlePreset = (preset: string) => {
     const today = new Date();
     let start: Date;
     let end: Date;
 
     switch (preset) {
-      case 'today':
-        start = today;
-        end = today;
-        break;
-      case 'yesterday':
-        start = subDays(today, 1);
-        end = subDays(today, 1);
-        break;
-      case 'last7days':
-        start = subDays(today, 6);
-        end = today;
-        break;
-      case 'last30days':
-        start = subDays(today, 29);
-        end = today;
-        break;
-      case 'thisweek':
-        start = startOfWeek(today, { weekStartsOn: 1 }); // Monday
-        end = today;
-        break;
       case 'lastweek':
-        const lastWeekStart = startOfWeek(subWeeks(today, 1), { weekStartsOn: 1 });
-        const lastWeekEnd = endOfWeek(subWeeks(today, 1), { weekStartsOn: 1 });
-        start = lastWeekStart;
-        end = lastWeekEnd;
+        // Last 7 days
+        start = new Date(today);
+        start.setDate(today.getDate() - 7);
+        end = today;
+        break;
+      case 'lastmonth':
+        // Last month (first day to last day)
+        const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+        start = firstDayLastMonth;
+        end = lastDayLastMonth;
+        break;
+      case 'thismonth':
+        // This month (first day to today)
+        const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        start = thisMonthStart;
+        end = today;
+        break;
+      case 'lastquarter':
+        // Last quarter
+        const currentQuarter = Math.floor(today.getMonth() / 3);
+        const lastQuarterStart = currentQuarter === 0 
+          ? new Date(today.getFullYear() - 1, 9, 1)
+          : new Date(today.getFullYear(), (currentQuarter - 1) * 3, 1);
+        const lastQuarterEnd = currentQuarter === 0
+          ? new Date(today.getFullYear() - 1, 12, 0)
+          : new Date(today.getFullYear(), currentQuarter * 3, 0);
+        start = lastQuarterStart;
+        end = lastQuarterEnd;
+        break;
+      case 'thisquarter':
+        // This quarter (start of quarter to today)
+        const thisQuarter = Math.floor(today.getMonth() / 3);
+        const thisQuarterStart = new Date(today.getFullYear(), thisQuarter * 3, 1);
+        start = thisQuarterStart;
+        end = today;
+        break;
+      case 'lastyear':
+        // Last year
+        const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
+        const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+        start = lastYearStart;
+        end = lastYearEnd;
+        break;
+      case 'thisyear':
+        // This year (Jan 1 to today)
+        const thisYearStart = new Date(today.getFullYear(), 0, 1);
+        start = thisYearStart;
+        end = today;
         break;
       default:
         return;
     }
 
-    const startStr = format(start, 'yyyy-MM-dd');
-    const endStr = format(end, 'yyyy-MM-dd');
+    const startStr = formatDate(start);
+    const endStr = formatDate(end);
     setLocalStartDate(startStr);
     setLocalEndDate(endStr);
     onDateChange(startStr, endStr);
@@ -128,42 +158,48 @@ export default function DateRangePicker({
         <label className="block text-xs font-medium text-gray-700 mb-2">
           Quick Select
         </label>
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-          <button
-            onClick={() => handlePreset('today')}
-            className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => handlePreset('yesterday')}
-            className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
-          >
-            Yesterday
-          </button>
-          <button
-            onClick={() => handlePreset('last7days')}
-            className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
-          >
-            Last 7d
-          </button>
-          <button
-            onClick={() => handlePreset('last30days')}
-            className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
-          >
-            Last 30d
-          </button>
-          <button
-            onClick={() => handlePreset('thisweek')}
-            className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
-          >
-            This Week
-          </button>
+        <div className="flex flex-wrap gap-1.5">
           <button
             onClick={() => handlePreset('lastweek')}
-            className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
           >
             Last Week
+          </button>
+          <button
+            onClick={() => handlePreset('lastmonth')}
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+          >
+            Last Month
+          </button>
+          <button
+            onClick={() => handlePreset('thismonth')}
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+          >
+            This Month
+          </button>
+          <button
+            onClick={() => handlePreset('lastquarter')}
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+          >
+            Last Quarter
+          </button>
+          <button
+            onClick={() => handlePreset('thisquarter')}
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+          >
+            This Quarter
+          </button>
+          <button
+            onClick={() => handlePreset('lastyear')}
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+          >
+            Last Year
+          </button>
+          <button
+            onClick={() => handlePreset('thisyear')}
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+          >
+            This Year
           </button>
         </div>
       </div>
