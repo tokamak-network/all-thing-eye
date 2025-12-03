@@ -7,7 +7,7 @@ Provides activity data across all sources from MongoDB
 from fastapi import APIRouter, HTTPException, Query, Request
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.utils.logger import get_logger
 from src.core.mongo_manager import get_mongo_manager
@@ -195,9 +195,19 @@ async def get_activities(
         # Build date filter
         date_filter = {}
         if start_date:
-            date_filter['$gte'] = datetime.fromisoformat(start_date)
+            # Ensure timezone-aware datetime
+            start_str = start_date.replace('Z', '+00:00') if start_date.endswith('Z') else start_date
+            start_dt = datetime.fromisoformat(start_str)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            date_filter['$gte'] = start_dt
         if end_date:
-            date_filter['$lte'] = datetime.fromisoformat(end_date)
+            # Ensure timezone-aware datetime
+            end_str = end_date.replace('Z', '+00:00') if end_date.endswith('Z') else end_date
+            end_dt = datetime.fromisoformat(end_str)
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            date_filter['$lte'] = end_dt
         
         for source in sources_to_query:
             if source == 'github':
@@ -581,13 +591,19 @@ async def get_activities(
         # Empty timestamps are treated as oldest
         def sort_key(activity):
             if not activity.timestamp:
-                return datetime.min  # Oldest possible datetime
+                # Use timezone-aware datetime.min for comparison
+                return datetime.min.replace(tzinfo=timezone.utc)
             try:
                 # Parse ISO timestamp (with or without Z)
                 ts = activity.timestamp.replace('Z', '+00:00')
-                return datetime.fromisoformat(ts)
+                parsed_dt = datetime.fromisoformat(ts)
+                # Ensure timezone-aware
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+                return parsed_dt
             except:
-                return datetime.min
+                # Use timezone-aware datetime.min for comparison
+                return datetime.min.replace(tzinfo=timezone.utc)
         
         activities.sort(key=sort_key, reverse=True)
         
@@ -634,9 +650,19 @@ async def get_activities_summary(
         # Build date filter
         date_filter = {}
         if start_date:
-            date_filter['$gte'] = datetime.fromisoformat(start_date)
+            # Ensure timezone-aware datetime
+            start_str = start_date.replace('Z', '+00:00') if start_date.endswith('Z') else start_date
+            start_dt = datetime.fromisoformat(start_str)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            date_filter['$gte'] = start_dt
         if end_date:
-            date_filter['$lte'] = datetime.fromisoformat(end_date)
+            # Ensure timezone-aware datetime
+            end_str = end_date.replace('Z', '+00:00') if end_date.endswith('Z') else end_date
+            end_dt = datetime.fromisoformat(end_str)
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            date_filter['$lte'] = end_dt
         
         sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
         
