@@ -59,30 +59,40 @@ async def get_members(
         mongo = get_mongo()
         db = mongo.async_db
         
+        # Check if collections exist
+        collection_names = await db.list_collection_names()
+        if "members" not in collection_names:
+            logger.warning("Members collection does not exist")
+            return []
+        
         # Get all members
         members_cursor = db["members"].find({})
         members = []
         
         async for member in members_cursor:
-            member_id = str(member["_id"])
-            
-            # Get member identifiers
-            identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
-            identifiers = {}
-            
-            async for identifier in identifiers_cursor:
-                identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
-            
-            members.append({
-                "id": member_id,
-                "name": member.get("name"),
-                "email": member.get("email"),
-                "role": member.get("role"),
-                "project": member.get("project"),
-                "identifiers": identifiers,
-                "created_at": member.get("created_at"),
-                "updated_at": member.get("updated_at")
-            })
+            try:
+                member_id = str(member["_id"])
+                
+                # Get member identifiers (if collection exists)
+                identifiers = {}
+                if "member_identifiers" in collection_names:
+                    identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
+                    async for identifier in identifiers_cursor:
+                        identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
+                
+                members.append({
+                    "id": member_id,
+                    "name": member.get("name"),
+                    "email": member.get("email"),
+                    "role": member.get("role"),
+                    "project": member.get("project"),
+                    "identifiers": identifiers,
+                    "created_at": member.get("created_at"),
+                    "updated_at": member.get("updated_at")
+                })
+            except Exception as e:
+                logger.warning(f"Error processing member {member.get('_id')}: {e}")
+                continue
         
         # Sort by name
         members.sort(key=lambda x: x.get("name", "").lower())
@@ -91,6 +101,8 @@ async def get_members(
         
     except Exception as e:
         logger.error(f"Error fetching members: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to fetch members: {str(e)}")
 
 
@@ -166,18 +178,86 @@ async def create_member(
                 "created_at": now
             })
             identifiers.append({"type": "slack_id", "value": member_data.slack_id})
+            
+            # If slack_id is an email, try to find actual Slack user_id from existing messages
+            if '@' in member_data.slack_id:
+                slack_email = member_data.slack_id
+                try:
+                    # Try to find actual user_id from slack_messages collection
+                    slack_msg = await db["slack_messages"].find_one({
+                        "$or": [
+                            {"user_email": slack_email},
+                            {"user_email": slack_email.lower()}
+                        ]
+                    })
+                    if slack_msg and slack_msg.get("user_id"):
+                        actual_user_id = slack_msg["user_id"]
+                        # Add user_id identifier as well
+                        await db["member_identifiers"].insert_one({
+                            "member_id": member_id,
+                            "member_name": member_data.name,
+                            "source": "slack",
+                            "identifier_type": "user_id",
+                            "identifier_value": actual_user_id,
+                            "created_at": now
+                        })
+                        identifiers.append({"type": "slack_user_id", "value": actual_user_id})
+                        logger.info(f"Found Slack user_id {actual_user_id} for email {slack_email}")
+                except Exception as e:
+                    # If collection doesn't exist or query fails, just log and continue
+                    logger.warning(f"Could not find Slack user_id for {slack_email}: {e}")
         
         # Notion identifier
         if member_data.notion_id:
+            # Notion ID is typically an email
+            notion_email = member_data.notion_id
             await db["member_identifiers"].insert_one({
                 "member_id": member_id,
                 "member_name": member_data.name,
                 "source": "notion",
                 "identifier_type": "email",
-                "identifier_value": member_data.notion_id,
+                "identifier_value": notion_email,
                 "created_at": now
             })
-            identifiers.append({"type": "notion_id", "value": member_data.notion_id})
+            identifiers.append({"type": "notion_id", "value": notion_email})
+            
+            # Try to find actual Notion user ID from existing pages
+            if '@' in notion_email:
+                try:
+                    notion_page = await db["notion_pages"].find_one({
+                        "$or": [
+                            {"created_by.email": notion_email},
+                            {"created_by.email": notion_email.lower()},
+                            {"last_edited_by.email": notion_email},
+                            {"last_edited_by.email": notion_email.lower()}
+                        ]
+                    })
+                    if notion_page:
+                        # Try to get user ID from created_by or last_edited_by
+                        created_by = notion_page.get("created_by", {})
+                        last_edited_by = notion_page.get("last_edited_by", {})
+                        
+                        notion_user_id = None
+                        if created_by.get("id"):
+                            notion_user_id = created_by["id"]
+                        elif last_edited_by.get("id"):
+                            notion_user_id = last_edited_by["id"]
+                        
+                        if notion_user_id:
+                            # Add user_id identifier as well
+                            await db["member_identifiers"].insert_one({
+                                "member_id": member_id,
+                                "member_name": member_data.name,
+                                "source": "notion",
+                                "identifier_type": "user_id",
+                                "identifier_value": notion_user_id,
+                                "created_at": now
+                            })
+                            identifiers.append({"type": "notion_user_id", "value": notion_user_id})
+                            logger.info(f"Found Notion user_id {notion_user_id} for email {notion_email}")
+                except Exception as e:
+                    # If collection doesn't exist or query fails, just log and continue
+                    logger.warning(f"Could not find Notion user_id for {notion_email}: {e}")
         
         logger.info(f"Created new member: {member_data.name} ({member_id})")
         

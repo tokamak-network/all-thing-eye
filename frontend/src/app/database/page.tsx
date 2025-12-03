@@ -304,6 +304,10 @@ export default function DatabasePage() {
       return { group: "notion", color: "orange", icon: "📝" };
     } else if (collectionName.startsWith("drive")) {
       return { group: "drive", color: "yellow", icon: "📁" };
+    } else if (collectionName.startsWith("gemini.")) {
+      return { group: "gemini", color: "indigo", icon: "🤖" };
+    } else if (collectionName.startsWith("shared.")) {
+      return { group: "shared", color: "pink", icon: "🔗" };
     }
     return { group: "other", color: "gray", icon: "📦" };
   };
@@ -317,6 +321,8 @@ export default function DatabasePage() {
       slack: [],
       notion: [],
       drive: [],
+      gemini: [],
+      shared: [],
       other: [],
     };
 

@@ -88,6 +88,10 @@ async def get_collections(request: Request, _admin: str = Depends(require_admin)
         db = mongo.async_db
         shared_db = mongo.shared_async_db
         
+        # Get gemini database
+        from backend.api.v1.ai_processed import get_gemini_db
+        gemini_db_sync = get_gemini_db()
+        
         collections_info = []
         
         # Get main database collections
@@ -155,6 +159,40 @@ async def get_collections(request: Request, _admin: str = Depends(require_admin)
         except Exception as e:
             logger.warning(f"Failed to access shared database: {e}")
         
+        # Get gemini database collections
+        try:
+            gemini_collection_names = gemini_db_sync.list_collection_names()
+            for name in gemini_collection_names:
+                try:
+                    collection = gemini_db_sync[name]
+                    count = collection.count_documents({})
+                    
+                    # Get collection stats
+                    stats = gemini_db_sync.command("collStats", name)
+                    
+                    collections_info.append({
+                        "name": f"gemini.{name}",  # Prefix with database name
+                        "count": count,
+                        "size": stats.get("size", 0),
+                        "avgObjSize": stats.get("avgObjSize", 0),
+                        "storageSize": stats.get("storageSize", 0),
+                        "indexes": stats.get("nindexes", 0),
+                        "database": "gemini"
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to get stats for gemini collection {name}: {e}")
+                    collections_info.append({
+                        "name": f"gemini.{name}",
+                        "count": 0,
+                        "size": 0,
+                        "avgObjSize": 0,
+                        "storageSize": 0,
+                        "indexes": 0,
+                        "database": "gemini"
+                    })
+        except Exception as e:
+            logger.warning(f"Failed to access gemini database: {e}")
+        
         # Sort by document count (descending)
         collections_info.sort(key=lambda x: x["count"], reverse=True)
         
@@ -183,24 +221,41 @@ async def get_collection_schema(request: Request, collection_name: str, _admin: 
     try:
         mongo = get_mongo()
         
-        # Check if it's a shared collection
+        # Check if it's a shared or gemini collection
         is_shared = collection_name.startswith("shared.")
+        is_gemini = collection_name.startswith("gemini.")
+        
         if is_shared:
             db = mongo.shared_async_db
             actual_name = collection_name.replace("shared.", "", 1)
+            # Verify collection exists
+            collection_names = await db.list_collection_names()
+            if actual_name not in collection_names:
+                raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+            collection = db[actual_name]
+            # Sample documents to infer schema (take 100 documents)
+            sample_docs = await collection.find({}).limit(100).to_list(length=100)
+        elif is_gemini:
+            from backend.api.v1.ai_processed import get_gemini_db
+            gemini_db_sync = get_gemini_db()
+            actual_name = collection_name.replace("gemini.", "", 1)
+            # Verify collection exists
+            collection_names = gemini_db_sync.list_collection_names()
+            if actual_name not in collection_names:
+                raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+            collection = gemini_db_sync[actual_name]
+            # Sample documents to infer schema (take 100 documents) - sync version
+            sample_docs = list(collection.find({}).limit(100))
         else:
             db = mongo.async_db
             actual_name = collection_name
-        
-        # Verify collection exists
-        collection_names = await db.list_collection_names()
-        if actual_name not in collection_names:
-            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
-        
-        collection = db[actual_name]
-        
-        # Sample documents to infer schema (take 100 documents)
-        sample_docs = await collection.find({}).limit(100).to_list(length=100)
+            # Verify collection exists
+            collection_names = await db.list_collection_names()
+            if actual_name not in collection_names:
+                raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+            collection = db[actual_name]
+            # Sample documents to infer schema (take 100 documents)
+            sample_docs = await collection.find({}).limit(100).to_list(length=100)
         
         if not sample_docs:
             return {
@@ -310,21 +365,9 @@ async def get_collection_documents(
     try:
         mongo = get_mongo()
         
-        # Check if it's a shared collection
+        # Check if it's a shared or gemini collection
         is_shared = collection_name.startswith("shared.")
-        if is_shared:
-            db = mongo.shared_async_db
-            actual_name = collection_name.replace("shared.", "", 1)
-        else:
-            db = mongo.async_db
-            actual_name = collection_name
-        
-        # Verify collection exists
-        collection_names = await db.list_collection_names()
-        if actual_name not in collection_names:
-            raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
-        
-        collection = db[actual_name]
+        is_gemini = collection_name.startswith("gemini.")
         
         # Parse search query
         query = {}
@@ -335,15 +378,52 @@ async def get_collection_documents(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid JSON search query")
         
-        # Get total count
-        total_count = await collection.count_documents(query)
-        
-        # Calculate pagination
-        skip = (page - 1) * limit
-        total_pages = (total_count + limit - 1) // limit  # Ceiling division
-        
-        # Get documents
-        documents = await collection.find(query).skip(skip).limit(limit).to_list(length=limit)
+        if is_shared:
+            db = mongo.shared_async_db
+            actual_name = collection_name.replace("shared.", "", 1)
+            # Verify collection exists
+            collection_names = await db.list_collection_names()
+            if actual_name not in collection_names:
+                raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+            collection = db[actual_name]
+            # Get total count
+            total_count = await collection.count_documents(query)
+            # Calculate pagination
+            skip = (page - 1) * limit
+            total_pages = (total_count + limit - 1) // limit  # Ceiling division
+            # Get documents
+            documents = await collection.find(query).skip(skip).limit(limit).to_list(length=limit)
+        elif is_gemini:
+            from backend.api.v1.ai_processed import get_gemini_db
+            gemini_db_sync = get_gemini_db()
+            actual_name = collection_name.replace("gemini.", "", 1)
+            # Verify collection exists
+            collection_names = gemini_db_sync.list_collection_names()
+            if actual_name not in collection_names:
+                raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+            collection = gemini_db_sync[actual_name]
+            # Get total count
+            total_count = collection.count_documents(query)
+            # Calculate pagination
+            skip = (page - 1) * limit
+            total_pages = (total_count + limit - 1) // limit  # Ceiling division
+            # Get documents - sync version
+            documents = list(collection.find(query).skip(skip).limit(limit))
+        else:
+            db = mongo.async_db
+            actual_name = collection_name
+            # Verify collection exists
+            collection_names = await db.list_collection_names()
+            if actual_name not in collection_names:
+                raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+            collection = db[actual_name]
+            # Get total count
+            total_count = await collection.count_documents(query)
+            # Calculate pagination
+            skip = (page - 1) * limit
+            total_pages = (total_count + limit - 1) // limit  # Ceiling division
+            # Get documents
+            documents = await collection.find(query).skip(skip).limit(limit).to_list(length=limit)
         
         # Convert ObjectId and datetime to string for JSON serialization
         def serialize_value(value):

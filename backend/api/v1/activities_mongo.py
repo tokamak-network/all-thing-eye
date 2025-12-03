@@ -530,42 +530,52 @@ async def get_activities(
                     ))
             
             elif source == 'recordings_daily':
-                # Get recordings_daily from gemini database
-                from backend.api.v1.ai_processed import get_gemini_db
-                gemini_db = get_gemini_db()
-                recordings_daily_col = gemini_db["recordings_daily"]
-                
-                query = {}
-                if date_filter:
-                    # Use target_date for filtering
-                    query['target_date'] = date_filter
-                
-                # Get documents (sync operation)
-                daily_docs = list(recordings_daily_col.find(query).sort("target_date", -1).limit(limit))
-                
-                for daily in daily_docs:
-                    # Convert timestamp
-                    timestamp = daily.get("timestamp")
-                    if isinstance(timestamp, datetime):
-                        timestamp_str = timestamp.isoformat() + 'Z' if timestamp.tzinfo is None else timestamp.isoformat()
-                    else:
-                        timestamp_str = str(timestamp) if timestamp else daily.get("target_date", "")
+                try:
+                    # Get recordings_daily from gemini database
+                    from backend.api.v1.ai_processed import get_gemini_db
+                    gemini_db = get_gemini_db()
+                    recordings_daily_col = gemini_db["recordings_daily"]
                     
-                    activities.append(ActivityResponse(
-                        id=str(daily['_id']),
-                        member_name="System",  # Daily analysis is system-generated
-                        source_type='recordings_daily',
-                        activity_type='daily_analysis',
-                        timestamp=timestamp_str,
-                        metadata={
-                            'target_date': daily.get('target_date'),
-                            'meeting_count': daily.get('meeting_count', 0),
-                            'total_meeting_time': daily.get('total_meeting_time'),
-                            'status': daily.get('status'),
-                            'model_used': daily.get('model_used'),
-                            'meeting_titles': daily.get('meeting_titles', [])
-                        }
-                    ))
+                    query = {}
+                    if date_filter:
+                        # Use target_date for filtering
+                        query['target_date'] = date_filter
+                    
+                    # Get documents (sync operation)
+                    daily_docs = list(recordings_daily_col.find(query).sort("target_date", -1).limit(limit))
+                    
+                    for daily in daily_docs:
+                        try:
+                            # Convert timestamp
+                            timestamp = daily.get("timestamp")
+                            if isinstance(timestamp, datetime):
+                                timestamp_str = timestamp.isoformat() + 'Z' if timestamp.tzinfo is None else timestamp.isoformat()
+                            else:
+                                timestamp_str = str(timestamp) if timestamp else daily.get("target_date", "")
+                            
+                            activities.append(ActivityResponse(
+                                id=str(daily.get('_id', '')),
+                                member_name="System",  # Daily analysis is system-generated
+                                source_type='recordings_daily',
+                                activity_type='daily_analysis',
+                                timestamp=timestamp_str,
+                                metadata={
+                                    'target_date': daily.get('target_date'),
+                                    'meeting_count': daily.get('meeting_count', 0),
+                                    'total_meeting_time': daily.get('total_meeting_time'),
+                                    'status': daily.get('status'),
+                                    'model_used': daily.get('model_used'),
+                                    'meeting_titles': daily.get('meeting_titles', [])
+                                }
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Error processing recordings_daily document {daily.get('_id')}: {e}")
+                            continue
+                except Exception as e:
+                    logger.error(f"Error fetching recordings_daily: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    # Continue with other sources even if recordings_daily fails
         
         # Sort all activities by timestamp descending (newest first)
         # Empty timestamps are treated as oldest
