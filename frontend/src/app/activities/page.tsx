@@ -49,6 +49,10 @@ export default function ActivitiesPage() {
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Daily Analysis Detail states
+  const [selectedDailyAnalysis, setSelectedDailyAnalysis] = useState<any>(null);
+  const [showDailyAnalysisDetail, setShowDailyAnalysisDetail] = useState(false);
+  const [dailyAnalysisLoading, setDailyAnalysisLoading] = useState(false);
   const [allMembers, setAllMembers] = useState<string[]>([]);
   // Notion UUID to member name mapping
   const [notionUuidMap, setNotionUuidMap] = useState<Record<string, string>>(
@@ -1228,6 +1232,30 @@ export default function ActivitiesPage() {
                             </div>
                           </div>
                         )}
+                      <div className="mt-3">
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setDailyAnalysisLoading(true);
+                            setShowDailyAnalysisDetail(true);
+                            try {
+                              const targetDate = activity.metadata?.target_date;
+                              if (targetDate) {
+                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                setSelectedDailyAnalysis(response);
+                              }
+                            } catch (err: any) {
+                              console.error("Failed to load daily analysis details:", err);
+                              alert("Failed to load daily analysis details");
+                            } finally {
+                              setDailyAnalysisLoading(false);
+                            }
+                          }}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                          View Details
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -1885,6 +1913,371 @@ export default function ActivitiesPage() {
                   </a>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Analysis Detail Modal */}
+      {showDailyAnalysisDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Daily Analysis - {selectedDailyAnalysis?.target_date || "Loading..."}
+                </h2>
+                {selectedDailyAnalysis && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    {selectedDailyAnalysis.meeting_count} meetings •{" "}
+                    {selectedDailyAnalysis.total_meeting_time} • {selectedDailyAnalysis.model_used}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowDailyAnalysisDetail(false);
+                  setSelectedDailyAnalysis(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {dailyAnalysisLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                </div>
+              ) : selectedDailyAnalysis?.analysis ? (
+                <div className="space-y-6">
+                  {/* Overview */}
+                  {selectedDailyAnalysis.analysis?.summary?.overview && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                        Overview
+                      </h3>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="grid grid-cols-3 gap-4 mb-4">
+                          <div>
+                            <div className="text-sm text-gray-500">Meetings</div>
+                            <div className="text-xl font-bold text-gray-900">
+                              {selectedDailyAnalysis.analysis.summary.overview.meeting_count}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Total Time</div>
+                            <div className="text-xl font-bold text-gray-900">
+                              {selectedDailyAnalysis.analysis.summary.overview.total_time}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Main Topics</div>
+                            <div className="text-xl font-bold text-gray-900">
+                              {selectedDailyAnalysis.analysis.summary.overview.main_topics?.length || 0}
+                            </div>
+                          </div>
+                        </div>
+                        {selectedDailyAnalysis.analysis.summary.overview.main_topics &&
+                          selectedDailyAnalysis.analysis.summary.overview.main_topics.length > 0 && (
+                            <div>
+                              <div className="text-sm text-gray-500 mb-2">
+                                Main Topics:
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedDailyAnalysis.analysis.summary.overview.main_topics.map(
+                                  (topic: string, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
+                                    >
+                                      {topic}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Topics */}
+                  {selectedDailyAnalysis.analysis?.summary?.topics &&
+                    selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                          Topics
+                        </h3>
+                        <div className="space-y-4">
+                          {selectedDailyAnalysis.analysis.summary.topics.map(
+                            (topic: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="border border-gray-200 rounded-lg p-4"
+                              >
+                                <h4 className="font-semibold text-gray-900 mb-2">
+                                  {topic.topic}
+                                </h4>
+                                {topic.key_discussions &&
+                                  topic.key_discussions.length > 0 && (
+                                    <div className="mb-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Key Discussions:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {topic.key_discussions.map((disc: string, i: number) => (
+                                          <li key={i}>{disc}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                {topic.key_decisions &&
+                                  topic.key_decisions.length > 0 && (
+                                    <div className="mb-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Key Decisions:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {topic.key_decisions.map((dec: string, i: number) => (
+                                          <li key={i}>{dec}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                {topic.progress &&
+                                  topic.progress.length > 0 && (
+                                    <div className="mb-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Progress:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {topic.progress.map((prog: string, i: number) => (
+                                          <li key={i}>{prog}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                {topic.issues &&
+                                  topic.issues.length > 0 && (
+                                    <div className="mb-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Issues:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {topic.issues.map((issue: string, i: number) => (
+                                          <li key={i}>{issue}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Key Decisions */}
+                  {selectedDailyAnalysis.analysis?.summary?.key_decisions &&
+                    selectedDailyAnalysis.analysis.summary.key_decisions.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                          Key Decisions
+                        </h3>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                          {selectedDailyAnalysis.analysis.summary.key_decisions.map(
+                            (decision: string, idx: number) => (
+                              <li key={idx}>{decision}</li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                  {/* Major Achievements */}
+                  {selectedDailyAnalysis.analysis?.summary?.major_achievements &&
+                    selectedDailyAnalysis.analysis.summary.major_achievements.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                          Major Achievements
+                        </h3>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                          {selectedDailyAnalysis.analysis.summary.major_achievements.map(
+                            (achievement: string, idx: number) => (
+                              <li key={idx}>{achievement}</li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                  {/* Common Issues */}
+                  {selectedDailyAnalysis.analysis?.summary?.common_issues &&
+                    selectedDailyAnalysis.analysis.summary.common_issues.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                          Common Issues
+                        </h3>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                          {selectedDailyAnalysis.analysis.summary.common_issues.map(
+                            (issue: string, idx: number) => (
+                              <li key={idx}>{issue}</li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                  {/* Participants */}
+                  {selectedDailyAnalysis.analysis?.participants &&
+                    selectedDailyAnalysis.analysis.participants.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                          Participants
+                        </h3>
+                        <div className="space-y-4">
+                          {selectedDailyAnalysis.analysis.participants.map(
+                            (participant: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="border border-gray-200 rounded-lg p-4"
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="font-semibold text-gray-900">
+                                    {participant.name}
+                                  </h4>
+                                  <div className="text-sm text-gray-500">
+                                    {participant.speaking_time} (
+                                    {participant.speaking_percentage?.toFixed(1) || 0}%)
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                                  <div>
+                                    <span className="text-gray-500">Speaks:</span>{" "}
+                                    <span className="font-medium">
+                                      {participant.speak_count || 0}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Words:</span>{" "}
+                                    <span className="font-medium">
+                                      {participant.word_count || 0}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Time:</span>{" "}
+                                    <span className="font-medium">
+                                      {participant.speaking_time || "N/A"}
+                                    </span>
+                                  </div>
+                                </div>
+                                {participant.key_activities &&
+                                  participant.key_activities.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Key Activities:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {participant.key_activities.map((item: string, i: number) => (
+                                          <li key={i}>{item}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                {participant.action_items &&
+                                  participant.action_items.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Action Items:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {participant.action_items.map((item: string, i: number) => (
+                                          <li key={i}>{item}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                {participant.progress &&
+                                  participant.progress.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Progress:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {participant.progress.map((prog: string, i: number) => (
+                                          <li key={i}>{prog}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                {participant.issues &&
+                                  participant.issues.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Issues:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {participant.issues.map((issue: string, i: number) => (
+                                          <li key={i}>{issue}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                {participant.collaboration &&
+                                  participant.collaboration.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Collaboration:
+                                      </div>
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {participant.collaboration.map((collab: string, i: number) => (
+                                          <li key={i}>{collab}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Full Analysis Text */}
+                  {selectedDailyAnalysis.analysis?.full_analysis_text && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                        Full Analysis
+                      </h3>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                          {selectedDailyAnalysis.analysis.full_analysis_text}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center">
+                  No analysis data available
+                </p>
+              )}
             </div>
           </div>
         </div>
