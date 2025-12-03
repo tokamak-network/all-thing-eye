@@ -53,6 +53,7 @@ export default function ActivitiesPage() {
   const [selectedDailyAnalysis, setSelectedDailyAnalysis] = useState<any>(null);
   const [showDailyAnalysisDetail, setShowDailyAnalysisDetail] = useState(false);
   const [dailyAnalysisLoading, setDailyAnalysisLoading] = useState(false);
+  const [dailyAnalysisTab, setDailyAnalysisTab] = useState<string>("overview");
   const [allMembers, setAllMembers] = useState<string[]>([]);
   // Notion UUID to member name mapping
   const [notionUuidMap, setNotionUuidMap] = useState<Record<string, string>>(
@@ -1232,12 +1233,14 @@ export default function ActivitiesPage() {
                             </div>
                           </div>
                         )}
-                      <div className="mt-3">
+                      {/* Action Buttons */}
+                      <div className="flex flex-wrap gap-2 mt-3">
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
                             setDailyAnalysisLoading(true);
                             setShowDailyAnalysisDetail(true);
+                            setDailyAnalysisTab("overview");
                             try {
                               const targetDate = activity.metadata?.target_date;
                               if (targetDate) {
@@ -1251,9 +1254,101 @@ export default function ActivitiesPage() {
                               setDailyAnalysisLoading(false);
                             }
                           }}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                          className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                         >
-                          View Details
+                          📊 Overview
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setDailyAnalysisLoading(true);
+                            setShowDailyAnalysisDetail(true);
+                            setDailyAnalysisTab("topics");
+                            try {
+                              const targetDate = activity.metadata?.target_date;
+                              if (targetDate) {
+                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                setSelectedDailyAnalysis(response);
+                              }
+                            } catch (err: any) {
+                              console.error("Failed to load daily analysis details:", err);
+                              alert("Failed to load daily analysis details");
+                            } finally {
+                              setDailyAnalysisLoading(false);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors"
+                        >
+                          💬 Topics
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setDailyAnalysisLoading(true);
+                            setShowDailyAnalysisDetail(true);
+                            setDailyAnalysisTab("decisions");
+                            try {
+                              const targetDate = activity.metadata?.target_date;
+                              if (targetDate) {
+                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                setSelectedDailyAnalysis(response);
+                              }
+                            } catch (err: any) {
+                              console.error("Failed to load daily analysis details:", err);
+                              alert("Failed to load daily analysis details");
+                            } finally {
+                              setDailyAnalysisLoading(false);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                        >
+                          📋 Decisions
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setDailyAnalysisLoading(true);
+                            setShowDailyAnalysisDetail(true);
+                            setDailyAnalysisTab("participants");
+                            try {
+                              const targetDate = activity.metadata?.target_date;
+                              if (targetDate) {
+                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                setSelectedDailyAnalysis(response);
+                              }
+                            } catch (err: any) {
+                              console.error("Failed to load daily analysis details:", err);
+                              alert("Failed to load daily analysis details");
+                            } finally {
+                              setDailyAnalysisLoading(false);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors"
+                        >
+                          👥 Participants
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setDailyAnalysisLoading(true);
+                            setShowDailyAnalysisDetail(true);
+                            setDailyAnalysisTab("full");
+                            try {
+                              const targetDate = activity.metadata?.target_date;
+                              if (targetDate) {
+                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                setSelectedDailyAnalysis(response);
+                              }
+                            } catch (err: any) {
+                              console.error("Failed to load daily analysis details:", err);
+                              alert("Failed to load daily analysis details");
+                            } finally {
+                              setDailyAnalysisLoading(false);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors"
+                        >
+                          📄 Full Analysis
                         </button>
                       </div>
                     </div>
@@ -1924,10 +2019,66 @@ export default function ActivitiesPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">
-                  Daily Analysis - {selectedDailyAnalysis?.target_date || "Loading..."}
-                </h2>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Daily Analysis - {selectedDailyAnalysis?.target_date || "Loading..."}
+                  </h2>
+                  {selectedDailyAnalysis?.target_date && (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          const dateId = selectedDailyAnalysis.target_date;
+                          const title = `Daily Analysis - ${selectedDailyAnalysis.target_date}`;
+                          if (dateId && title) {
+                            handleTranslate(`daily_analysis_title_${dateId}`, title, "en");
+                          }
+                        }}
+                        disabled={translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`}
+                        className={`text-xs px-2 py-1 rounded transition-colors ${
+                          translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                        } ${
+                          translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                            ? "opacity-50 cursor-wait"
+                            : ""
+                        }`}
+                      >
+                        EN
+                      </button>
+                      <button
+                        onClick={() => {
+                          const dateId = selectedDailyAnalysis.target_date;
+                          const title = `Daily Analysis - ${selectedDailyAnalysis.target_date}`;
+                          if (dateId && title) {
+                            handleTranslate(`daily_analysis_title_${dateId}`, title, "ko");
+                          }
+                        }}
+                        disabled={translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`}
+                        className={`text-xs px-2 py-1 rounded transition-colors ${
+                          translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                        } ${
+                          translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                            ? "opacity-50 cursor-wait"
+                            : ""
+                        }`}
+                      >
+                        KR
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`] && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    🌐 Translated to{" "}
+                    {translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                      ? "Korean"
+                      : "English"}
+                  </p>
+                )}
                 {selectedDailyAnalysis && (
                   <p className="text-sm text-gray-500 mt-1">
                     {selectedDailyAnalysis.meeting_count} meetings •{" "}
@@ -1939,6 +2090,7 @@ export default function ActivitiesPage() {
                 onClick={() => {
                   setShowDailyAnalysisDetail(false);
                   setSelectedDailyAnalysis(null);
+                  setDailyAnalysisTab("overview");
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -1958,6 +2110,101 @@ export default function ActivitiesPage() {
               </button>
             </div>
 
+            {/* Tab Navigation */}
+            {selectedDailyAnalysis?.analysis && (
+              <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setDailyAnalysisTab("overview")}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                      dailyAnalysisTab === "overview"
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-300"
+                    }`}
+                  >
+                    📊 Overview
+                  </button>
+                  {selectedDailyAnalysis.analysis?.summary?.topics &&
+                    selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
+                      <button
+                        onClick={() => setDailyAnalysisTab("topics")}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                          dailyAnalysisTab === "topics"
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-300"
+                        }`}
+                      >
+                        💬 Topics
+                      </button>
+                    )}
+                  {selectedDailyAnalysis.analysis?.summary?.key_decisions &&
+                    selectedDailyAnalysis.analysis.summary.key_decisions.length > 0 && (
+                      <button
+                        onClick={() => setDailyAnalysisTab("decisions")}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                          dailyAnalysisTab === "decisions"
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-300"
+                        }`}
+                      >
+                        📋 Decisions
+                      </button>
+                    )}
+                  {selectedDailyAnalysis.analysis?.summary?.major_achievements &&
+                    selectedDailyAnalysis.analysis.summary.major_achievements.length > 0 && (
+                      <button
+                        onClick={() => setDailyAnalysisTab("achievements")}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                          dailyAnalysisTab === "achievements"
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-300"
+                        }`}
+                      >
+                        🏆 Achievements
+                      </button>
+                    )}
+                  {selectedDailyAnalysis.analysis?.summary?.common_issues &&
+                    selectedDailyAnalysis.analysis.summary.common_issues.length > 0 && (
+                      <button
+                        onClick={() => setDailyAnalysisTab("issues")}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                          dailyAnalysisTab === "issues"
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-300"
+                        }`}
+                      >
+                        ⚠️ Issues
+                      </button>
+                    )}
+                  {selectedDailyAnalysis.analysis?.participants &&
+                    selectedDailyAnalysis.analysis.participants.length > 0 && (
+                      <button
+                        onClick={() => setDailyAnalysisTab("participants")}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                          dailyAnalysisTab === "participants"
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-300"
+                        }`}
+                      >
+                        👥 Participants
+                      </button>
+                    )}
+                  {selectedDailyAnalysis.analysis?.full_analysis_text && (
+                    <button
+                      onClick={() => setDailyAnalysisTab("full")}
+                      className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                        dailyAnalysisTab === "full"
+                          ? "bg-blue-600 text-white"
+                          : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-300"
+                      }`}
+                    >
+                      📄 Full Analysis
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6">
               {dailyAnalysisLoading ? (
@@ -1966,8 +2213,9 @@ export default function ActivitiesPage() {
                 </div>
               ) : selectedDailyAnalysis?.analysis ? (
                 <div className="space-y-6">
-                  {/* Overview */}
-                  {selectedDailyAnalysis.analysis?.summary?.overview && (
+                  {/* Overview Tab */}
+                  {dailyAnalysisTab === "overview" &&
+                    selectedDailyAnalysis.analysis?.summary?.overview && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-3">
                         Overview
@@ -2017,8 +2265,9 @@ export default function ActivitiesPage() {
                     </div>
                   )}
 
-                  {/* Topics */}
-                  {selectedDailyAnalysis.analysis?.summary?.topics &&
+                  {/* Topics Tab */}
+                  {dailyAnalysisTab === "topics" &&
+                    selectedDailyAnalysis.analysis?.summary?.topics &&
                     selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -2093,8 +2342,9 @@ export default function ActivitiesPage() {
                       </div>
                     )}
 
-                  {/* Key Decisions */}
-                  {selectedDailyAnalysis.analysis?.summary?.key_decisions &&
+                  {/* Decisions Tab */}
+                  {dailyAnalysisTab === "decisions" &&
+                    selectedDailyAnalysis.analysis?.summary?.key_decisions &&
                     selectedDailyAnalysis.analysis.summary.key_decisions.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -2110,8 +2360,9 @@ export default function ActivitiesPage() {
                       </div>
                     )}
 
-                  {/* Major Achievements */}
-                  {selectedDailyAnalysis.analysis?.summary?.major_achievements &&
+                  {/* Achievements Tab */}
+                  {dailyAnalysisTab === "achievements" &&
+                    selectedDailyAnalysis.analysis?.summary?.major_achievements &&
                     selectedDailyAnalysis.analysis.summary.major_achievements.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -2127,8 +2378,9 @@ export default function ActivitiesPage() {
                       </div>
                     )}
 
-                  {/* Common Issues */}
-                  {selectedDailyAnalysis.analysis?.summary?.common_issues &&
+                  {/* Issues Tab */}
+                  {dailyAnalysisTab === "issues" &&
+                    selectedDailyAnalysis.analysis?.summary?.common_issues &&
                     selectedDailyAnalysis.analysis.summary.common_issues.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -2144,8 +2396,9 @@ export default function ActivitiesPage() {
                       </div>
                     )}
 
-                  {/* Participants */}
-                  {selectedDailyAnalysis.analysis?.participants &&
+                  {/* Participants Tab */}
+                  {dailyAnalysisTab === "participants" &&
+                    selectedDailyAnalysis.analysis?.participants &&
                     selectedDailyAnalysis.analysis.participants.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -2259,15 +2512,71 @@ export default function ActivitiesPage() {
                       </div>
                     )}
 
-                  {/* Full Analysis Text */}
-                  {selectedDailyAnalysis.analysis?.full_analysis_text && (
+                  {/* Full Analysis Tab */}
+                  {dailyAnalysisTab === "full" &&
+                    selectedDailyAnalysis.analysis?.full_analysis_text && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                        Full Analysis
-                      </h3>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Full Analysis
+                        </h3>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => {
+                              const dateId = selectedDailyAnalysis.target_date;
+                              const analysisText = selectedDailyAnalysis.analysis.full_analysis_text;
+                              if (dateId && analysisText) {
+                                handleTranslate(`daily_analysis_full_${dateId}`, analysisText, "en");
+                              }
+                            }}
+                            disabled={translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                            } ${
+                              translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                                ? "opacity-50 cursor-wait"
+                                : ""
+                            }`}
+                          >
+                            EN
+                          </button>
+                          <button
+                            onClick={() => {
+                              const dateId = selectedDailyAnalysis.target_date;
+                              const analysisText = selectedDailyAnalysis.analysis.full_analysis_text;
+                              if (dateId && analysisText) {
+                                handleTranslate(`daily_analysis_full_${dateId}`, analysisText, "ko");
+                              }
+                            }}
+                            disabled={translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                            } ${
+                              translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                                ? "opacity-50 cursor-wait"
+                                : ""
+                            }`}
+                          >
+                            KR
+                          </button>
+                        </div>
+                      </div>
+                      {translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`] && (
+                        <p className="text-xs text-gray-400 mb-2">
+                          🌐 Translated to{" "}
+                          {translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                            ? "Korean"
+                            : "English"}
+                        </p>
+                      )}
                       <div className="bg-gray-50 rounded-lg p-4">
                         <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
-                          {selectedDailyAnalysis.analysis.full_analysis_text}
+                          {translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`]?.text ||
+                            selectedDailyAnalysis.analysis.full_analysis_text}
                         </pre>
                       </div>
                     </div>
@@ -2278,6 +2587,34 @@ export default function ActivitiesPage() {
                   No analysis data available
                 </p>
               )}
+              {/* Show message if selected tab has no data */}
+              {selectedDailyAnalysis?.analysis &&
+                !dailyAnalysisLoading &&
+                ((dailyAnalysisTab === "overview" &&
+                  !selectedDailyAnalysis.analysis?.summary?.overview) ||
+                  (dailyAnalysisTab === "topics" &&
+                    (!selectedDailyAnalysis.analysis?.summary?.topics ||
+                      selectedDailyAnalysis.analysis.summary.topics.length === 0)) ||
+                  (dailyAnalysisTab === "decisions" &&
+                    (!selectedDailyAnalysis.analysis?.summary?.key_decisions ||
+                      selectedDailyAnalysis.analysis.summary.key_decisions.length === 0)) ||
+                  (dailyAnalysisTab === "achievements" &&
+                    (!selectedDailyAnalysis.analysis?.summary?.major_achievements ||
+                      selectedDailyAnalysis.analysis.summary.major_achievements.length === 0)) ||
+                  (dailyAnalysisTab === "issues" &&
+                    (!selectedDailyAnalysis.analysis?.summary?.common_issues ||
+                      selectedDailyAnalysis.analysis.summary.common_issues.length === 0)) ||
+                  (dailyAnalysisTab === "participants" &&
+                    (!selectedDailyAnalysis.analysis?.participants ||
+                      selectedDailyAnalysis.analysis.participants.length === 0)) ||
+                  (dailyAnalysisTab === "full" &&
+                    !selectedDailyAnalysis.analysis?.full_analysis_text)) && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">
+                      No data available for this section
+                    </p>
+                  </div>
+                )}
             </div>
           </div>
         </div>
