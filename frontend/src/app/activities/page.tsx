@@ -594,10 +594,12 @@ export default function ActivitiesPage() {
                       )}
 
                       <p className="text-sm font-medium text-gray-900">
-                        {resolveMemberName(
-                          activity.member_name,
-                          activity.source_type
-                        )}
+                        {activity.source_type === "recordings_daily"
+                          ? activity.metadata?.target_date || "Daily Analysis"
+                          : resolveMemberName(
+                              activity.member_name,
+                              activity.source_type
+                            )}
                       </p>
                     </div>
                     <div className="mt-2 text-sm text-gray-600">
@@ -2217,9 +2219,63 @@ export default function ActivitiesPage() {
                   {dailyAnalysisTab === "overview" &&
                     selectedDailyAnalysis.analysis?.summary?.overview && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                        Overview
-                      </h3>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Overview
+                        </h3>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => {
+                              const dateId = selectedDailyAnalysis.target_date;
+                              const overviewText = JSON.stringify(selectedDailyAnalysis.analysis.summary.overview);
+                              if (dateId && overviewText) {
+                                handleTranslate(`daily_analysis_overview_${dateId}`, overviewText, "en");
+                              }
+                            }}
+                            disabled={translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                            } ${
+                              translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                                ? "opacity-50 cursor-wait"
+                                : ""
+                            }`}
+                          >
+                            EN
+                          </button>
+                          <button
+                            onClick={() => {
+                              const dateId = selectedDailyAnalysis.target_date;
+                              const overviewText = JSON.stringify(selectedDailyAnalysis.analysis.summary.overview);
+                              if (dateId && overviewText) {
+                                handleTranslate(`daily_analysis_overview_${dateId}`, overviewText, "ko");
+                              }
+                            }}
+                            disabled={translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                            } ${
+                              translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                                ? "opacity-50 cursor-wait"
+                                : ""
+                            }`}
+                          >
+                            KR
+                          </button>
+                        </div>
+                      </div>
+                      {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`] && (
+                        <p className="text-xs text-gray-400 mb-2">
+                          🌐 Translated to{" "}
+                          {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                            ? "Korean"
+                            : "English"}
+                        </p>
+                      )}
                       <div className="bg-gray-50 rounded-lg p-4">
                         <div className="grid grid-cols-3 gap-4 mb-4">
                           <div>
@@ -2270,9 +2326,63 @@ export default function ActivitiesPage() {
                     selectedDailyAnalysis.analysis?.summary?.topics &&
                     selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Topics
-                        </h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Topics
+                          </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const topicsText = JSON.stringify(selectedDailyAnalysis.analysis.summary.topics);
+                                if (dateId && topicsText) {
+                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "en");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const topicsText = JSON.stringify(selectedDailyAnalysis.analysis.summary.topics);
+                                if (dateId && topicsText) {
+                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "ko");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              KR
+                            </button>
+                          </div>
+                        </div>
+                        {translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`] && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            🌐 Translated to{" "}
+                            {translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                              ? "Korean"
+                              : "English"}
+                          </p>
+                        )}
                         <div className="space-y-4">
                           {selectedDailyAnalysis.analysis.summary.topics.map(
                             (topic: any, idx: number) => (
@@ -2347,15 +2457,73 @@ export default function ActivitiesPage() {
                     selectedDailyAnalysis.analysis?.summary?.key_decisions &&
                     selectedDailyAnalysis.analysis.summary.key_decisions.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Key Decisions
-                        </h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Key Decisions
+                          </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const decisionsText = selectedDailyAnalysis.analysis.summary.key_decisions.join("\n");
+                                if (dateId && decisionsText) {
+                                  handleTranslate(`daily_analysis_decisions_${dateId}`, decisionsText, "en");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const decisionsText = selectedDailyAnalysis.analysis.summary.key_decisions.join("\n");
+                                if (dateId && decisionsText) {
+                                  handleTranslate(`daily_analysis_decisions_${dateId}`, decisionsText, "ko");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              KR
+                            </button>
+                          </div>
+                        </div>
+                        {translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`] && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            🌐 Translated to{" "}
+                            {translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                              ? "Korean"
+                              : "English"}
+                          </p>
+                        )}
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {selectedDailyAnalysis.analysis.summary.key_decisions.map(
-                            (decision: string, idx: number) => (
-                              <li key={idx}>{decision}</li>
-                            )
-                          )}
+                          {translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`]?.text
+                            ? translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`].text.split("\n").map((decision: string, idx: number) => (
+                                <li key={idx}>{decision}</li>
+                              ))
+                            : selectedDailyAnalysis.analysis.summary.key_decisions.map(
+                                (decision: string, idx: number) => (
+                                  <li key={idx}>{decision}</li>
+                                )
+                              )}
                         </ul>
                       </div>
                     )}
@@ -2365,15 +2533,73 @@ export default function ActivitiesPage() {
                     selectedDailyAnalysis.analysis?.summary?.major_achievements &&
                     selectedDailyAnalysis.analysis.summary.major_achievements.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Major Achievements
-                        </h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Major Achievements
+                          </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const achievementsText = selectedDailyAnalysis.analysis.summary.major_achievements.join("\n");
+                                if (dateId && achievementsText) {
+                                  handleTranslate(`daily_analysis_achievements_${dateId}`, achievementsText, "en");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const achievementsText = selectedDailyAnalysis.analysis.summary.major_achievements.join("\n");
+                                if (dateId && achievementsText) {
+                                  handleTranslate(`daily_analysis_achievements_${dateId}`, achievementsText, "ko");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              KR
+                            </button>
+                          </div>
+                        </div>
+                        {translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`] && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            🌐 Translated to{" "}
+                            {translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                              ? "Korean"
+                              : "English"}
+                          </p>
+                        )}
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {selectedDailyAnalysis.analysis.summary.major_achievements.map(
-                            (achievement: string, idx: number) => (
-                              <li key={idx}>{achievement}</li>
-                            )
-                          )}
+                          {translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`]?.text
+                            ? translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`].text.split("\n").map((achievement: string, idx: number) => (
+                                <li key={idx}>{achievement}</li>
+                              ))
+                            : selectedDailyAnalysis.analysis.summary.major_achievements.map(
+                                (achievement: string, idx: number) => (
+                                  <li key={idx}>{achievement}</li>
+                                )
+                              )}
                         </ul>
                       </div>
                     )}
@@ -2383,15 +2609,73 @@ export default function ActivitiesPage() {
                     selectedDailyAnalysis.analysis?.summary?.common_issues &&
                     selectedDailyAnalysis.analysis.summary.common_issues.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Common Issues
-                        </h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Common Issues
+                          </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const issuesText = selectedDailyAnalysis.analysis.summary.common_issues.join("\n");
+                                if (dateId && issuesText) {
+                                  handleTranslate(`daily_analysis_issues_${dateId}`, issuesText, "en");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const issuesText = selectedDailyAnalysis.analysis.summary.common_issues.join("\n");
+                                if (dateId && issuesText) {
+                                  handleTranslate(`daily_analysis_issues_${dateId}`, issuesText, "ko");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              KR
+                            </button>
+                          </div>
+                        </div>
+                        {translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`] && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            🌐 Translated to{" "}
+                            {translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                              ? "Korean"
+                              : "English"}
+                          </p>
+                        )}
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {selectedDailyAnalysis.analysis.summary.common_issues.map(
-                            (issue: string, idx: number) => (
-                              <li key={idx}>{issue}</li>
-                            )
-                          )}
+                          {translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`]?.text
+                            ? translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`].text.split("\n").map((issue: string, idx: number) => (
+                                <li key={idx}>{issue}</li>
+                              ))
+                            : selectedDailyAnalysis.analysis.summary.common_issues.map(
+                                (issue: string, idx: number) => (
+                                  <li key={idx}>{issue}</li>
+                                )
+                              )}
                         </ul>
                       </div>
                     )}
@@ -2401,9 +2685,63 @@ export default function ActivitiesPage() {
                     selectedDailyAnalysis.analysis?.participants &&
                     selectedDailyAnalysis.analysis.participants.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Participants
-                        </h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Participants
+                          </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const participantsText = JSON.stringify(selectedDailyAnalysis.analysis.participants);
+                                if (dateId && participantsText) {
+                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "en");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const participantsText = JSON.stringify(selectedDailyAnalysis.analysis.participants);
+                                if (dateId && participantsText) {
+                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "ko");
+                                }
+                              }}
+                              disabled={translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              KR
+                            </button>
+                          </div>
+                        </div>
+                        {translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`] && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            🌐 Translated to{" "}
+                            {translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                              ? "Korean"
+                              : "English"}
+                          </p>
+                        )}
                         <div className="space-y-4">
                           {selectedDailyAnalysis.analysis.participants.map(
                             (participant: any, idx: number) => (
