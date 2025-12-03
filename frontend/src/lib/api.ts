@@ -65,23 +65,6 @@ class ApiClient {
     return response.data;
   }
 
-  async getMemberActivities(
-    memberId: number,
-    params?: {
-      source_type?: string;
-      activity_type?: string;
-      start_date?: string;
-      end_date?: string;
-      limit?: number;
-      offset?: number;
-    }
-  ) {
-    const response = await this.client.get(`/members/${memberId}/activities`, {
-      params,
-    });
-    return response.data;
-  }
-
   async createMember(memberData: {
     name: string;
     email: string;

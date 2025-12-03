@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { api as apiClient } from "@/lib/api";
@@ -99,15 +99,7 @@ export default function MemberDetailPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  useEffect(() => {
-    loadMemberDetail();
-  }, [memberId]);
-
-  useEffect(() => {
-    loadActivities();
-  }, [memberId, selectedSource, startDate, endDate]);
-
-  const loadMemberDetail = async () => {
+  const loadMemberDetail = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -119,9 +111,9 @@ export default function MemberDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [memberId]);
 
-  const loadActivities = async () => {
+  const loadActivities = useCallback(async () => {
     try {
       setActivitiesLoading(true);
       // Map frontend source names to backend source_type
@@ -147,7 +139,15 @@ export default function MemberDetailPage() {
     } finally {
       setActivitiesLoading(false);
     }
-  };
+  }, [memberId, selectedSource, startDate, endDate, itemsPerPage]);
+
+  useEffect(() => {
+    loadMemberDetail();
+  }, [loadMemberDetail]);
+
+  useEffect(() => {
+    loadActivities();
+  }, [loadActivities]);
 
   const handleGenerateSummary = async () => {
     try {
@@ -425,7 +425,7 @@ export default function MemberDetailPage() {
                   )}
                 </div>
               ) : (
-                <p className="text-gray-500">Click "Generate Summary" to analyze activities with AI.</p>
+                <p className="text-gray-500">Click &quot;Generate Summary&quot; to analyze activities with AI.</p>
               )}
             </div>
           )}
@@ -490,8 +490,8 @@ export default function MemberDetailPage() {
                 <div>
                   <p className="text-sm text-gray-500">Other Sources</p>
                   <p className="text-3xl font-bold text-gray-900 mt-1">
-                    {(member.activity_stats.by_source.notion?.total || 0) +
-                      (member.activity_stats.by_source.drive?.total || 0)}
+                    {(member.activity_stats.by_source.notion?.total || 0) + 
+                     (member.activity_stats.by_source.drive?.total || 0)}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">Notion, Drive</p>
                 </div>
@@ -578,7 +578,7 @@ export default function MemberDetailPage() {
                           onClick={() => toggleActivity(activity.id)}
                         >
                           <div className="flex items-center justify-between">
-                            <div className="flex-1">
+                      <div className="flex-1">
                               <div className="flex items-center space-x-3">
                                 <span className="text-2xl">
                                   {getSourceIcon(displaySource)}
@@ -602,12 +602,12 @@ export default function MemberDetailPage() {
                                     {activity.activity_type === "pull_request" && (
                                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                         🔀 pull request
-                                      </span>
+                          </span>
                                     )}
                                     {activity.activity_type === "issue" && (
                                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                         ⚠️ issue
-                                      </span>
+                          </span>
                                     )}
                                   </>
                                 )}
@@ -623,11 +623,11 @@ export default function MemberDetailPage() {
                                     {activity.metadata?.channel && (
                                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                                         #{activity.metadata.channel}
-                                      </span>
+                              </span>
                                     )}
-                                  </>
-                                )}
-                              </div>
+                            </>
+                          )}
+                        </div>
                               <div className="mt-2 text-sm text-gray-600">
                                 {activity.metadata?.title && (
                                   <p className="line-clamp-1 font-medium">
@@ -650,8 +650,8 @@ export default function MemberDetailPage() {
                                     {activity.metadata.repository}
                                   </p>
                                 )}
-                              </div>
-                            </div>
+                      </div>
+                    </div>
                             <div className="flex items-center space-x-4">
                               <div className="text-right min-w-[160px]">
                                 <p className="text-sm font-medium text-gray-900">
@@ -659,8 +659,8 @@ export default function MemberDetailPage() {
                                 </p>
                                 <p className="text-xs text-gray-600">
                                   {formatTimestamp(activity.timestamp, "HH:mm:ss")}
-                                </p>
-                              </div>
+                      </p>
+                    </div>
                               <svg
                                 className={`h-5 w-5 text-gray-400 transition-transform ${
                                   expandedActivity === activity.id
@@ -678,9 +678,9 @@ export default function MemberDetailPage() {
                                   d="M19 9l-7 7-7-7"
                                 />
                               </svg>
-                            </div>
-                          </div>
-                        </div>
+                  </div>
+                </div>
+            </div>
 
                         {/* Expanded Details */}
                         {expandedActivity === activity.id && (
@@ -714,8 +714,8 @@ export default function MemberDetailPage() {
                                     >
                                       {activity.metadata.state}
                                     </span>
-                                  )}
-                                </div>
+          )}
+        </div>
 
                                 <div>
                                   <span className="text-xs font-medium text-gray-500">Time:</span>
@@ -765,7 +765,7 @@ export default function MemberDetailPage() {
                                       </span>
                                       <span className="text-xs font-medium text-red-600">
                                         -{activity.metadata.deletions || 0}
-                                      </span>
+                    </span>
                                     </div>
                                   </div>
                                 )}
@@ -793,7 +793,7 @@ export default function MemberDetailPage() {
                                   {activity.activity_type === "message" && (
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                       💬 Message
-                                    </span>
+                    </span>
                                   )}
                                 </div>
 
@@ -1010,7 +1010,7 @@ export default function MemberDetailPage() {
                     </nav>
                   </div>
                 </div>
-              </div>
+          </div>
             )}
           </>
         )}
