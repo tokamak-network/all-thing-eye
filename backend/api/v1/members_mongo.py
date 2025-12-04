@@ -74,11 +74,43 @@ async def get_members(
                 member_id = str(member["_id"])
                 
                 # Get member identifiers (if collection exists)
+                # Group by source (github, slack, notion, drive) and get the primary identifier
+                # Prefer username/user_id over email for display
                 identifiers = {}
                 if "member_identifiers" in collection_names:
-                    identifiers_cursor = db["member_identifiers"].find({"member_id": member_id})
+                    from bson import ObjectId
+                    # Try both string and ObjectId format for member_id
+                    try:
+                        member_obj_id = ObjectId(member_id)
+                    except:
+                        member_obj_id = None
+                    
+                    # Query with both formats
+                    query = {"$or": [{"member_id": member_id}]}
+                    if member_obj_id:
+                        query["$or"].append({"member_id": member_obj_id})
+                    
+                    identifiers_cursor = db["member_identifiers"].find(query)
+                    identifier_list = []
                     async for identifier in identifiers_cursor:
-                        identifiers[identifier["identifier_type"]] = identifier["identifier_value"]
+                        identifier_list.append(identifier)
+                        source = identifier.get("source")
+                        identifier_type = identifier.get("identifier_type")
+                        identifier_value = identifier.get("identifier_value")
+                        
+                        logger.debug(f"Member {member_id} identifier: source={source}, type={identifier_type}, value={identifier_value}")
+                        
+                        if source and identifier_value:
+                            # For each source, prefer username/user_id over email
+                            if source not in identifiers:
+                                identifiers[source] = identifier_value
+                            elif identifier_type in ["username", "user_id"]:
+                                # Prefer username/user_id over email
+                                identifiers[source] = identifier_value
+                    
+                    # Log only if identifiers found (to reduce log noise)
+                    if identifier_list:
+                        logger.debug(f"Member {member_id} ({member.get('name')}) has {len(identifier_list)} identifiers: {identifiers}")
                 
                 members.append({
                     "id": member_id,
@@ -365,10 +397,87 @@ async def update_member(
         if member_data.slack_id is not None:
             slack_type = "email" if '@' in member_data.slack_id else "user_id"
             await update_identifier("slack", slack_type, member_data.slack_id)
+            
+            # If slack_id is an email, try to find actual Slack user_id from existing messages
+            if '@' in member_data.slack_id:
+                slack_email = member_data.slack_id
+                try:
+                    # Try to find actual user_id from slack_messages collection
+                    slack_msg = await db["slack_messages"].find_one({
+                        "$or": [
+                            {"user_email": slack_email},
+                            {"user_email": slack_email.lower()}
+                        ]
+                    })
+                    if slack_msg and slack_msg.get("user_id"):
+                        actual_user_id = slack_msg["user_id"]
+                        # Add user_id identifier as well (don't overwrite email)
+                        existing_user_id = await db["member_identifiers"].find_one({
+                            "member_id": member_id,
+                            "source": "slack",
+                            "identifier_type": "user_id"
+                        })
+                        if not existing_user_id:
+                            member_name = update_data.get("name", existing_member.get("name"))
+                            await db["member_identifiers"].insert_one({
+                                "member_id": member_id,
+                                "member_name": member_name,
+                                "source": "slack",
+                                "identifier_type": "user_id",
+                                "identifier_value": actual_user_id,
+                                "created_at": now
+                            })
+                            logger.info(f"Found Slack user_id {actual_user_id} for email {slack_email}")
+                except Exception as e:
+                    logger.warning(f"Could not find Slack user_id for {slack_email}: {e}")
         
         # Update Notion identifier
         if member_data.notion_id is not None:
             await update_identifier("notion", "email", member_data.notion_id)
+            
+            # Try to find actual Notion user ID from existing pages
+            if '@' in member_data.notion_id:
+                notion_email = member_data.notion_id
+                try:
+                    notion_page = await db["notion_pages"].find_one({
+                        "$or": [
+                            {"created_by.email": notion_email},
+                            {"created_by.email": notion_email.lower()},
+                            {"last_edited_by.email": notion_email},
+                            {"last_edited_by.email": notion_email.lower()}
+                        ]
+                    })
+                    if notion_page:
+                        # Try to get user ID from created_by or last_edited_by
+                        created_by = notion_page.get("created_by", {})
+                        last_edited_by = notion_page.get("last_edited_by", {})
+                        
+                        notion_user_id = None
+                        if created_by.get("id"):
+                            notion_user_id = created_by["id"]
+                        elif last_edited_by.get("id"):
+                            notion_user_id = last_edited_by["id"]
+                        
+                        if notion_user_id:
+                            # Add user_id identifier as well (don't overwrite email)
+                            existing_user_id = await db["member_identifiers"].find_one({
+                                "member_id": member_id,
+                                "source": "notion",
+                                "identifier_type": "user_id"
+                            })
+                            if not existing_user_id:
+                                member_name = update_data.get("name", existing_member.get("name"))
+                                await db["member_identifiers"].insert_one({
+                                    "member_id": member_id,
+                                    "member_name": member_name,
+                                    "source": "notion",
+                                    "identifier_type": "user_id",
+                                    "identifier_value": notion_user_id,
+                                    "created_at": now
+                                })
+                                logger.info(f"Found Notion user_id {notion_user_id} for email {notion_email}")
+                except Exception as e:
+                    logger.warning(f"Could not find Notion user_id for {notion_email}: {e}")
         
         # Update email identifier (for Drive)
         if member_data.email is not None:

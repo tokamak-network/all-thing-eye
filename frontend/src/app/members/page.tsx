@@ -16,6 +16,8 @@ interface MemberIdentifiers {
   github?: string;
   slack?: string;
   notion?: string;
+  drive?: string;
+  [key: string]: string | undefined; // Allow other source types
 }
 
 interface Member {
@@ -102,12 +104,37 @@ export default function MembersPage() {
   // Open modal for editing existing member
   const openEditModal = (member: Member) => {
     setEditingMember(member);
+    
+    // Extract identifiers - handle both old format (identifier_type keys) and new format (source keys)
+    const getIdentifier = (source: string): string => {
+      // Try source key first (new format: github, slack, notion, drive)
+      if (member.identifiers && member.identifiers[source]) {
+        return member.identifiers[source];
+      }
+      // Fallback to old format keys (identifier_type)
+      if (source === "github" && member.identifiers?.username) {
+        return member.identifiers.username;
+      }
+      if (source === "slack") {
+        if (member.identifiers?.user_id) {
+          return member.identifiers.user_id;
+        }
+        if (member.identifiers?.email) {
+          return member.identifiers.email;
+        }
+      }
+      if (source === "notion" && member.identifiers?.email) {
+        return member.identifiers.email;
+      }
+      return "";
+    };
+    
     setFormData({
       name: member.name,
       email: member.email,
-      github_id: member.identifiers.github || "",
-      slack_id: member.identifiers.slack || "",
-      notion_id: member.identifiers.notion || "",
+      github_id: getIdentifier("github"),
+      slack_id: getIdentifier("slack"),
+      notion_id: getIdentifier("notion"),
       role: member.role || "",
       project: member.project || "",
     });

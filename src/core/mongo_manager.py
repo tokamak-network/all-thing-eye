@@ -296,7 +296,13 @@ class MongoDBManager:
             identifiers = db[self.collections.get('member_identifiers', 'member_identifiers')]
             identifiers.create_index([('member_id', 1), ('source_type', 1)])
             identifiers.create_index('source_user_id')
-            identifiers.create_index([('source_type', 1), ('source_user_id', 1)], unique=True)
+            # Use sparse=True to exclude null values from unique index
+            # This prevents duplicate key errors when source_type or source_user_id is null
+            identifiers.create_index(
+                [('source_type', 1), ('source_user_id', 1)], 
+                unique=True, 
+                sparse=True
+            )
             
             # Member activities collection
             activities = db[self.collections.get('member_activities', 'member_activities')]
