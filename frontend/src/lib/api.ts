@@ -261,6 +261,11 @@ class ApiClient {
     return response.data;
   }
 
+  async getDatabaseStats() {
+    const response = await this.client.get("/database/stats");
+    return response.data;
+  }
+
   async getCollectionSchema(collectionName: string) {
     const response = await this.client.get(
       `/database/collections/${collectionName}/schema`

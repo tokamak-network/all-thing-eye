@@ -59,6 +59,9 @@ export default function DatabasePage() {
   } = useAppStats();
 
   const [collections, setCollections] = useState<CollectionsData | null>(null);
+  const [databaseStats, setDatabaseStats] = useState<{
+    total_storage_size: number;
+  } | null>(null);
   const [lastCollected, setLastCollected] = useState<Record<string, string>>(
     {}
   );
@@ -101,6 +104,19 @@ export default function DatabasePage() {
       }
     };
     loadCollections();
+  }, []);
+
+  // Load database stats (storage size)
+  useEffect(() => {
+    const loadDatabaseStats = async () => {
+      try {
+        const stats = await api.getDatabaseStats();
+        setDatabaseStats(stats);
+      } catch (err) {
+        console.error("Failed to load database stats:", err);
+      }
+    };
+    loadDatabaseStats();
   }, []);
 
   // Load last collected times
@@ -556,10 +572,12 @@ export default function DatabasePage() {
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-purple-600">
-              {collections?.collections
+              {databaseStats?.total_storage_size !== undefined
+                ? formatBytes(databaseStats.total_storage_size)
+                : collections?.collections
                 ? formatBytes(
                     collections.collections.reduce(
-                      (sum, col) => sum + (col.storageSize || 0),
+                      (sum, col) => sum + (col.size || 0),
                       0
                     )
                   )
@@ -596,16 +614,44 @@ export default function DatabasePage() {
 
                 const getTimeAgo = (isoTime: string | null) => {
                   if (!isoTime) return "Never collected";
-                  const date = new Date(isoTime);
-                  const now = new Date();
-                  const diffMs = now.getTime() - date.getTime();
-                  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                  const diffDays = Math.floor(diffHours / 24);
+                  
+                  try {
+                    const date = new Date(isoTime);
+                    const now = new Date();
+                    
+                    // Check if date is valid
+                    if (isNaN(date.getTime())) {
+                      return "Invalid date";
+                    }
+                    
+                    const diffMs = now.getTime() - date.getTime();
+                    
+                    // Handle negative differences (future dates)
+                    if (diffMs < 0) {
+                      return "In the future";
+                    }
+                    
+                    const diffSeconds = Math.floor(diffMs / 1000);
+                    const diffMinutes = Math.floor(diffSeconds / 60);
+                    const diffHours = Math.floor(diffMinutes / 60);
+                    const diffDays = Math.floor(diffHours / 24);
+                    const diffWeeks = Math.floor(diffDays / 7);
+                    const diffMonths = Math.floor(diffDays / 30);
+                    const diffYears = Math.floor(diffDays / 365);
 
-                  if (diffDays > 1) return `${diffDays} days ago`;
-                  if (diffHours > 1) return `${diffHours} hours ago`;
-                  if (diffHours === 1) return "1 hour ago";
-                  return "Just now";
+                    if (diffYears > 0) return `${diffYears} ${diffYears === 1 ? 'year' : 'years'} ago`;
+                    if (diffMonths > 0) return `${diffMonths} ${diffMonths === 1 ? 'month' : 'months'} ago`;
+                    if (diffWeeks > 0) return `${diffWeeks} ${diffWeeks === 1 ? 'week' : 'weeks'} ago`;
+                    if (diffDays > 0) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+                    if (diffHours > 0) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+                    if (diffMinutes > 0) return `${diffMinutes} ${diffMinutes === 1 ? 'minute' : 'minutes'} ago`;
+                    if (diffSeconds > 0) return `${diffSeconds} ${diffSeconds === 1 ? 'second' : 'seconds'} ago`;
+                    
+                    return "Just now";
+                  } catch (error) {
+                    console.error("Error calculating time ago:", error);
+                    return "Unknown";
+                  }
                 };
 
                 const getStatus = (isoTime: string | null) => {

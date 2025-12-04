@@ -75,6 +75,89 @@ async def get_last_collected_times(request: Request, _admin: str = Depends(requi
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/stats")
+async def get_database_stats(request: Request, _admin: str = Depends(require_admin)):
+    """
+    Get aggregated database statistics including total storage size
+    
+    Returns:
+        Dictionary with total collections, documents, and storage size
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        shared_db = mongo.shared_async_db
+        
+        # Get gemini database
+        from backend.api.v1.ai_processed import get_gemini_db
+        gemini_db_sync = get_gemini_db()
+        
+        total_size = 0  # Use 'size' instead of 'storageSize' to match individual collection display
+        total_collections = 0
+        total_documents = 0
+        
+        # Calculate from main database
+        collection_names = await db.list_collection_names()
+        for name in collection_names:
+            try:
+                collection = db[name]
+                count = await collection.count_documents({})
+                stats = await db.command("collStats", name)
+                # Use 'size' (logical data size) to match what's shown in individual collection cards
+                total_size += stats.get("size", 0)
+                total_collections += 1
+                total_documents += count
+            except Exception as e:
+                logger.warning(f"Failed to get stats for collection {name}: {e}")
+                continue
+        
+        # Calculate from shared database
+        try:
+            shared_collection_names = await shared_db.list_collection_names()
+            for name in shared_collection_names:
+                try:
+                    collection = shared_db[name]
+                    count = await collection.count_documents({})
+                    stats = await shared_db.command("collStats", name)
+                    # Use 'size' (logical data size) to match what's shown in individual collection cards
+                    total_size += stats.get("size", 0)
+                    total_collections += 1
+                    total_documents += count
+                except Exception as e:
+                    logger.warning(f"Failed to get stats for shared collection {name}: {e}")
+                    continue
+        except Exception as e:
+            logger.warning(f"Failed to access shared database: {e}")
+        
+        # Calculate from gemini database
+        try:
+            gemini_collection_names = gemini_db_sync.list_collection_names()
+            for name in gemini_collection_names:
+                try:
+                    collection = gemini_db_sync[name]
+                    count = collection.count_documents({})
+                    stats = gemini_db_sync.command("collStats", name)
+                    # Use 'size' (logical data size) to match what's shown in individual collection cards
+                    total_size += stats.get("size", 0)
+                    total_collections += 1
+                    total_documents += count
+                except Exception as e:
+                    logger.warning(f"Failed to get stats for gemini collection {name}: {e}")
+                    continue
+        except Exception as e:
+            logger.warning(f"Failed to access gemini database: {e}")
+        
+        return {
+            "total_collections": total_collections,
+            "total_documents": total_documents,
+            "total_storage_size": total_size  # Keep field name for API compatibility
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting database stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get database stats")
+
+
 @router.get("/collections")
 async def get_collections(request: Request, _admin: str = Depends(require_admin)):
     """
@@ -391,8 +474,9 @@ async def get_collection_documents(
             # Calculate pagination
             skip = (page - 1) * limit
             total_pages = (total_count + limit - 1) // limit  # Ceiling division
-            # Get documents
-            documents = await collection.find(query).skip(skip).limit(limit).to_list(length=limit)
+            # Get documents sorted by _id descending (newest first)
+            # MongoDB ObjectId contains timestamp, so newer documents have larger _id values
+            documents = await collection.find(query).sort("_id", -1).skip(skip).limit(limit).to_list(length=limit)
         elif is_gemini:
             from backend.api.v1.ai_processed import get_gemini_db
             gemini_db_sync = get_gemini_db()
@@ -407,8 +491,9 @@ async def get_collection_documents(
             # Calculate pagination
             skip = (page - 1) * limit
             total_pages = (total_count + limit - 1) // limit  # Ceiling division
-            # Get documents - sync version
-            documents = list(collection.find(query).skip(skip).limit(limit))
+            # Get documents sorted by _id descending (newest first) - sync version
+            # MongoDB ObjectId contains timestamp, so newer documents have larger _id values
+            documents = list(collection.find(query).sort("_id", -1).skip(skip).limit(limit))
         else:
             db = mongo.async_db
             actual_name = collection_name
@@ -422,8 +507,9 @@ async def get_collection_documents(
             # Calculate pagination
             skip = (page - 1) * limit
             total_pages = (total_count + limit - 1) // limit  # Ceiling division
-            # Get documents
-            documents = await collection.find(query).skip(skip).limit(limit).to_list(length=limit)
+            # Get documents sorted by _id descending (newest first)
+            # MongoDB ObjectId contains timestamp, so newer documents have larger _id values
+            documents = await collection.find(query).sort("_id", -1).skip(skip).limit(limit).to_list(length=limit)
         
         # Convert ObjectId and datetime to string for JSON serialization
         def serialize_value(value):
