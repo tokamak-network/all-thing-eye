@@ -27,6 +27,8 @@ interface FilterPanelProps {
   onExport: () => void;
   onSaveTemplate: () => void;
   isLoading?: boolean;
+  exportMode?: "fields" | "collections";
+  exportFormat?: "csv" | "json" | "toon";
 }
 
 export default function FilterPanel({
@@ -36,6 +38,8 @@ export default function FilterPanel({
   onExport,
   onSaveTemplate,
   isLoading = false,
+  exportMode = "fields",
+  exportFormat = "csv",
 }: FilterPanelProps) {
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -57,15 +61,16 @@ export default function FilterPanel({
           .sort((a: Member, b: Member) => a.name.localeCompare(b.name));
         setMembers(memberList);
 
+        // TODO: Project filter functionality not yet implemented
         // Use static project list (API for projects not implemented yet)
         // Note: DRB is part of TRH project
-        setProjects([
-          { id: "all", name: "All Projects" },
-          { id: "project-ooo", name: "Project OOO" },
-          { id: "project-eco", name: "Project ECO" },
-          { id: "project-syb", name: "Project SYB" },
-          { id: "project-trh", name: "Project TRH" },
-        ]);
+        // setProjects([
+        //   { id: "all", name: "All Projects" },
+        //   { id: "project-ooo", name: "Project OOO" },
+        //   { id: "project-eco", name: "Project ECO" },
+        //   { id: "project-syb", name: "Project SYB" },
+        //   { id: "project-trh", name: "Project TRH" },
+        // ]);
       } catch (error) {
         console.error("Failed to fetch filter data:", error);
       } finally {
@@ -270,8 +275,8 @@ export default function FilterPanel({
               </div>
         </div>
 
-        {/* Project Filter */}
-        <div>
+        {/* Project Filter - TODO: Not yet implemented, comment out until feature is ready */}
+        {/* <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             🎯 Project
           </label>
@@ -286,9 +291,10 @@ export default function FilterPanel({
               </option>
             ))}
           </select>
-        </div>
+        </div> */}
 
-            {/* Members Filter - Multi-select Checkboxes */}
+            {/* Members Filter - Multi-select Checkboxes (only for fields mode) */}
+        {exportMode === "fields" && (
         <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
@@ -370,6 +376,7 @@ export default function FilterPanel({
                 </div>
               )}
         </div>
+        )}
       </div>
 
       {/* Action Buttons */}
@@ -386,24 +393,26 @@ export default function FilterPanel({
         {/* Export Button */}
         <button
           onClick={onExport}
-              disabled={isLoading}
-              className={`w-full px-4 py-3 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 ${
-                isLoading
-                  ? "bg-green-400 cursor-not-allowed"
-                  : "bg-green-600 hover:bg-green-700"
-              }`}
-            >
+          disabled={isLoading}
+          className={`w-full px-4 py-3 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 ${
+            isLoading
+              ? "bg-green-400 cursor-not-allowed"
+              : "bg-green-600 hover:bg-green-700"
+          }`}
+        >
               {isLoading ? (
-                <>
-                  <span className="animate-spin">⏳</span>
-                  Exporting...
-                </>
-              ) : (
-                <>
-          <span>💾</span>
-          Export as CSV
-                </>
-              )}
+            <>
+              <span className="animate-spin">⏳</span>
+              Exporting...
+            </>
+          ) : (
+            <>
+              <span>💾</span>
+              {exportMode === "collections"
+                ? `Export Collections as ${exportFormat.toUpperCase()}`
+                : `Export as ${exportFormat.toUpperCase()}`}
+            </>
+          )}
         </button>
 
         {/* Save Template Button */}

@@ -556,7 +556,30 @@ async def get_activities(
                         query['target_date'] = date_filter
                     
                     # Get documents (sync operation)
-                    daily_docs = list(recordings_daily_col.find(query).sort("target_date", -1).limit(limit))
+                    # Sort by timestamp if available, otherwise by target_date (as date, not string)
+                    # We'll sort in Python after fetching to ensure proper date sorting
+                    daily_docs = list(recordings_daily_col.find(query).limit(limit * 2))  # Fetch more to sort properly
+                    
+                    # Sort by target_date as date (not string) - newest first
+                    def sort_daily_doc(doc):
+                        target_date = doc.get('target_date')
+                        if target_date:
+                            try:
+                                if isinstance(target_date, str):
+                                    date_parts = target_date.split('-')
+                                    if len(date_parts) == 3:
+                                        year, month, day = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+                                        return datetime(year, month, day)
+                            except (ValueError, TypeError):
+                                pass
+                        # Fallback to timestamp if available
+                        timestamp = doc.get('timestamp')
+                        if isinstance(timestamp, datetime):
+                            return timestamp
+                        return datetime.min
+                    
+                    daily_docs.sort(key=sort_daily_doc, reverse=True)
+                    daily_docs = daily_docs[:limit]  # Limit after sorting
                     
                     for daily in daily_docs:
                         try:
@@ -594,6 +617,23 @@ async def get_activities(
         # Sort all activities by timestamp descending (newest first)
         # Empty timestamps are treated as oldest
         def sort_key(activity):
+            # For recordings_daily, use target_date from metadata if timestamp is not available or is a date string
+            if activity.source_type == 'recordings_daily':
+                target_date = activity.metadata.get('target_date') if activity.metadata else None
+                if target_date:
+                    try:
+                        # Parse target_date as YYYY-MM-DD format
+                        if isinstance(target_date, str):
+                            # Parse date string (YYYY-MM-DD)
+                            date_parts = target_date.split('-')
+                            if len(date_parts) == 3:
+                                year, month, day = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+                                parsed_dt = datetime(year, month, day, tzinfo=timezone.utc)
+                                return parsed_dt
+                    except (ValueError, TypeError):
+                        pass
+            
+            # For other activities or if target_date parsing fails, use timestamp
             if not activity.timestamp:
                 # Use timezone-aware datetime.min for comparison
                 return datetime.min.replace(tzinfo=timezone.utc)

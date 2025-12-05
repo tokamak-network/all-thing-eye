@@ -426,6 +426,29 @@ class ApiClient {
     return response.data;
   }
 
+  async getCustomExportCollections() {
+    const response = await this.client.get("/custom-export/collections");
+    return response.data;
+  }
+
+  async downloadCustomExport(
+    params: {
+      selected_members?: string[];
+      start_date?: string;
+      end_date?: string;
+      project?: string;
+      selected_fields?: string[];
+    },
+    format: "csv" | "json" | "toon" = "csv"
+  ) {
+    const response = await this.client.post(
+      `/custom-export/export?format=${format}`,
+      params,
+      { responseType: "blob" }
+    );
+    return response.data;
+  }
+
   async downloadCustomExportCsv(params: {
     selected_members?: string[];
     start_date?: string;
@@ -433,9 +456,56 @@ class ApiClient {
     project?: string;
     selected_fields?: string[];
   }) {
-    const response = await this.client.post("/custom-export/csv", params, {
-      responseType: "blob",
-    });
+    return this.downloadCustomExport(params, "csv");
+  }
+
+  async exportCollection(
+    collection: { source: string; collection: string },
+    format: "csv" | "json" | "toon" = "csv",
+    startDate?: string,
+    endDate?: string,
+    limit?: number
+  ) {
+    const response = await this.client.post(
+      "/custom-export/collection",
+      {
+        collections: [collection],
+        format,
+        start_date: startDate,
+        end_date: endDate,
+        limit,
+      },
+      { responseType: "blob" }
+    );
+    return response.data;
+  }
+
+  async exportCollectionsBulk(
+    collections: Array<{ source: string; collection: string }>,
+    format: "csv" | "json" | "toon" = "csv",
+    startDate?: string,
+    endDate?: string,
+    limit?: number
+  ) {
+    const response = await this.client.post(
+      "/custom-export/collections/bulk",
+      {
+        collections,
+        format,
+        start_date: startDate,
+        end_date: endDate,
+        limit,
+      },
+      { responseType: "blob" }
+    );
+    return response.data;
+  }
+
+  async exportMembers(format: "csv" | "json" | "toon" = "csv") {
+    const response = await this.client.get(
+      `/custom-export/members?format=${format}`,
+      { responseType: "blob" }
+    );
     return response.data;
   }
 }

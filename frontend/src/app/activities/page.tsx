@@ -2361,10 +2361,48 @@ export default function ActivitiesPage() {
                           selectedDailyAnalysis.analysis.participants.length > 0 && (
                             <div>
                               <div className="text-sm text-gray-500 mb-2">
-                                Participants ({selectedDailyAnalysis.analysis.participants.length}):
+                                Participants ({(() => {
+                                  // Filter and sort participants
+                                  let filtered = [...selectedDailyAnalysis.analysis.participants];
+                                  
+                                  // Apply member filter if set
+                                  if (memberFilter) {
+                                    filtered = filtered.filter((p: any) =>
+                                      p.name?.toLowerCase().includes(memberFilter.toLowerCase())
+                                    );
+                                  }
+                                  
+                                  // Sort alphabetically by name
+                                  filtered.sort((a: any, b: any) => {
+                                    const nameA = (a.name || "").toLowerCase();
+                                    const nameB = (b.name || "").toLowerCase();
+                                    return nameA.localeCompare(nameB);
+                                  });
+                                  
+                                  return filtered.length;
+                                })()}):
                               </div>
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {selectedDailyAnalysis.analysis.participants.map(
+                                {(() => {
+                                  // Filter and sort participants
+                                  let filtered = [...selectedDailyAnalysis.analysis.participants];
+                                  
+                                  // Apply member filter if set
+                                  if (memberFilter) {
+                                    filtered = filtered.filter((p: any) =>
+                                      p.name?.toLowerCase().includes(memberFilter.toLowerCase())
+                                    );
+                                  }
+                                  
+                                  // Sort alphabetically by name
+                                  filtered.sort((a: any, b: any) => {
+                                    const nameA = (a.name || "").toLowerCase();
+                                    const nameB = (b.name || "").toLowerCase();
+                                    return nameA.localeCompare(nameB);
+                                  });
+                                  
+                                  return filtered;
+                                })().map(
                                   (participant: any, idx: number) => (
                                     <div
                                       key={idx}
@@ -2846,7 +2884,22 @@ export default function ActivitiesPage() {
                               }
                             }
                             
-                            return translatedParticipants.map(
+                            // Apply member filter if set
+                            let filtered = [...translatedParticipants];
+                            if (memberFilter) {
+                              filtered = filtered.filter((p: any) =>
+                                p.name?.toLowerCase().includes(memberFilter.toLowerCase())
+                              );
+                            }
+                            
+                            // Sort alphabetically by name
+                            filtered.sort((a: any, b: any) => {
+                              const nameA = (a.name || "").toLowerCase();
+                              const nameB = (b.name || "").toLowerCase();
+                              return nameA.localeCompare(nameB);
+                            });
+                            
+                            return filtered.map(
                               (participant: any, idx: number) => (
                                 <div
                                   key={idx}

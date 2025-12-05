@@ -15,8 +15,11 @@ import io
 import os
 import requests
 import yaml
+import json
+import zipfile
 
 from src.utils.logger import get_logger
+from src.utils.toon_encoder import encode_toon
 
 logger = get_logger(__name__)
 
@@ -32,6 +35,15 @@ class CustomExportRequest(BaseModel):
     selected_fields: List[str] = []
     limit: int = 50
     offset: int = 0
+
+
+class CollectionExportRequest(BaseModel):
+    """Request model for exporting entire collections"""
+    collections: List[Dict[str, str]]  # [{"source": "main", "collection": "members"}, ...]
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    format: str = "csv"  # csv, json, toon
+    limit: Optional[int] = None
 
 
 def get_mongo():
@@ -67,6 +79,10 @@ def get_source_from_field(field: str) -> str:
         return "drive"
     elif field.startswith("member."):
         return "member"
+    elif field.startswith("gemini."):
+        return "gemini"
+    elif field.startswith("recordings."):
+        return "recordings"
     return ""
 
 
@@ -235,7 +251,7 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
         
         # If no specific source fields selected, default to showing member info
         if not sources_needed:
-            sources_needed = {"github", "slack", "notion", "drive"}
+            sources_needed = {"github", "slack", "notion", "drive", "gemini", "recordings"}
         
         # Build date filter - convert string to datetime for MongoDB comparison
         date_filter = {}
@@ -279,6 +295,10 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
                 results.extend(await fetch_notion_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "drive":
                 results.extend(await fetch_drive_data(db, members_to_filter, date_filter, member_info_map))
+            elif source == "gemini":
+                results.extend(await fetch_gemini_data(db, members_to_filter, date_filter, member_info_map))
+            elif source == "recordings":
+                results.extend(await fetch_recordings_data(db, members_to_filter, date_filter, member_info_map))
         
         # Sort by timestamp descending
         results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -520,6 +540,112 @@ async def fetch_drive_data(db, members: List[str], date_filter: dict, member_inf
     return results
 
 
+async def fetch_gemini_data(db, members: List[str], date_filter: dict, member_info_map: dict) -> List[dict]:
+    """Fetch Gemini AI daily analyses data"""
+    results = []
+    
+    try:
+        from backend.api.v1.ai_processed import get_gemini_db
+        gemini_db = get_gemini_db()
+        recordings_daily_col = gemini_db["recordings_daily"]
+        
+        # Build query
+        query = {}
+        if date_filter:
+            # Use target_date for filtering
+            query['target_date'] = date_filter
+        
+        # Get documents (sync operation)
+        daily_docs = list(recordings_daily_col.find(query).sort("target_date", -1))
+        
+        for daily in daily_docs:
+            try:
+                timestamp = daily.get("timestamp")
+                if isinstance(timestamp, datetime):
+                    timestamp_str = timestamp.isoformat() + 'Z' if timestamp.tzinfo is None else timestamp.isoformat()
+                else:
+                    timestamp_str = str(timestamp) if timestamp else daily.get("target_date", "")
+                
+                results.append({
+                    "source": "gemini",
+                    "type": "daily_analysis",
+                    "member_name": "System",
+                    "member_email": None,
+                    "timestamp": timestamp_str,
+                    "target_date": daily.get("target_date"),
+                    "meeting_count": daily.get("meeting_count", 0),
+                    "total_meeting_time": daily.get("total_meeting_time"),
+                    "total_meeting_time_seconds": daily.get("total_meeting_time_seconds", 0),
+                    "meeting_titles": daily.get("meeting_titles", []),
+                    "topics_count": len(daily.get("analysis", {}).get("summary", {}).get("topics", [])),
+                    "decisions_count": len(daily.get("analysis", {}).get("summary", {}).get("key_decisions", [])),
+                    "participants_count": len(daily.get("analysis", {}).get("participants", [])),
+                    "status": daily.get("status"),
+                    "model_used": daily.get("model_used"),
+                })
+            except Exception as e:
+                logger.warning(f"Error processing recordings_daily document: {e}")
+                continue
+    except Exception as e:
+        logger.error(f"Error fetching gemini data: {e}")
+    
+    return results
+
+
+async def fetch_recordings_data(db, members: List[str], date_filter: dict, member_info_map: dict) -> List[dict]:
+    """Fetch recordings data from shared database"""
+    results = []
+    
+    try:
+        mongo = get_mongo()
+        shared_db = mongo.shared_async_db
+        recordings_col = shared_db["recordings"]
+        
+        # Build query
+        query = {}
+        if members:
+            # Filter by createdBy if members are specified
+            member_patterns = [{"createdBy": {"$regex": f"^{name}", "$options": "i"}} for name in members]
+            if member_patterns:
+                query["$or"] = member_patterns
+        
+        if date_filter:
+            query["modifiedTime"] = date_filter
+        
+        # Get recordings (async operation)
+        recordings = await recordings_col.find(query).sort("modifiedTime", -1).to_list(length=10000)
+        
+        for recording in recordings:
+            try:
+                modified_time = recording.get("modifiedTime")
+                if isinstance(modified_time, datetime):
+                    timestamp_str = modified_time.isoformat() + 'Z' if modified_time.tzinfo is None else modified_time.isoformat()
+                else:
+                    timestamp_str = str(modified_time) if modified_time else ""
+                
+                created_by = recording.get("createdBy", "Unknown")
+                member_info = member_info_map.get(created_by, {})
+                
+                results.append({
+                    "source": "recordings",
+                    "type": "meeting_recording",
+                    "member_name": created_by,
+                    "member_email": member_info.get("email"),
+                    "timestamp": timestamp_str,
+                    "recording_name": recording.get("name"),
+                    "recording_id": recording.get("id"),
+                    "size": recording.get("size", 0),
+                    "web_view_link": recording.get("webViewLink"),
+                })
+            except Exception as e:
+                logger.warning(f"Error processing recording document: {e}")
+                continue
+    except Exception as e:
+        logger.error(f"Error fetching recordings data: {e}")
+    
+    return results
+
+
 @router.get("/custom-export/members")
 async def get_export_members(request: Request):
     """
@@ -550,10 +676,21 @@ async def get_export_members(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/custom-export/csv")
-async def export_custom_csv(request: Request, body: CustomExportRequest):
+@router.post("/custom-export/export")
+async def export_custom_data(
+    request: Request, 
+    body: CustomExportRequest,
+    format: str = Query("csv", regex="^(csv|json|toon)$")
+):
     """
-    Export filtered raw data as CSV
+    Export filtered raw data in CSV, JSON, or TOON format
+    
+    Args:
+        body: Custom export request with filters and field selections
+        format: Export format (csv, json, or toon)
+    
+    Returns:
+        File download response
     """
     try:
         # Get preview data (full, not limited)
@@ -568,7 +705,7 @@ async def export_custom_csv(request: Request, body: CustomExportRequest):
                 sources_needed.add(source)
         
         if not sources_needed:
-            sources_needed = {"github", "slack", "notion", "drive"}
+            sources_needed = {"github", "slack", "notion", "drive", "gemini", "recordings"}
         
         # Build date filter - convert string to datetime for MongoDB comparison
         date_filter = {}
@@ -608,6 +745,10 @@ async def export_custom_csv(request: Request, body: CustomExportRequest):
                 results.extend(await fetch_notion_data(db, members_to_filter, date_filter, member_info_map))
             elif source == "drive":
                 results.extend(await fetch_drive_data(db, members_to_filter, date_filter, member_info_map))
+            elif source == "gemini":
+                results.extend(await fetch_gemini_data(db, members_to_filter, date_filter, member_info_map))
+            elif source == "recordings":
+                results.extend(await fetch_recordings_data(db, members_to_filter, date_filter, member_info_map))
         
         # Sort by timestamp
         results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -615,37 +756,531 @@ async def export_custom_csv(request: Request, body: CustomExportRequest):
         if not results:
             raise HTTPException(status_code=404, detail="No data found with the given filters")
         
-        # Create CSV
-        output = io.StringIO()
-        
-        # Get all possible field names from results
-        all_fields = set()
-        for row in results:
-            all_fields.update(row.keys())
-        
-        # Order fields logically
-        ordered_fields = ["source", "type", "member_name", "member_email", "timestamp"]
-        for field in sorted(all_fields):
-            if field not in ordered_fields:
-                ordered_fields.append(field)
-        
-        writer = csv.DictWriter(output, fieldnames=ordered_fields, extrasaction='ignore')
-        writer.writeheader()
-        writer.writerows(results)
-        
-        output.seek(0)
-        
         # Generate filename
-        filename = f"custom_export_{body.start_date or 'all'}_{body.end_date or 'all'}.csv"
+        date_suffix = f"{body.start_date or 'all'}_{body.end_date or 'all'}"
+        
+        if format == "json":
+            # JSON export
+            output = json.dumps(results, indent=2, ensure_ascii=False, default=str)
+            filename = f"custom_export_{date_suffix}.json"
+            media_type = "application/json"
+            
+        elif format == "toon":
+            # TOON export
+            toon_data = {"custom_export": results}
+            output = encode_toon(toon_data, indent=2, delimiter=',')
+            filename = f"custom_export_{date_suffix}.toon"
+            media_type = "text/plain"
+            
+        else:
+            # CSV export (default)
+            output_stream = io.StringIO()
+            
+            # Get all possible field names from results
+            all_fields = set()
+            for row in results:
+                all_fields.update(row.keys())
+            
+            # Order fields logically
+            ordered_fields = ["source", "type", "member_name", "member_email", "timestamp"]
+            for field in sorted(all_fields):
+                if field not in ordered_fields:
+                    ordered_fields.append(field)
+            
+            writer = csv.DictWriter(output_stream, fieldnames=ordered_fields, extrasaction='ignore')
+            writer.writeheader()
+            writer.writerows(results)
+            
+            output = output_stream.getvalue()
+            filename = f"custom_export_{date_suffix}.csv"
+            media_type = "text/csv"
         
         return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
+            iter([output]),
+            media_type=media_type,
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting CSV: {e}")
+        logger.error(f"Error exporting data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/custom-export/csv")
+async def export_custom_csv(request: Request, body: CustomExportRequest):
+    """
+    Export filtered raw data as CSV (backward compatibility)
+    """
+    return await export_custom_data(request, body, format="csv")
+
+
+@router.get("/custom-export/collections")
+async def get_custom_export_collections(request: Request):
+    """
+    Get list of all available collections dynamically from database
+    
+    Returns collections organized by database (main, shared, gemini)
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        shared_db = mongo.shared_async_db
+        
+        # Get gemini database
+        from backend.api.v1.ai_processed import get_gemini_db
+        gemini_db_sync = get_gemini_db()
+        
+        collections_by_source = {
+            "main": [],
+            "shared": [],
+            "gemini": []
+        }
+        
+        # Get main database collections
+        main_collections = await db.list_collection_names()
+        for name in main_collections:
+            try:
+                count = await db[name].count_documents({})
+                collections_by_source["main"].append({
+                    "name": name,
+                    "count": count,
+                    "source": "main"
+                })
+            except Exception as e:
+                logger.warning(f"Failed to get count for {name}: {e}")
+        
+        # Get shared database collections
+        try:
+            shared_collections = await shared_db.list_collection_names()
+            for name in shared_collections:
+                try:
+                    count = await shared_db[name].count_documents({})
+                    collections_by_source["shared"].append({
+                        "name": f"shared.{name}",
+                        "count": count,
+                        "source": "shared"
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to get count for shared.{name}: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to access shared database: {e}")
+        
+        # Get gemini database collections
+        try:
+            gemini_collections = gemini_db_sync.list_collection_names()
+            for name in gemini_collections:
+                try:
+                    count = gemini_db_sync[name].count_documents({})
+                    collections_by_source["gemini"].append({
+                        "name": f"gemini.{name}",
+                        "count": count,
+                        "source": "gemini"
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to get count for gemini.{name}: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to access gemini database: {e}")
+        
+        return {
+            "sources": collections_by_source,
+            "total_collections": sum(len(cols) for cols in collections_by_source.values())
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting collections: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/custom-export/collection")
+async def export_collection(
+    request: Request,
+    body: CollectionExportRequest
+):
+    """
+    Export a single collection in CSV, JSON, or TOON format
+    
+    Args:
+        body: Collection export request with source, collection name, format, and filters
+    
+    Returns:
+        File download response
+    """
+    if not body.collections or len(body.collections) != 1:
+        raise HTTPException(status_code=400, detail="Must specify exactly one collection")
+    
+    collection_info = body.collections[0]
+    source = collection_info.get("source")
+    collection_name = collection_info.get("collection")
+    
+    if not source or not collection_name:
+        raise HTTPException(status_code=400, detail="Must specify source and collection")
+    
+    try:
+        mongo = get_mongo()
+        
+        # Select database based on source
+        # Handle collection_name that might already have prefix (e.g., "shared.recordings")
+        if collection_name.startswith("shared."):
+            db = mongo.shared_async_db
+            actual_collection = collection_name.replace("shared.", "")
+            source = "shared"  # Override source if collection name has prefix
+        elif collection_name.startswith("gemini."):
+            from backend.api.v1.ai_processed import get_gemini_db
+            gemini_db_sync = get_gemini_db()
+            actual_collection = collection_name.replace("gemini.", "")
+            source = "gemini"  # Override source if collection name has prefix
+            db = None  # Will handle separately
+        elif source == 'shared' or source == 'other':
+            db = mongo.shared_async_db
+            actual_collection = collection_name
+        elif source == 'gemini':
+            from backend.api.v1.ai_processed import get_gemini_db
+            gemini_db_sync = get_gemini_db()
+            actual_collection = collection_name
+            db = None  # Will handle separately
+        else:
+            db = mongo.async_db
+            actual_collection = collection_name
+        
+        # Build query filter
+        query_filter = {}
+        
+        # Date filtering
+        if body.start_date or body.end_date:
+            if source == 'gemini' and actual_collection == 'recordings_daily':
+                date_filter = {}
+                if body.start_date:
+                    date_filter['$gte'] = body.start_date
+                if body.end_date:
+                    date_filter['$lte'] = body.end_date
+                if date_filter:
+                    query_filter['target_date'] = date_filter
+            else:
+                timestamp_fields = ['timestamp', 'posted_at', 'created_at', 'updated_at', 'committed_at', 'target_date']
+                timestamp_field = None
+                
+                if source == 'gemini':
+                    sample_doc = gemini_db_sync[actual_collection].find_one({})
+                else:
+                    sample_doc = await db[actual_collection].find_one({})
+                
+                if sample_doc:
+                    for field in timestamp_fields:
+                        if field in sample_doc:
+                            timestamp_field = field
+                            break
+                
+                if timestamp_field:
+                    date_filter = {}
+                    if body.start_date:
+                        try:
+                            date_filter['$gte'] = datetime.fromisoformat(body.start_date)
+                        except ValueError:
+                            date_filter['$gte'] = body.start_date
+                    if body.end_date:
+                        try:
+                            end_dt = datetime.fromisoformat(body.end_date) + timedelta(days=1)
+                            date_filter['$lt'] = end_dt
+                        except ValueError:
+                            date_filter['$lte'] = body.end_date + "T23:59:59"
+                    
+                    if date_filter:
+                        query_filter[timestamp_field] = date_filter
+        
+        # Query MongoDB
+        if source == 'gemini':
+            cursor = gemini_db_sync[actual_collection].find(query_filter)
+            if body.limit:
+                cursor = cursor.limit(body.limit)
+            documents = list(cursor)
+        else:
+            cursor = db[actual_collection].find(query_filter)
+            if body.limit:
+                cursor = cursor.limit(body.limit)
+            documents = await cursor.to_list(length=body.limit or 100000)
+        
+        if not documents:
+            raise HTTPException(status_code=404, detail="No documents found")
+        
+        # Convert documents
+        rows = []
+        for doc in documents:
+            clean_doc = {}
+            for key, value in doc.items():
+                if isinstance(value, ObjectId):
+                    clean_doc[key] = str(value)
+                elif isinstance(value, datetime):
+                    clean_doc[key] = value.isoformat()
+                elif isinstance(value, (dict, list)):
+                    clean_doc[key] = json.dumps(value, default=str, ensure_ascii=False)
+                else:
+                    clean_doc[key] = value
+            rows.append(clean_doc)
+        
+        # Generate filename
+        date_suffix = f"{body.start_date or 'all'}_{body.end_date or 'all'}" if (body.start_date or body.end_date) else "all"
+        filename_base = f"{collection_name}_{date_suffix}"
+        
+        if body.format == "json":
+            output = json.dumps(rows, indent=2, ensure_ascii=False, default=str)
+            filename = f"{filename_base}.json"
+            media_type = "application/json"
+            
+        elif body.format == "toon":
+            toon_data = {actual_collection: rows}
+            output = encode_toon(toon_data, indent=2, delimiter=',')
+            filename = f"{filename_base}.toon"
+            media_type = "text/plain"
+            
+        else:  # CSV
+            output_stream = io.StringIO()
+            if rows:
+                fieldnames = sorted(list(rows[0].keys()))
+                writer = csv.DictWriter(output_stream, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+            output = output_stream.getvalue()
+            filename = f"{filename_base}.csv"
+            media_type = "text/csv"
+        
+        return StreamingResponse(
+            iter([output]),
+            media_type=media_type,
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting collection: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/custom-export/collections/bulk")
+async def export_collections_bulk(
+    request: Request,
+    body: CollectionExportRequest
+):
+    """
+    Export multiple collections as a ZIP file
+    
+    Supports CSV, JSON, and TOON formats
+    """
+    if not body.collections:
+        raise HTTPException(status_code=400, detail="No collections selected")
+    
+    try:
+        mongo = get_mongo()
+        
+        # Create in-memory ZIP file
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for collection_info in body.collections:
+                source = collection_info.get("source")
+                collection_name = collection_info.get("collection")
+                
+                if not source or not collection_name:
+                    continue
+                
+                try:
+                    # Select database
+                    # Handle collection_name that might already have prefix (e.g., "shared.recordings")
+                    if collection_name.startswith("shared."):
+                        db = mongo.shared_async_db
+                        actual_collection = collection_name.replace("shared.", "")
+                        source = "shared"  # Override source if collection name has prefix
+                    elif collection_name.startswith("gemini."):
+                        from backend.api.v1.ai_processed import get_gemini_db
+                        gemini_db_sync = get_gemini_db()
+                        actual_collection = collection_name.replace("gemini.", "")
+                        source = "gemini"  # Override source if collection name has prefix
+                        db = None
+                    elif source == 'shared' or source == 'other':
+                        db = mongo.shared_async_db
+                        actual_collection = collection_name
+                    elif source == 'gemini':
+                        from backend.api.v1.ai_processed import get_gemini_db
+                        gemini_db_sync = get_gemini_db()
+                        actual_collection = collection_name
+                        db = None
+                    else:
+                        db = mongo.async_db
+                        actual_collection = collection_name
+                    
+                    # Build query filter
+                    query_filter = {}
+                    if body.start_date or body.end_date:
+                        if source == 'gemini' and actual_collection == 'recordings_daily':
+                            date_filter = {}
+                            if body.start_date:
+                                date_filter['$gte'] = body.start_date
+                            if body.end_date:
+                                date_filter['$lte'] = body.end_date
+                            if date_filter:
+                                query_filter['target_date'] = date_filter
+                        else:
+                            timestamp_fields = ['timestamp', 'posted_at', 'created_at', 'updated_at', 'committed_at']
+                            timestamp_field = None
+                            
+                            if source == 'gemini':
+                                sample_doc = gemini_db_sync[actual_collection].find_one({})
+                            else:
+                                sample_doc = await db[actual_collection].find_one({})
+                            
+                            if sample_doc:
+                                for field in timestamp_fields:
+                                    if field in sample_doc:
+                                        timestamp_field = field
+                                        break
+                            
+                            if timestamp_field:
+                                date_filter = {}
+                                if body.start_date:
+                                    try:
+                                        date_filter['$gte'] = datetime.fromisoformat(body.start_date)
+                                    except ValueError:
+                                        date_filter['$gte'] = body.start_date
+                                if body.end_date:
+                                    try:
+                                        end_dt = datetime.fromisoformat(body.end_date) + timedelta(days=1)
+                                        date_filter['$lt'] = end_dt
+                                    except ValueError:
+                                        date_filter['$lte'] = body.end_date + "T23:59:59"
+                                
+                                if date_filter:
+                                    query_filter[timestamp_field] = date_filter
+                    
+                    # Query documents
+                    if source == 'gemini':
+                        cursor = gemini_db_sync[actual_collection].find(query_filter)
+                        if body.limit:
+                            cursor = cursor.limit(body.limit)
+                        documents = list(cursor)
+                    else:
+                        cursor = db[actual_collection].find(query_filter)
+                        if body.limit:
+                            cursor = cursor.limit(body.limit)
+                        documents = await cursor.to_list(length=body.limit or 100000)
+                    
+                    if not documents:
+                        continue
+                    
+                    # Convert documents
+                    rows = []
+                    for doc in documents:
+                        clean_doc = {}
+                        for key, value in doc.items():
+                            if isinstance(value, ObjectId):
+                                clean_doc[key] = str(value)
+                            elif isinstance(value, datetime):
+                                clean_doc[key] = value.isoformat()
+                            elif isinstance(value, (dict, list)):
+                                clean_doc[key] = json.dumps(value, default=str, ensure_ascii=False)
+                            else:
+                                clean_doc[key] = value
+                        rows.append(clean_doc)
+                    
+                    # Generate file content based on format
+                    if body.format == "json":
+                        file_content = json.dumps(rows, indent=2, ensure_ascii=False, default=str)
+                        file_ext = "json"
+                    elif body.format == "toon":
+                        toon_data = {actual_collection: rows}
+                        file_content = encode_toon(toon_data, indent=2, delimiter=',')
+                        file_ext = "toon"
+                    else:  # CSV
+                        output_stream = io.StringIO()
+                        if rows:
+                            fieldnames = sorted(list(rows[0].keys()))
+                            writer = csv.DictWriter(output_stream, fieldnames=fieldnames)
+                            writer.writeheader()
+                            writer.writerows(rows)
+                        file_content = output_stream.getvalue()
+                        file_ext = "csv"
+                    
+                    # Add to ZIP
+                    date_suffix = f"_{body.start_date or 'all'}_{body.end_date or 'all'}" if (body.start_date or body.end_date) else ""
+                    zip_filename = f"{collection_name}{date_suffix}.{file_ext}"
+                    zip_file.writestr(zip_filename, file_content)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to export {collection_name}: {e}")
+                    continue
+        
+        zip_buffer.seek(0)
+        
+        # Generate ZIP filename
+        date_suffix = f"_{body.start_date or 'all'}_{body.end_date or 'all'}" if (body.start_date or body.end_date) else ""
+        zip_filename = f"custom_export_bulk{date_suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting collections bulk: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/custom-export/members")
+async def export_members(
+    request: Request,
+    format: str = Query("csv", regex="^(csv|json|toon)$")
+):
+    """
+    Export members list in CSV, JSON, or TOON format
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+        
+        # Query members collection
+        cursor = db['members'].find({}).sort('name', 1)
+        members_docs = await cursor.to_list(length=10000)
+        
+        members = []
+        for doc in members_docs:
+            members.append({
+                'id': str(doc['_id']),
+                'name': doc.get('name'),
+                'email': doc.get('email'),
+                'role': doc.get('role'),
+                'team': doc.get('team'),
+                'created_at': doc.get('created_at').isoformat() if doc.get('created_at') else None
+            })
+        
+        if format == 'json':
+            output = json.dumps(members, indent=2, ensure_ascii=False)
+            filename = f"members_{datetime.now().strftime('%Y%m%d')}.json"
+            media_type = "application/json"
+            
+        elif format == 'toon':
+            toon_data = {"members": members}
+            output = encode_toon(toon_data, indent=2, delimiter=',')
+            filename = f"members_{datetime.now().strftime('%Y%m%d')}.toon"
+            media_type = "text/plain"
+            
+        else:  # CSV
+            output_stream = io.StringIO()
+            fieldnames = ['id', 'name', 'email', 'role', 'team', 'created_at']
+            writer = csv.DictWriter(output_stream, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(members)
+            output = output_stream.getvalue()
+            filename = f"members_{datetime.now().strftime('%Y%m%d')}.csv"
+            media_type = "text/csv"
+        
+        return StreamingResponse(
+            iter([output]),
+            media_type=media_type,
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting members: {e}")
         raise HTTPException(status_code=500, detail=str(e))
