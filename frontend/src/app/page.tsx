@@ -96,12 +96,29 @@ export default function Home() {
     try {
       const date = new Date(isoTime);
       const now = new Date();
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+      
       const diffMs = now.getTime() - date.getTime();
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      
+      // Handle negative differences (future dates)
+      if (diffMs < 0) {
+        return 'In the future';
+      }
+      
+      const diffSeconds = Math.floor(diffMs / 1000);
+      const diffMinutes = Math.floor(diffSeconds / 60);
+      const diffHours = Math.floor(diffMinutes / 60);
       const diffDays = Math.floor(diffHours / 24);
       
       if (diffDays > 0) return `${diffDays}d ago`;
       if (diffHours > 0) return `${diffHours}h ago`;
+      if (diffMinutes > 0) return `${diffMinutes}m ago`;
+      if (diffSeconds > 0) return `${diffSeconds}s ago`;
+      
       return 'Just now';
     } catch {
       return 'Unknown';
