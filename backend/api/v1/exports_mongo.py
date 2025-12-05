@@ -50,7 +50,7 @@ def get_mongo():
 
 # Collection name mapping (source -> collections)
 COLLECTION_MAP = {
-    'main': ['members', 'member_identifiers', 'member_activities'],
+    'main': ['members', 'member_identifiers'],
     'github': ['github_members', 'github_repositories', 'github_commits', 
                'github_pull_requests', 'github_issues'],
     'slack': ['slack_channels', 'slack_messages'],
@@ -188,6 +188,7 @@ async def export_collection_csv(
             else:
                 # For other collections, use common timestamp fields
                 timestamp_fields = ['timestamp', 'posted_at', 'created_at', 'updated_at', 'committed_at', 'target_date']
+                timestamp_fields = ['timestamp', 'posted_at', 'created_at', 'updated_at', 'committed_at', 'target_date']
                 timestamp_field = None
                 
                 # Check which timestamp field exists in the collection
@@ -195,30 +196,29 @@ async def export_collection_csv(
                     sample_doc = gemini_db_sync[collection].find_one({})
                 else:
                     sample_doc = await db[collection].find_one({})
+            if sample_doc:
+                for field in timestamp_fields:
+                    if field in sample_doc:
+                        timestamp_field = field
+                        break
+            
+            if timestamp_field:
+                date_filter = {}
+                if start_date:
+                    try:
+                        date_filter['$gte'] = datetime.fromisoformat(start_date)
+                    except ValueError:
+                        date_filter['$gte'] = start_date
+                if end_date:
+                    try:
+                        # Add 1 day to include the entire end date
+                        end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+                        date_filter['$lt'] = end_dt
+                    except ValueError:
+                        date_filter['$lte'] = end_date + "T23:59:59"
                 
-                if sample_doc:
-                    for field in timestamp_fields:
-                        if field in sample_doc:
-                            timestamp_field = field
-                            break
-                
-                if timestamp_field:
-                    date_filter = {}
-                    if start_date:
-                        try:
-                            date_filter['$gte'] = datetime.fromisoformat(start_date)
-                        except ValueError:
-                            date_filter['$gte'] = start_date
-                    if end_date:
-                        try:
-                            # Add 1 day to include the entire end date
-                            end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
-                            date_filter['$lt'] = end_dt
-                        except ValueError:
-                            date_filter['$lte'] = end_date + "T23:59:59"
-                    
-                    if date_filter:
-                        query_filter[timestamp_field] = date_filter
+                if date_filter:
+                    query_filter[timestamp_field] = date_filter
         
         # Query MongoDB
         if source == 'gemini':
@@ -533,7 +533,7 @@ async def export_activities(
     limit: int = Query(10000, ge=1, le=100000)
 ):
     """
-    Export activities data
+    Export activities data from source collections (not member_activities)
     
     Args:
         format: Export format (csv or json)
@@ -547,83 +547,260 @@ async def export_activities(
         File download response
     """
     try:
+        # Import helper functions from activities_mongo
+        from backend.api.v1.activities_mongo import (
+            load_member_mappings,
+            get_identifiers_for_member,
+            get_mapped_member_name
+        )
+        from datetime import timezone
+        
         mongo = get_mongo()
-        db = mongo.async_db  # Use async_db for asynchronous operations
+        db = mongo.async_db
         
-        # Build aggregation pipeline to join with members
-        pipeline = []
+        # Load member mappings
+        member_mappings = await load_member_mappings(db)
         
-        # Match stage for filtering
-        match_filter = {}
+        # Determine which sources to query
+        sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
         
-        if source_type:
-            match_filter['source'] = source_type
-        
-        if activity_type:
-            match_filter['activity_type'] = activity_type
-        
+        # Build date filter
+        date_filter = {}
         if start_date:
-            if 'timestamp' not in match_filter:
-                match_filter['timestamp'] = {}
-            try:
-                match_filter['timestamp']['$gte'] = datetime.fromisoformat(start_date)
-            except ValueError:
-                match_filter['timestamp']['$gte'] = start_date
-        
+            start_str = start_date.replace('Z', '+00:00') if start_date.endswith('Z') else start_date
+            start_dt = datetime.fromisoformat(start_str)
+            if start_dt.tzinfo is not None:
+                start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            date_filter['$gte'] = start_dt
         if end_date:
-            if 'timestamp' not in match_filter:
-                match_filter['timestamp'] = {}
-            try:
-                # Add 1 day to include the entire end date
-                end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
-                match_filter['timestamp']['$lt'] = end_dt
-            except ValueError:
-                match_filter['timestamp']['$lte'] = end_date + "T23:59:59"
-        
-        if match_filter:
-            pipeline.append({'$match': match_filter})
-        
-        # Sort by timestamp descending
-        pipeline.append({'$sort': {'timestamp': -1}})
-        
-        # Limit
-        pipeline.append({'$limit': limit})
-        
-        # Lookup member name
-        pipeline.append({
-            '$lookup': {
-                'from': 'members',
-                'localField': 'member_id',
-                'foreignField': '_id',
-                'as': 'member_info'
-            }
-        })
-        
-        # Unwind member info
-        pipeline.append({
-            '$unwind': {
-                'path': '$member_info',
-                'preserveNullAndEmptyArrays': True
-            }
-        })
-        
-        # Execute aggregation
-        cursor = db['member_activities'].aggregate(pipeline)
-        activities_docs = await cursor.to_list(length=limit)
+            end_str = end_date.replace('Z', '+00:00') if end_date.endswith('Z') else end_date
+            end_dt = datetime.fromisoformat(end_str)
+            if end_dt.tzinfo is not None:
+                end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            date_filter['$lte'] = end_dt
         
         activities = []
-        for doc in activities_docs:
-            member_name = doc.get('member_info', {}).get('name', 'Unknown')
+        
+        # Query each source collection directly (same logic as activities_mongo.py)
+        for source in sources_to_query:
+            if source == 'github':
+                # GitHub commits
+                if not activity_type or activity_type == 'commit':
+                    commits = db["github_commits"]
+                    query = {}
+                    if date_filter:
+                        query['date'] = date_filter
+                    
+                    async for commit in commits.find(query).sort("date", -1).limit(limit):
+                        commit_date = commit.get('date')
+                        if isinstance(commit_date, datetime):
+                            timestamp_str = commit_date.isoformat() + 'Z' if commit_date.tzinfo is None else commit_date.isoformat()
+                        else:
+                            timestamp_str = str(commit_date) if commit_date else ''
+                        
+                        github_username = commit.get('author_name', '')
+                        member_name = get_mapped_member_name(member_mappings, 'github', github_username)
+                        
+                        metadata = {
+                            'sha': commit.get('sha'),
+                            'message': commit.get('message'),
+                            'repository': commit.get('repository', ''),
+                            'additions': commit.get('additions', 0),
+                            'deletions': commit.get('deletions', 0),
+                            'url': commit.get('url')
+                        }
+                        
+                        activities.append({
+                            'id': str(commit['_id']),
+                            'member_name': member_name,
+                            'source_type': 'github',
+                            'activity_type': 'commit',
+                            'timestamp': timestamp_str,
+                            'activity_id': f"github:commit:{commit.get('sha')}",
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
+                
+                # GitHub PRs
+                if not activity_type or activity_type == 'pull_request':
+                    prs = db["github_pull_requests"]
+                    query = {}
+                    if date_filter:
+                        query['created_at'] = date_filter
+                    
+                    async for pr in prs.find(query).sort("created_at", -1).limit(limit):
+                        created_at = pr.get('created_at')
+                        if isinstance(created_at, datetime):
+                            timestamp_str = created_at.isoformat() + 'Z' if created_at.tzinfo is None else created_at.isoformat()
+                        else:
+                            timestamp_str = str(created_at) if created_at else ''
+                        
+                        github_username = pr.get('author_login', '')
+                        member_name = get_mapped_member_name(member_mappings, 'github', github_username)
+                        
+                        metadata = {
+                            'repository': pr.get('repository_name', ''),
+                            'title': pr.get('title'),
+                            'number': pr.get('number'),
+                            'state': pr.get('state'),
+                            'url': pr.get('url')
+                        }
+                        
+                        activities.append({
+                            'id': str(pr['_id']),
+                            'member_name': member_name,
+                            'source_type': 'github',
+                            'activity_type': 'pull_request',
+                            'timestamp': timestamp_str,
+                            'activity_id': f"github:pr:{pr.get('repository_name')}:{pr.get('number')}",
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
+                
+                # GitHub Issues
+                if not activity_type or activity_type == 'issue':
+                    issues = db["github_issues"]
+                    query = {}
+                    if date_filter:
+                        query['created_at'] = date_filter
+                    
+                    async for issue in issues.find(query).sort("created_at", -1).limit(limit):
+                        created_at = issue.get('created_at')
+                        if isinstance(created_at, datetime):
+                            timestamp_str = created_at.isoformat() + 'Z' if created_at.tzinfo is None else created_at.isoformat()
+                        else:
+                            timestamp_str = str(created_at) if created_at else ''
+                        
+                        github_username = issue.get('author_login', '')
+                        member_name = get_mapped_member_name(member_mappings, 'github', github_username)
+                        
+                        metadata = {
+                            'repository': issue.get('repository_name', ''),
+                            'title': issue.get('title'),
+                            'number': issue.get('number'),
+                            'state': issue.get('state'),
+                            'url': issue.get('url')
+                        }
+                        
+                        activities.append({
+                            'id': str(issue['_id']),
+                            'member_name': member_name,
+                            'source_type': 'github',
+                            'activity_type': 'issue',
+                            'timestamp': timestamp_str,
+                            'activity_id': f"github:issue:{issue.get('repository_name')}:{issue.get('number')}",
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
             
-            activities.append({
-                'id': str(doc['_id']),
-                'member_name': member_name,
-                'source_type': doc.get('source'),
-                'activity_type': doc.get('activity_type'),
-                'timestamp': doc.get('timestamp').isoformat() if doc.get('timestamp') else None,
-                'activity_id': doc.get('activity_id'),
-                'metadata': doc.get('metadata') if format == 'json' else json.dumps(doc.get('metadata', {}), ensure_ascii=False, default=str)
-            })
+            elif source == 'slack':
+                # Slack messages
+                if not activity_type or activity_type == 'message':
+                    messages = db["slack_messages"]
+                    query = {}
+                    if date_filter:
+                        query['posted_at'] = date_filter
+                    
+                    async for msg in messages.find(query).sort("posted_at", -1).limit(limit):
+                        posted_at = msg.get('posted_at')
+                        if isinstance(posted_at, datetime):
+                            timestamp_str = posted_at.isoformat() + 'Z' if posted_at.tzinfo is None else posted_at.isoformat()
+                        else:
+                            timestamp_str = str(posted_at) if posted_at else ''
+                        
+                        slack_user_id = msg.get('user_id', '')
+                        member_name = get_mapped_member_name(member_mappings, 'slack', slack_user_id)
+                        
+                        metadata = {
+                            'channel_id': msg.get('channel_id'),
+                            'channel_name': msg.get('channel_name'),
+                            'text': msg.get('text', ''),
+                            'thread_ts': msg.get('thread_ts'),
+                            'reactions': msg.get('reactions', [])
+                        }
+                        
+                        activities.append({
+                            'id': str(msg['_id']),
+                            'member_name': member_name,
+                            'member_name': member_name,
+                            'source_type': 'slack',
+                            'activity_type': 'message',
+                            'timestamp': timestamp_str,
+                            'activity_id': f"slack:message:{msg.get('channel_id')}:{msg.get('ts')}",
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
+            elif source == 'notion':
+                # Notion pages
+                if not activity_type or activity_type == 'page':
+                    pages = db["notion_pages"]
+                    query = {}
+                    if date_filter:
+                        query['last_edited_time'] = date_filter
+                    
+                    async for page in pages.find(query).sort("last_edited_time", -1).limit(limit):
+                        last_edited = page.get('last_edited_time')
+                        if isinstance(last_edited, datetime):
+                            timestamp_str = last_edited.isoformat() + 'Z' if last_edited.tzinfo is None else last_edited.isoformat()
+                        else:
+                            timestamp_str = str(last_edited) if last_edited else ''
+                        
+                        notion_user_id = page.get('created_by', {}).get('id', '') if isinstance(page.get('created_by'), dict) else ''
+                        member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_id)
+                        
+                        metadata = {
+                            'page_id': page.get('page_id'),
+                            'title': page.get('title'),
+                            'url': page.get('url'),
+                            'database_id': page.get('database_id')
+                        }
+                        
+                        activities.append({
+                            'id': str(page['_id']),
+                            'member_name': member_name,
+                            'source_type': 'notion',
+                            'activity_type': 'page',
+                            'timestamp': timestamp_str,
+                            'activity_id': f"notion:page:{page.get('page_id')}",
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
+            
+            elif source == 'drive':
+                # Drive activities
+                if not activity_type or activity_type == 'activity':
+                    drive_activities = db["drive_activities"]
+                    query = {}
+                    if date_filter:
+                        query['time'] = date_filter
+                    
+                    async for activity in drive_activities.find(query).sort("time", -1).limit(limit):
+                        time = activity.get('time')
+                        if isinstance(time, datetime):
+                            timestamp_str = time.isoformat() + 'Z' if time.tzinfo is None else time.isoformat()
+                        else:
+                            timestamp_str = str(time) if time else ''
+                        
+                        actor_email = activity.get('actor_email', '')
+                        member_name = get_mapped_member_name(member_mappings, 'drive', actor_email)
+                        
+                        metadata = {
+                            'activity_type': activity.get('activity_type'),
+                            'file_id': activity.get('file_id'),
+                            'file_name': activity.get('file_name'),
+                            'target': activity.get('target')
+                        }
+                        
+                        activities.append({
+                            'id': str(activity['_id']),
+                            'member_name': member_name,
+                            'source_type': 'drive',
+                            'activity_type': activity.get('activity_type', 'activity'),
+                            'timestamp': timestamp_str,
+                            'activity_id': activity.get('activity_id', f"drive:{activity.get('file_id')}"),
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
+        
+        # Sort all activities by timestamp (newest first)
+        activities.sort(key=lambda x: x['timestamp'] or '', reverse=True)
+        
+        # Apply limit
+        activities = activities[:limit]
         
         filename_base = f"activities_{datetime.now().strftime('%Y%m%d')}"
         if source_type:

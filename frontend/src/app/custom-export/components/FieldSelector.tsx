@@ -194,7 +194,7 @@ function getSourceFromCollectionName(collectionName: string, dbSource: string): 
     return "notion";
   } else if (cleanName.startsWith("drive_")) {
     return "drive";
-  } else if (cleanName === "members" || cleanName === "member_identifiers" || cleanName === "member_activities") {
+  } else if (cleanName === "members" || cleanName === "member_identifiers") {
     return "member";
   } else if (cleanName === "recordings_daily" || dbSource === "gemini") {
     return "gemini";

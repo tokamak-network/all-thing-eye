@@ -304,14 +304,7 @@ class MongoDBManager:
                 sparse=True
             )
             
-            # Member activities collection
-            activities = db[self.collections.get('member_activities', 'member_activities')]
-            activities.create_index('activity_id', unique=True)
-            activities.create_index('member_id')
-            activities.create_index('source_type')
-            activities.create_index('activity_type')
-            activities.create_index('timestamp')
-            activities.create_index([('member_id', 1), ('timestamp', -1)])
+            # Note: member_activities collection removed - using source collections directly
             activities.create_index([('source_type', 1), ('activity_type', 1)])
             
             # Translations collection (for translation caching)
@@ -344,8 +337,7 @@ class MongoDBManager:
             slack_messages.create_index('user_id')
             slack_messages.create_index('posted_at')
             
-            slack_reactions = db[self.collections.get('slack_reactions', 'slack_reactions')]
-            slack_reactions.create_index([('message_ts', 1), ('user_id', 1), ('reaction', 1)], unique=True)
+            # Note: slack_reactions collection removed - reactions stored in slack_messages.reactions field
             
             # Notion collections
             notion_pages = db[self.collections.get('notion_pages', 'notion_pages')]
