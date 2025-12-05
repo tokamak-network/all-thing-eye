@@ -78,6 +78,25 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
         except Exception as e:
             logger.warning(f"Failed to access shared database: {e}")
         
+        # Add gemini database collections
+        try:
+            from backend.api.v1.ai_processed import get_gemini_db
+            gemini_db_sync = get_gemini_db()
+            gemini_collection_names = gemini_db_sync.list_collection_names()
+            for name in gemini_collection_names:
+                try:
+                    collection = gemini_db_sync[name]
+                    count = collection.count_documents({})
+                    collections_info.append({
+                        "name": f"gemini.{name}",
+                        "count": count,
+                        "database": "gemini"
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to count gemini.{name}: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to access gemini database: {e}")
+        
         # Calculate totals
         total_documents = sum(c["count"] for c in collections_info)
         total_collections = len(collections_info)
