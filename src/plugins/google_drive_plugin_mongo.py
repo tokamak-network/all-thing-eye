@@ -63,6 +63,18 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
         'approval_completed': '승인 완료',
     }
     
+    # Events to EXCLUDE from collection (noise reduction)
+    EXCLUDE_EVENTS = {
+        'download',                      # 다운로드 (조회 행위)
+        'view',                          # 조회
+        'share',                         # 공유 변경 (빈번함)
+        'change_acl_editors',            # 편집자 권한 변경
+        'change_document_access_scope',  # 문서 접근 범위 변경
+        'sheets_import_range',           # 스프레드시트 자동 동기화 (매우 빈번)
+    }
+    
+    # Edit events will be summarized daily instead of individual records
+    
     # Document type mapping
     DOC_TYPE_MAP = {
         'document': '문서',
@@ -248,6 +260,7 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
         )
         
         activities = []
+        edit_activities = []  # Collect edit events separately for daily summary
         
         # Collect for each target user, or all users if none specified
         users_to_query = self.target_users if self.target_users else ['all']
@@ -280,22 +293,42 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
                             events = item.get('events', [])
                             for event in events:
                                 event_name = event.get('name', '')
+                                
+                                # Skip excluded events (noise reduction)
+                                if event_name in self.EXCLUDE_EVENTS:
+                                    continue
+                                
                                 doc_info = self._extract_doc_info(event)
                                 
-                                activities.append({
-                                    'timestamp': timestamp,
-                                    'user_email': actor_email,
-                                    'action': self.ACTIVITY_MAP.get(event_name, event_name),
-                                    'event_name': event_name,
-                                    'doc_title': doc_info['title'],
-                                    'doc_type': doc_info['type'],
-                                    'doc_id': doc_info['id'],
-                                    'raw_event': str(event)
-                                })
+                                # For edit events, collect separately for daily summary
+                                if event_name == 'edit':
+                                    edit_activities.append({
+                                        'timestamp': timestamp,
+                                        'user_email': actor_email,
+                                        'action': self.ACTIVITY_MAP.get(event_name, event_name),
+                                        'event_name': event_name,
+                                        'doc_title': doc_info['title'],
+                                        'doc_type': doc_info['type'],
+                                        'doc_id': doc_info['id'],
+                                        'raw_event': str(event)
+                                    })
+                                else:
+                                    # Non-edit events are stored as-is
+                                    activities.append({
+                                        'timestamp': timestamp,
+                                        'user_email': actor_email,
+                                        'action': self.ACTIVITY_MAP.get(event_name, event_name),
+                                        'event_name': event_name,
+                                        'doc_title': doc_info['title'],
+                                        'doc_type': doc_info['type'],
+                                        'doc_id': doc_info['id'],
+                                        'raw_event': str(event)
+                                    })
                     
                     # Progress
-                    if len(activities) % 100 == 0 and len(activities) > 0:
-                        self.logger.info(f"  Collected {len(activities)} activities...")
+                    total_collected = len(activities) + len(edit_activities)
+                    if total_collected % 500 == 0 and total_collected > 0:
+                        self.logger.info(f"  Collected {len(activities)} activities + {len(edit_activities)} edit events...")
                     
                     # Next page
                     page_token = results.get('nextPageToken')
@@ -310,14 +343,24 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
                         "Admin account and Admin SDK API is enabled"
                     )
         
-        self.logger.info(f"✅ Collected {len(activities)} Drive activities")
+        # Summarize edit events by day + user + document
+        self.logger.info(f"\n📊 Summarizing {len(edit_activities)} edit events into daily summaries...")
+        daily_edit_summaries = self._summarize_edit_events(edit_activities)
+        self.logger.info(f"   → Reduced to {len(daily_edit_summaries)} daily edit summaries")
+        
+        # Combine activities with daily edit summaries
+        all_activities = activities + daily_edit_summaries
+        
+        self.logger.info(f"✅ Final count: {len(all_activities)} Drive activities")
+        self.logger.info(f"   - Regular activities: {len(activities)}")
+        self.logger.info(f"   - Daily edit summaries: {len(daily_edit_summaries)}")
         
         # Extract folder information from activities
         self.logger.info("\n📁 Extracting folder information from activities...")
-        folders = self._extract_folders_from_activities(activities)
+        folders = self._extract_folders_from_activities(all_activities)
         
         return [{
-            'activities': activities,
+            'activities': all_activities,
             'folders': folders,
             'start_date': start_date.isoformat(),
             'end_date': end_date.isoformat(),
@@ -330,6 +373,75 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
             return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
         except:
             return datetime.now(tz=pytz.UTC)
+    
+    def _summarize_edit_events(self, edit_activities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Summarize edit events by day + user + document
+        
+        Instead of storing individual edit events, we group them into daily summaries:
+        "user@example.com edited 'Document Title' 10 times on 2025-12-05"
+        
+        Args:
+            edit_activities: List of individual edit events
+            
+        Returns:
+            List of daily edit summaries
+        """
+        from collections import defaultdict
+        
+        # Group by: date + user_email + doc_id
+        daily_edits = defaultdict(lambda: {
+            'count': 0,
+            'first_edit': None,
+            'last_edit': None,
+            'doc_title': '',
+            'doc_type': '',
+            'doc_id': '',
+            'user_email': ''
+        })
+        
+        for activity in edit_activities:
+            timestamp = activity['timestamp']
+            date_key = timestamp.strftime('%Y-%m-%d')
+            user_email = activity['user_email']
+            doc_id = activity['doc_id']
+            
+            summary_key = f"{date_key}_{user_email}_{doc_id}"
+            
+            summary = daily_edits[summary_key]
+            summary['count'] += 1
+            summary['doc_title'] = activity['doc_title']
+            summary['doc_type'] = activity['doc_type']
+            summary['doc_id'] = doc_id
+            summary['user_email'] = user_email
+            
+            if summary['first_edit'] is None or timestamp < summary['first_edit']:
+                summary['first_edit'] = timestamp
+            if summary['last_edit'] is None or timestamp > summary['last_edit']:
+                summary['last_edit'] = timestamp
+        
+        # Convert to activity format
+        summaries = []
+        for key, summary in daily_edits.items():
+            date_str = key.split('_')[0]
+            
+            # Create a summarized activity
+            summaries.append({
+                'timestamp': summary['last_edit'],  # Use last edit time for sorting
+                'user_email': summary['user_email'],
+                'action': f"편집 ({summary['count']}회)",  # "편집 (10회)"
+                'event_name': 'edit_summary',  # Mark as summary
+                'doc_title': summary['doc_title'],
+                'doc_type': summary['doc_type'],
+                'doc_id': summary['doc_id'],
+                'raw_event': f"Daily edit summary: {summary['count']} edits from {summary['first_edit']} to {summary['last_edit']}",
+                'edit_count': summary['count'],
+                'first_edit': summary['first_edit'],
+                'last_edit': summary['last_edit'],
+                'summary_date': date_str
+            })
+        
+        return summaries
     
     def _extract_doc_info(self, event: Dict[str, Any]) -> Dict[str, str]:
         """Extract document information from event"""
@@ -434,6 +546,14 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
                 'raw_event': raw_event_str,
                 'collected_at': datetime.utcnow()
             }
+            
+            # Add edit summary fields if present
+            if activity.get('edit_count'):
+                activity_doc['edit_count'] = activity['edit_count']
+                activity_doc['first_edit'] = activity.get('first_edit')
+                activity_doc['last_edit'] = activity.get('last_edit')
+                activity_doc['summary_date'] = activity.get('summary_date')
+            
             activities_to_save.append(activity_doc)
         
         if activities_to_save:
