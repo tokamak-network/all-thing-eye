@@ -466,6 +466,7 @@ class ApiClient {
     endDate?: string,
     limit?: number
   ) {
+    // Increase timeout for large collection exports (3 minutes)
     const response = await this.client.post(
       "/custom-export/collection",
       {
@@ -475,7 +476,10 @@ class ApiClient {
         end_date: endDate,
         limit,
       },
-      { responseType: "blob" }
+      { 
+        responseType: "blob",
+        timeout: 180000 // 3 minutes for large single collection exports
+      }
     );
     return response.data;
   }
@@ -487,6 +491,7 @@ class ApiClient {
     endDate?: string,
     limit?: number
   ) {
+    // Increase timeout for bulk exports (5 minutes)
     const response = await this.client.post(
       "/custom-export/collections/bulk",
       {
@@ -496,7 +501,10 @@ class ApiClient {
         end_date: endDate,
         limit,
       },
-      { responseType: "blob" }
+      { 
+        responseType: "blob",
+        timeout: 300000 // 5 minutes for large bulk exports
+      }
     );
     return response.data;
   }

@@ -467,9 +467,37 @@ export default function FieldSelector({
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       {/* Header */}
       <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">
           Data Sources & Fields
         </h2>
+        
+        {/* Quick Actions */}
+        <div className="mb-2 flex gap-2">
+          <button
+            onClick={() => {
+              const allFieldIds = staticDataSources.flatMap((ds) =>
+                ds.fields.map((f) => f.id)
+              );
+              allFieldIds.forEach((id) => {
+                if (!selectedFields.includes(id)) {
+                  onFieldToggle(id);
+                }
+              });
+            }}
+            className="flex-1 text-xs px-3 py-2 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+          >
+            Select All
+          </button>
+          <button
+            onClick={() => {
+              selectedFields.forEach((id) => onFieldToggle(id));
+            }}
+            className="flex-1 text-xs px-3 py-2 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 transition-colors"
+          >
+            Clear All
+          </button>
+        </div>
+        
         <p className="text-sm text-gray-600">
           Selected:{" "}
           <span className="font-semibold text-blue-600">{selectedCount}</span> /{" "}
@@ -535,33 +563,6 @@ export default function FieldSelector({
             )}
           </div>
         ))}
-      </div>
-
-      {/* Quick Actions */}
-      <div className="mt-6 pt-4 border-t border-gray-200 flex gap-2">
-        <button
-          onClick={() => {
-            const allFieldIds = staticDataSources.flatMap((ds) =>
-              ds.fields.map((f) => f.id)
-            );
-            allFieldIds.forEach((id) => {
-              if (!selectedFields.includes(id)) {
-                onFieldToggle(id);
-              }
-            });
-          }}
-          className="flex-1 text-xs px-3 py-2 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
-        >
-          Select All
-        </button>
-        <button
-          onClick={() => {
-            selectedFields.forEach((id) => onFieldToggle(id));
-          }}
-          className="flex-1 text-xs px-3 py-2 bg-gray-50 text-gray-700 rounded hover:bg-gray-100 transition-colors"
-        >
-          Clear All
-        </button>
       </div>
     </div>
   );

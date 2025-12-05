@@ -17,6 +17,8 @@ import requests
 import yaml
 import json
 import zipfile
+import asyncio
+import re
 
 from src.utils.logger import get_logger
 from src.utils.toon_encoder import encode_toon
@@ -989,7 +991,7 @@ async def export_collection(
                     if date_filter:
                         query_filter[timestamp_field] = date_filter
         
-        # Query MongoDB
+        # Query MongoDB with batching for large collections
         if source == 'gemini':
             cursor = gemini_db_sync[actual_collection].find(query_filter)
             if body.limit:
@@ -999,7 +1001,18 @@ async def export_collection(
             cursor = db[actual_collection].find(query_filter)
             if body.limit:
                 cursor = cursor.limit(body.limit)
-            documents = await cursor.to_list(length=body.limit or 100000)
+            # Use batch processing for large collections to avoid memory issues
+            max_docs = body.limit or 100000
+            documents = []
+            count = 0
+            async for doc in cursor:
+                documents.append(doc)
+                count += 1
+                if count >= max_docs:
+                    break
+                # Yield control periodically for large collections (every 10000 docs)
+                if count % 10000 == 0:
+                    await asyncio.sleep(0)  # Yield to event loop
         
         if not documents:
             raise HTTPException(status_code=404, detail="No documents found")
@@ -1078,7 +1091,11 @@ async def export_collections_bulk(
         zip_buffer = io.BytesIO()
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for collection_info in body.collections:
+            total_collections = len(body.collections)
+            logger.info(f"Starting bulk export of {total_collections} collections")
+            
+            for idx, collection_info in enumerate(body.collections, 1):
+                logger.info(f"Processing collection {idx}/{total_collections}: {collection_info.get('collection')}")
                 source = collection_info.get("source")
                 collection_name = collection_info.get("collection")
                 
@@ -1153,7 +1170,7 @@ async def export_collections_bulk(
                                 if date_filter:
                                     query_filter[timestamp_field] = date_filter
                     
-                    # Query documents
+                    # Query documents with batching for large collections
                     if source == 'gemini':
                         cursor = gemini_db_sync[actual_collection].find(query_filter)
                         if body.limit:
@@ -1163,7 +1180,19 @@ async def export_collections_bulk(
                         cursor = db[actual_collection].find(query_filter)
                         if body.limit:
                             cursor = cursor.limit(body.limit)
-                        documents = await cursor.to_list(length=body.limit or 100000)
+                        # Use batch processing for large collections to avoid memory issues
+                        # Process in chunks to yield control periodically
+                        max_docs = body.limit or 100000
+                        documents = []
+                        count = 0
+                        async for doc in cursor:
+                            documents.append(doc)
+                            count += 1
+                            if count >= max_docs:
+                                break
+                            # Yield control periodically for large collections (every 10000 docs)
+                            if count % 10000 == 0:
+                                await asyncio.sleep(0)  # Yield to event loop
                     
                     if not documents:
                         continue
@@ -1202,22 +1231,62 @@ async def export_collections_bulk(
                         file_ext = "csv"
                     
                     # Add to ZIP
+                    # Remove database prefix from collection name for filename
+                    clean_collection_name = re.sub(r'^(main|shared|gemini)\.', '', actual_collection) if isinstance(actual_collection, str) else actual_collection
                     date_suffix = f"_{body.start_date or 'all'}_{body.end_date or 'all'}" if (body.start_date or body.end_date) else ""
-                    zip_filename = f"{collection_name}{date_suffix}.{file_ext}"
-                    zip_file.writestr(zip_filename, file_content)
+                    zip_filename = f"{source}_{clean_collection_name}{date_suffix}.{file_ext}"
+                    
+                    # Ensure file_content is bytes for ZIP
+                    if isinstance(file_content, str):
+                        file_content_bytes = file_content.encode('utf-8')
+                    else:
+                        file_content_bytes = file_content
+                    
+                    zip_file.writestr(zip_filename, file_content_bytes)
+                    logger.info(f"Added {zip_filename} to ZIP ({len(rows)} documents, {body.format.upper()} format)")
                     
                 except Exception as e:
-                    logger.warning(f"Failed to export {collection_name}: {e}")
+                    logger.error(f"Failed to export {collection_name}: {e}", exc_info=True)
                     continue
         
         zip_buffer.seek(0)
+        zip_data = zip_buffer.getvalue()
+        
+        # Check if ZIP is empty or corrupted
+        if len(zip_data) < 22:  # Minimum ZIP file size (empty ZIP is ~22 bytes)
+            logger.warning("Generated ZIP file is empty or too small")
+            raise HTTPException(
+                status_code=400, 
+                detail="No data was exported. All collections may be empty or failed to export."
+            )
+        
+        # Verify ZIP file integrity
+        try:
+            test_zip = zipfile.ZipFile(io.BytesIO(zip_data), 'r')
+            file_list = test_zip.namelist()
+            test_zip.close()
+            
+            if not file_list:
+                logger.warning("ZIP file contains no files")
+                raise HTTPException(
+                    status_code=400,
+                    detail="No files were added to the ZIP. All collections may be empty or failed to export."
+                )
+            
+            logger.info(f"ZIP file created successfully with {len(file_list)} files: {', '.join(file_list[:5])}{'...' if len(file_list) > 5 else ''}")
+        except zipfile.BadZipFile as e:
+            logger.error(f"Generated ZIP file is corrupted: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create ZIP file. The file may be corrupted."
+            )
         
         # Generate ZIP filename
         date_suffix = f"_{body.start_date or 'all'}_{body.end_date or 'all'}" if (body.start_date or body.end_date) else ""
-        zip_filename = f"custom_export_bulk{date_suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        zip_filename = f"collections_export{date_suffix}.zip"
         
         return StreamingResponse(
-            iter([zip_buffer.getvalue()]),
+            iter([zip_data]),
             media_type="application/zip",
             headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
         )
