@@ -5,25 +5,62 @@
 
 set -e
 
-echo "🗑️  Clearing Google Drive data from MongoDB..."
+# Load environment variables from .env file
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
 
-# Connect to MongoDB container and clear drive collections
-docker exec all-thing-eye-mongodb mongosh all_things_eye --eval '
-db.drive_activities.deleteMany({});
-print("✅ Cleared drive_activities collection");
-print("   Documents deleted: " + db.drive_activities.countDocuments({}));
-'
+# Default database name
+DB_NAME=${MONGODB_DATABASE:-ati}
+
+echo "🗑️  Clearing Google Drive data from MongoDB (Database: $DB_NAME)..."
+
+# Connect to MongoDB through backend container (which has access to the correct MongoDB URI)
+# This ensures we're using the same MongoDB that the backend uses
+docker-compose -f docker-compose.prod.yml exec -T backend python -c "
+import os
+from pymongo import MongoClient
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get MongoDB connection info
+mongodb_uri = os.getenv('MONGODB_URI')
+db_name = os.getenv('MONGODB_DATABASE', 'ati')
+
+if not mongodb_uri:
+    print('❌ Error: MONGODB_URI not found in environment')
+    exit(1)
+
+try:
+    # Connect to MongoDB
+    client = MongoClient(mongodb_uri)
+    db = client[db_name]
+    
+    # Clear collections
+    result1 = db.drive_activities.delete_many({})
+    print(f'✅ Cleared drive_activities collection')
+    print(f'   Documents deleted: {result1.deleted_count}')
+    
+    result2 = db.drive_files.delete_many({})
+    print(f'✅ Cleared drive_files collection')
+    print(f'   Documents deleted: {result2.deleted_count}')
+    
+    client.close()
+except Exception as e:
+    print(f'❌ Error: {e}')
+    exit(1)
+"
 
 echo ""
-echo "🔄 Ready to recollect Drive data with optimized settings"
+echo "🔄 Starting automatic recollection of Drive data..."
+echo "   This may take a few minutes depending on the data size."
 echo ""
-echo "To trigger recollection, run:"
-echo "  docker-compose -f docker-compose.prod.yml exec data-collector python -c 'from src.plugins.google_drive_plugin_mongo import GoogleDrivePluginMongo; ...'"
+
+# Trigger recollection using the initial collection script
+# This will collect the past 90 days of data
+docker-compose -f docker-compose.prod.yml exec -T data-collector python scripts/initial_data_collection_mongo.py --days 90 --sources drive
+
 echo ""
-echo "Or wait for the scheduled data collection to run automatically."
-echo ""
-echo "📊 Expected improvements:"
-echo "   - No download/view/share events (noise removed)"
-echo "   - No sheets_import_range events (auto-sync noise removed)"
-echo "   - Edit events summarized daily (e.g., '편집 (10회)')"
-echo "   - Significantly reduced activity count"
+echo "✨ Process finished! Check the dashboard for updated numbers."
