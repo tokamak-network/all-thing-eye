@@ -95,11 +95,14 @@ async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, en
             logger.error("   ❌ GitHub authentication failed")
             return
         
-        # Collect data
-        data = plugin.collect_data(start_date=start_date, end_date=end_date)
+        # Collect data (GitHub plugin saves data internally during collect_data)
+        data_list = plugin.collect_data(start_date=start_date, end_date=end_date)
         
-        # Save to MongoDB
-        await plugin.save_data(data)
+        # GitHub plugin returns a list with one dict
+        data = data_list[0] if data_list else {}
+        
+        # Note: GitHub plugin already saves data to MongoDB during collect_data
+        # No need to call save_data separately
         
         commits_count = len(data.get('commits', []))
         prs_count = len(data.get('pull_requests', []))
