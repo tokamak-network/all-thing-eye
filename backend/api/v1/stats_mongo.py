@@ -105,9 +105,13 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
         members = db["members"]
         total_members = await members.count_documents({})
         
-        # 3. Get active projects (from config or database)
-        # For now, hardcode based on known projects
-        active_projects = 5  # github, slack, notion, drive, recordings
+        # 3. Get active projects from projects collection
+        try:
+            projects_collection = db["projects"]
+            active_projects = await projects_collection.count_documents({"is_active": True})
+        except Exception as e:
+            logger.warning(f"Failed to count active projects: {e}")
+            active_projects = 0
         
         # 4. Get activity breakdown by source
         activity_summary = {}
