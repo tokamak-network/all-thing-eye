@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MongoDB is now hosted externally (MongoDB Atlas or remote server)
   # Configure MONGODB_URI in .env file
