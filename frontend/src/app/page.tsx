@@ -36,13 +36,38 @@ export default function Home() {
     return null;
   }
 
+  // Calculate collection categories (matching database page)
+  const collectionCategories = new Set<string>();
+  stats.database.collections.forEach((col: any) => {
+    if (col.name.startsWith('member')) collectionCategories.add('members');
+    else if (col.name.startsWith('github')) collectionCategories.add('github');
+    else if (col.name.startsWith('slack')) collectionCategories.add('slack');
+    else if (col.name.startsWith('notion')) collectionCategories.add('notion');
+    else if (col.name.startsWith('drive')) collectionCategories.add('drive');
+    else if (col.name.startsWith('gemini.')) collectionCategories.add('gemini');
+    else if (col.name.startsWith('shared.')) collectionCategories.add('shared');
+    else collectionCategories.add('other');
+  });
+
+  // Get most recent collection time from last_collected
+  const getMostRecentCollectionTime = () => {
+    const times = Object.values(stats.last_collected).filter(t => t !== null) as string[];
+    if (times.length === 0) return null;
+    
+    const dates = times.map(t => new Date(t));
+    const mostRecent = new Date(Math.max(...dates.map(d => d.getTime())));
+    return mostRecent;
+  };
+
+  const mostRecentUpdate = getMostRecentCollectionTime();
+
   // Calculate percentages for activity sources
   const activityData = Object.entries(stats.activity_summary).map(([source, data]) => ({
     source,
     name: source.charAt(0).toUpperCase() + source.slice(1),
     count: data.total_activities,
     types: Object.keys(data.activity_types).length,
-    percentage: (data.total_activities / stats.total_activities) * 100,
+    percentage: (data.total_activities / stats.database.total_documents) * 100,
     value: data.total_activities // for pie chart
   }));
 
@@ -105,7 +130,7 @@ export default function Home() {
             {payload[0].value.toLocaleString()} activities
           </p>
           <p className="text-xs text-gray-500">
-            {((payload[0].value / stats.total_activities) * 100).toFixed(1)}%
+            {((payload[0].value / stats.database.total_documents) * 100).toFixed(1)}%
           </p>
         </div>
       );
@@ -144,17 +169,50 @@ export default function Home() {
                 Team activity analytics and performance insights
               </p>
             </div>
-            {stats.generated_at && (
+            {mostRecentUpdate && (
               <div className="bg-white bg-opacity-20 backdrop-blur-sm rounded-lg px-4 py-2">
                 <p className="text-blue-100 text-sm">
                   Last updated
                 </p>
                 <p className="text-white font-semibold">
-                  {new Date(stats.generated_at).toLocaleString()}
+                  {mostRecentUpdate.toLocaleString()}
                 </p>
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Data Freshness */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <span className="text-3xl">⏰</span>
+          Data Freshness
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Object.entries(stats.last_collected).map(([source, time]) => {
+            const style = getSourceStyle(source);
+            const freshness = getDataFreshness(time);
+            return (
+              <div
+                key={source}
+                className={`${style.bgColor} ${style.borderColor} border-2 rounded-lg p-4 hover:shadow-lg transition-shadow`}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-3xl">{style.icon}</span>
+                  <div className="flex-1">
+                    <div className="font-bold text-gray-900 capitalize">{source}</div>
+                    <div className="text-sm text-gray-600">
+                      {formatLastCollected(time)}
+                    </div>
+                  </div>
+                </div>
+                <div className={`${freshness.bgColor} ${freshness.color} font-semibold text-sm px-3 py-1 rounded-full text-center`}>
+                  {freshness.status}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -177,10 +235,10 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-green-100 text-sm font-medium mb-1">Total Activities</p>
-              <p className="text-4xl font-bold">{stats.total_activities.toLocaleString()}</p>
+              <p className="text-4xl font-bold">{stats.database.total_documents.toLocaleString()}</p>
               <p className="text-green-200 text-xs mt-2">Across all sources</p>
             </div>
-            <div className="text-6xl opacity-20">�</div>
+            <div className="text-6xl opacity-20">📈</div>
           </div>
         </div>
 
@@ -201,8 +259,8 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-orange-100 text-sm font-medium mb-1">Data Sources</p>
-              <p className="text-4xl font-bold">{stats.data_sources}</p>
-              <p className="text-orange-200 text-xs mt-2">Connected platforms</p>
+              <p className="text-4xl font-bold">{collectionCategories.size}</p>
+              <p className="text-orange-200 text-xs mt-2">Collection categories</p>
             </div>
             <div className="text-6xl opacity-20">🗄️</div>
           </div>
@@ -297,39 +355,6 @@ export default function Home() {
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Data Freshness */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-          <span className="text-3xl">⏰</span>
-          Data Freshness
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.entries(stats.last_collected).map(([source, time]) => {
-            const style = getSourceStyle(source);
-            const freshness = getDataFreshness(time);
-            return (
-              <div
-                key={source}
-                className={`${style.bgColor} ${style.borderColor} border-2 rounded-lg p-4 hover:shadow-lg transition-shadow`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-3xl">{style.icon}</span>
-                  <div className="flex-1">
-                    <div className="font-bold text-gray-900 capitalize">{source}</div>
-                    <div className="text-sm text-gray-600">
-                      {formatLastCollected(time)}
-                    </div>
-                  </div>
-                </div>
-                <div className={`${freshness.bgColor} ${freshness.color} font-semibold text-sm px-3 py-1 rounded-full text-center`}>
-                  {freshness.status}
                 </div>
               </div>
             );
