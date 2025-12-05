@@ -186,7 +186,8 @@ export default function ActivitiesPage() {
   const handleTranslate = async (
     activityId: string,
     text: string,
-    targetLang: string
+    targetLang: string,
+    sourceLang?: string
   ) => {
     if (!text || translating) return;
 
@@ -204,7 +205,7 @@ export default function ActivitiesPage() {
 
     setTranslating(activityId);
     try {
-      const result = await apiClient.translateText(text, targetLang);
+      const result = await apiClient.translateText(text, targetLang, sourceLang);
       setTranslations((prev) => ({
         ...prev,
         [activityId]: { text: result.translated_text, lang: targetLang },
@@ -597,9 +598,9 @@ export default function ActivitiesPage() {
                         {activity.source_type === "recordings_daily"
                           ? activity.metadata?.target_date || "Daily Analysis"
                           : resolveMemberName(
-                              activity.member_name,
-                              activity.source_type
-                            )}
+                          activity.member_name,
+                          activity.source_type
+                        )}
                       </p>
                     </div>
                     <div className="mt-2 text-sm text-gray-600">
@@ -2070,7 +2071,7 @@ export default function ActivitiesPage() {
                       >
                         KR
                       </button>
-                    </div>
+    </div>
                   )}
                 </div>
                 {translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`] && (
@@ -2293,25 +2294,89 @@ export default function ActivitiesPage() {
                           <div>
                             <div className="text-sm text-gray-500">Main Topics</div>
                             <div className="text-xl font-bold text-gray-900">
-                              {selectedDailyAnalysis.analysis.summary.overview.main_topics?.length || 0}
+                              {selectedDailyAnalysis.analysis.summary.topics?.length || 0}
                             </div>
                           </div>
                         </div>
-                        {selectedDailyAnalysis.analysis.summary.overview.main_topics &&
-                          selectedDailyAnalysis.analysis.summary.overview.main_topics.length > 0 && (
-                            <div>
+                        {/* Meeting Titles */}
+                        {selectedDailyAnalysis.meeting_titles &&
+                          selectedDailyAnalysis.meeting_titles.length > 0 && (
+                            <div className="mb-4">
+                              <div className="text-sm text-gray-500 mb-2">
+                                Meeting Titles:
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedDailyAnalysis.meeting_titles.map(
+                                  (title: string, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded"
+                                    >
+                                      {title}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        {/* Main Topics - Use topics from Topics tab */}
+                        {selectedDailyAnalysis.analysis.summary.topics &&
+                          selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
+                            <div className="mb-4">
                               <div className="text-sm text-gray-500 mb-2">
                                 Main Topics:
                               </div>
                               <div className="flex flex-wrap gap-2">
-                                {selectedDailyAnalysis.analysis.summary.overview.main_topics.map(
-                                  (topic: string, idx: number) => (
-                                    <span
+                                {selectedDailyAnalysis.analysis.summary.topics.map(
+                                  (topic: any, idx: number) => (
+                                    <button
                                       key={idx}
-                                      className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
+                                      onClick={() => {
+                                        // Switch to topics tab
+                                        setDailyAnalysisTab("topics");
+                                        // Scroll to the specific topic after a short delay
+                                        setTimeout(() => {
+                                          const topicElement = document.getElementById(`topic-${idx}`);
+                                          if (topicElement) {
+                                            topicElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                                            // Highlight the topic briefly
+                                            topicElement.classList.add("ring-2", "ring-blue-500");
+                                            setTimeout(() => {
+                                              topicElement.classList.remove("ring-2", "ring-blue-500");
+                                            }, 2000);
+                                          }
+                                        }, 100);
+                                      }}
+                                      className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded hover:bg-blue-200 transition-colors cursor-pointer"
                                     >
-                                      {topic}
-                                    </span>
+                                      {topic.topic}
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        {/* Participants Summary */}
+                        {selectedDailyAnalysis.analysis.participants &&
+                          selectedDailyAnalysis.analysis.participants.length > 0 && (
+                            <div>
+                              <div className="text-sm text-gray-500 mb-2">
+                                Participants ({selectedDailyAnalysis.analysis.participants.length}):
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {selectedDailyAnalysis.analysis.participants.map(
+                                  (participant: any, idx: number) => (
+                                    <div
+                                      key={idx}
+                                      className="bg-white rounded-lg p-2 border border-gray-200"
+                                    >
+                                      <div className="font-medium text-sm text-gray-900">
+                                        {participant.name}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        {participant.speaking_time} ({participant.speaking_percentage?.toFixed(1) || 0}%)
+                                      </div>
+                                    </div>
                                   )
                                 )}
                               </div>
@@ -2336,7 +2401,7 @@ export default function ActivitiesPage() {
                                 const dateId = selectedDailyAnalysis.target_date;
                                 const topicsText = JSON.stringify(selectedDailyAnalysis.analysis.summary.topics);
                                 if (dateId && topicsText) {
-                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "en");
+                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "en", "ko");
                                 }
                               }}
                               disabled={translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`}
@@ -2357,7 +2422,7 @@ export default function ActivitiesPage() {
                                 const dateId = selectedDailyAnalysis.target_date;
                                 const topicsText = JSON.stringify(selectedDailyAnalysis.analysis.summary.topics);
                                 if (dateId && topicsText) {
-                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "ko");
+                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "ko", "en");
                                 }
                               }}
                               disabled={translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`}
@@ -2384,70 +2449,90 @@ export default function ActivitiesPage() {
                           </p>
                         )}
                         <div className="space-y-4">
-                          {selectedDailyAnalysis.analysis.summary.topics.map(
-                            (topic: any, idx: number) => (
-                              <div
-                                key={idx}
-                                className="border border-gray-200 rounded-lg p-4"
-                              >
-                                <h4 className="font-semibold text-gray-900 mb-2">
-                                  {topic.topic}
-                                </h4>
-                                {topic.key_discussions &&
-                                  topic.key_discussions.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Key Discussions:
+                          {(() => {
+                            // Use translated topics if available, otherwise use original
+                            let translatedTopics = selectedDailyAnalysis.analysis.summary.topics;
+                            const translationKey = `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`;
+                            const translatedText = translations[translationKey]?.text;
+                            
+                            if (translatedText) {
+                              try {
+                                const parsed = JSON.parse(translatedText);
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                  translatedTopics = parsed;
+                                }
+                              } catch (e) {
+                                // Fall back to original if parsing fails
+                                translatedTopics = selectedDailyAnalysis.analysis.summary.topics;
+                              }
+                            }
+                            
+                            return translatedTopics.map(
+                              (topic: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  id={`topic-${idx}`}
+                                  className="border border-gray-200 rounded-lg p-4 transition-all"
+                                >
+                                  <h4 className="font-semibold text-gray-900 mb-2">
+                                    {topic.topic}
+                                  </h4>
+                                  {topic.key_discussions &&
+                                    topic.key_discussions.length > 0 && (
+                                      <div className="mb-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Key Discussions:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {topic.key_discussions.map((disc: string, i: number) => (
+                                            <li key={i}>{disc}</li>
+                                          ))}
+                                        </ul>
                                       </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {topic.key_discussions.map((disc: string, i: number) => (
-                                          <li key={i}>{disc}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                {topic.key_decisions &&
-                                  topic.key_decisions.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Key Decisions:
+                                    )}
+                                  {topic.key_decisions &&
+                                    topic.key_decisions.length > 0 && (
+                                      <div className="mb-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Key Decisions:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {topic.key_decisions.map((dec: string, i: number) => (
+                                            <li key={i}>{dec}</li>
+                                          ))}
+                                        </ul>
                                       </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {topic.key_decisions.map((dec: string, i: number) => (
-                                          <li key={i}>{dec}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                {topic.progress &&
-                                  topic.progress.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Progress:
+                                    )}
+                                  {topic.progress &&
+                                    topic.progress.length > 0 && (
+                                      <div className="mb-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Progress:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {topic.progress.map((prog: string, i: number) => (
+                                            <li key={i}>{prog}</li>
+                                          ))}
+                                        </ul>
                                       </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {topic.progress.map((prog: string, i: number) => (
-                                          <li key={i}>{prog}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                {topic.issues &&
-                                  topic.issues.length > 0 && (
-                                    <div className="mb-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Issues:
+                                    )}
+                                  {topic.issues &&
+                                    topic.issues.length > 0 && (
+                                      <div className="mb-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Issues:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {topic.issues.map((issue: string, i: number) => (
+                                            <li key={i}>{issue}</li>
+                                          ))}
+                                        </ul>
                                       </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {topic.issues.map((issue: string, i: number) => (
-                                          <li key={i}>{issue}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                              </div>
-                            )
-                          )}
+                                    )}
+                                </div>
+                              )
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -2695,7 +2780,7 @@ export default function ActivitiesPage() {
                                 const dateId = selectedDailyAnalysis.target_date;
                                 const participantsText = JSON.stringify(selectedDailyAnalysis.analysis.participants);
                                 if (dateId && participantsText) {
-                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "en");
+                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "en", "ko");
                                 }
                               }}
                               disabled={translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`}
@@ -2716,7 +2801,7 @@ export default function ActivitiesPage() {
                                 const dateId = selectedDailyAnalysis.target_date;
                                 const participantsText = JSON.stringify(selectedDailyAnalysis.analysis.participants);
                                 if (dateId && participantsText) {
-                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "ko");
+                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "ko", "en");
                                 }
                               }}
                               disabled={translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`}
@@ -2743,109 +2828,128 @@ export default function ActivitiesPage() {
                           </p>
                         )}
                         <div className="space-y-4">
-                          {selectedDailyAnalysis.analysis.participants.map(
-                            (participant: any, idx: number) => (
-                              <div
-                                key={idx}
-                                className="border border-gray-200 rounded-lg p-4"
-                              >
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="font-semibold text-gray-900">
-                                    {participant.name}
-                                  </h4>
-                                  <div className="text-sm text-gray-500">
-                                    {participant.speaking_time} (
-                                    {participant.speaking_percentage?.toFixed(1) || 0}%)
+                          {(() => {
+                            // Use translated participants if available, otherwise use original
+                            let translatedParticipants = selectedDailyAnalysis.analysis.participants;
+                            const translationKey = `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`;
+                            const translatedText = translations[translationKey]?.text;
+                            
+                            if (translatedText) {
+                              try {
+                                const parsed = JSON.parse(translatedText);
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                  translatedParticipants = parsed;
+                                }
+                              } catch (e) {
+                                // Fall back to original if parsing fails
+                                translatedParticipants = selectedDailyAnalysis.analysis.participants;
+                              }
+                            }
+                            
+                            return translatedParticipants.map(
+                              (participant: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="border border-gray-200 rounded-lg p-4"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h4 className="font-semibold text-gray-900">
+                                      {participant.name}
+                                    </h4>
+                                    <div className="text-sm text-gray-500">
+                                      {participant.speaking_time} (
+                                      {participant.speaking_percentage?.toFixed(1) || 0}%)
+                                    </div>
                                   </div>
+                                  <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                                    <div>
+                                      <span className="text-gray-500">Speaks:</span>{" "}
+                                      <span className="font-medium">
+                                        {participant.speak_count || 0}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Words:</span>{" "}
+                                      <span className="font-medium">
+                                        {participant.word_count || 0}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Time:</span>{" "}
+                                      <span className="font-medium">
+                                        {participant.speaking_time || "N/A"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {participant.key_activities &&
+                                    participant.key_activities.length > 0 && (
+                                      <div className="mt-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Key Activities:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {participant.key_activities.map((item: string, i: number) => (
+                                            <li key={i}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  {participant.action_items &&
+                                    participant.action_items.length > 0 && (
+                                      <div className="mt-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Action Items:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {participant.action_items.map((item: string, i: number) => (
+                                            <li key={i}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  {participant.progress &&
+                                    participant.progress.length > 0 && (
+                                      <div className="mt-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Progress:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {participant.progress.map((prog: string, i: number) => (
+                                            <li key={i}>{prog}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  {participant.issues &&
+                                    participant.issues.length > 0 && (
+                                      <div className="mt-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Issues:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {participant.issues.map((issue: string, i: number) => (
+                                            <li key={i}>{issue}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  {participant.collaboration &&
+                                    participant.collaboration.length > 0 && (
+                                      <div className="mt-2">
+                                        <div className="text-sm text-gray-500 mb-1">
+                                          Collaboration:
+                                        </div>
+                                        <ul className="list-disc list-inside text-sm text-gray-700">
+                                          {participant.collaboration.map((collab: string, i: number) => (
+                                            <li key={i}>{collab}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
                                 </div>
-                                <div className="grid grid-cols-3 gap-4 text-sm mb-3">
-                                  <div>
-                                    <span className="text-gray-500">Speaks:</span>{" "}
-                                    <span className="font-medium">
-                                      {participant.speak_count || 0}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500">Words:</span>{" "}
-                                    <span className="font-medium">
-                                      {participant.word_count || 0}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500">Time:</span>{" "}
-                                    <span className="font-medium">
-                                      {participant.speaking_time || "N/A"}
-                                    </span>
-                                  </div>
-                                </div>
-                                {participant.key_activities &&
-                                  participant.key_activities.length > 0 && (
-                                    <div className="mt-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Key Activities:
-                                      </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {participant.key_activities.map((item: string, i: number) => (
-                                          <li key={i}>{item}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                {participant.action_items &&
-                                  participant.action_items.length > 0 && (
-                                    <div className="mt-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Action Items:
-                                      </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {participant.action_items.map((item: string, i: number) => (
-                                          <li key={i}>{item}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                {participant.progress &&
-                                  participant.progress.length > 0 && (
-                                    <div className="mt-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Progress:
-                                      </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {participant.progress.map((prog: string, i: number) => (
-                                          <li key={i}>{prog}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                {participant.issues &&
-                                  participant.issues.length > 0 && (
-                                    <div className="mt-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Issues:
-                                      </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {participant.issues.map((issue: string, i: number) => (
-                                          <li key={i}>{issue}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                {participant.collaboration &&
-                                  participant.collaboration.length > 0 && (
-                                    <div className="mt-2">
-                                      <div className="text-sm text-gray-500 mb-1">
-                                        Collaboration:
-                                      </div>
-                                      <ul className="list-disc list-inside text-sm text-gray-700">
-                                        {participant.collaboration.map((collab: string, i: number) => (
-                                          <li key={i}>{collab}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                              </div>
-                            )
-                          )}
+                              )
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
