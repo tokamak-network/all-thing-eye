@@ -201,15 +201,6 @@ async def main():
         logger.info("\n✅ Dry run complete. Remove --dry-run to start collection.")
         return
     
-    # Initialize MongoDB connection for dry-run check
-    import os
-    mongodb_config = {
-        'uri': os.getenv('MONGODB_URI', 'mongodb://localhost:27017'),
-        'database': os.getenv('MONGODB_DATABASE', 'all_thing_eye')
-    }
-    mongo_manager = get_mongo_manager(mongodb_config)
-    mongo_manager.connect_async()
-    
     # Initialize MongoDB connection
     import os
     mongodb_config = {

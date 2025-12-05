@@ -305,7 +305,7 @@ class MongoDBManager:
             )
             
             # Note: member_activities collection removed - using source collections directly
-            activities.create_index([('source_type', 1), ('activity_type', 1)])
+            # Indexes are now created per source collection (github_commits, slack_messages, etc.)
             
             # Translations collection (for translation caching)
             translations = db.get_collection('translations')
