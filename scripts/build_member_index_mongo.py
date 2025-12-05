@@ -467,6 +467,74 @@ async def verify_member_index(db):
         print(f"      {source}: {count} activities")
 
 
+async def build_member_index(mongo_manager=None, incremental=False):
+    """
+    Build or update member index
+    
+    Args:
+        mongo_manager: Optional MongoManager instance. If None, creates a new one.
+        incremental: If True, only updates (currently not implemented - always does full rebuild)
+    
+    Note:
+        This function always does a full rebuild by reading all source collections
+        and recreating the member_activities collection. This ensures that:
+        1. New members added to members.yaml are properly mapped to existing activities
+        2. Member identifier changes are reflected in all activities
+        3. All activities are re-mapped with the latest member information
+    """
+    if mongo_manager is None:
+        # Load environment
+        env_path = project_root / '.env'
+        load_dotenv(dotenv_path=env_path)
+        
+        mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+        mongodb_database = os.getenv("MONGODB_DATABASE", "all_thing_eye_test")
+        
+        # Initialize MongoDB
+        mongo_config = {
+            'uri': mongodb_uri,
+            'database': mongodb_database,
+        }
+        mongo_manager = get_mongo_manager(mongo_config)
+        mongo_manager.connect_async()
+    
+    db = mongo_manager.async_db
+    
+    try:
+        # Step 1: Load members config
+        members_config = await load_members_config()
+        print(f"\n✅ Loaded {len(members_config)} members from config")
+        
+        # Step 2: Build members collection
+        member_name_to_id = await build_members_collection(db, members_config)
+        
+        # Step 3: Build identifiers collection
+        identifier_maps = await build_identifiers_collection(db, members_config, member_name_to_id)
+        
+        # Step 4: Build activities collection (always full rebuild to ensure all activities
+        #         are mapped with latest member information, even if members were added later)
+        total_activities = await build_activities_collection(db, identifier_maps)
+        
+        # Step 5: Verify results
+        await verify_member_index(db)
+        
+        print("\n" + "="*70)
+        print("✅ Member Index Build Complete!")
+        print("="*70)
+        print(f"\n   Members: {len(member_name_to_id)}")
+        print(f"   Activities: {total_activities}")
+        print(f"   Database: {mongo_manager.async_db.name}")
+        print("\n" + "="*70)
+        
+        return total_activities
+        
+    except Exception as e:
+        print(f"\n❌ Error building member index: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
 async def main():
     print("====================================================================")
     print("🏗️  Building Member Index for MongoDB")
@@ -489,40 +557,12 @@ async def main():
     }
     mongo_manager = get_mongo_manager(mongo_config)
     mongo_manager.connect_async()
-    db = mongo_manager.async_db
     
     try:
-        # Step 1: Load members config
-        members_config = await load_members_config()
-        print(f"\n✅ Loaded {len(members_config)} members from config")
-        
-        # Step 2: Build members collection
-        member_name_to_id = await build_members_collection(db, members_config)
-        
-        # Step 3: Build identifiers collection
-        identifier_maps = await build_identifiers_collection(db, members_config, member_name_to_id)
-        
-        # Step 4: Build activities collection
-        total_activities = await build_activities_collection(db, identifier_maps)
-        
-        # Step 5: Verify results
-        await verify_member_index(db)
-        
-        print("\n" + "="*70)
-        print("✅ Member Index Build Complete!")
-        print("="*70)
-        print(f"\n   Members: {len(member_name_to_id)}")
-        print(f"   Activities: {total_activities}")
-        print(f"   Database: {mongodb_database}")
-        print("\n" + "="*70)
-        
+        await build_member_index(mongo_manager)
+        return 0
     except Exception as e:
-        print(f"\n❌ Error building member index: {e}")
-        import traceback
-        traceback.print_exc()
         return 1
-    
-    return 0
 
 
 if __name__ == "__main__":

@@ -129,8 +129,8 @@ services:
     command: >
       bash -c "
         echo '[INFO] Data Collector starting...'
-        echo '[INFO] Timezone: $(date +%Z)'
-        echo '[INFO] Current time: $(date)'
+        echo '[INFO] Timezone: $$(date +%Z)'
+        echo '[INFO] Current time: $$(date)'
         echo '[INFO] Waiting 60 seconds for backend to initialize...'
         sleep 60
         
@@ -144,23 +144,23 @@ services:
         
         while true; do
           # Calculate seconds until next midnight KST
-          CURRENT_HOUR=\$(TZ=Asia/Seoul date +%H)
-          CURRENT_MIN=\$(TZ=Asia/Seoul date +%M)
-          CURRENT_SEC=\$(TZ=Asia/Seoul date +%S)
+          CURRENT_HOUR=$$(TZ=Asia/Seoul date +%H)
+          CURRENT_MIN=$$(TZ=Asia/Seoul date +%M)
+          CURRENT_SEC=$$(TZ=Asia/Seoul date +%S)
           
           # Force base-10 interpretation to avoid octal number errors (08, 09)
-          SECONDS_TODAY=\$((10#\$CURRENT_HOUR * 3600 + 10#\$CURRENT_MIN * 60 + 10#\$CURRENT_SEC))
-          SECONDS_UNTIL_MIDNIGHT=\$((86400 - SECONDS_TODAY))
+          SECONDS_TODAY=$$((10#$$CURRENT_HOUR * 3600 + 10#$$CURRENT_MIN * 60 + 10#$$CURRENT_SEC))
+          SECONDS_UNTIL_MIDNIGHT=$$((86400 - $$SECONDS_TODAY))
           
-          echo \"[INFO] Current time: \$(TZ=Asia/Seoul date)\"
-          echo \"[INFO] Next collection in \$SECONDS_UNTIL_MIDNIGHT seconds (\$((\$SECONDS_UNTIL_MIDNIGHT / 3600)) hours \$((\$SECONDS_UNTIL_MIDNIGHT % 3600 / 60)) minutes)\"
+          echo \"[INFO] Current time: $$(TZ=Asia/Seoul date)\"
+          echo \"[INFO] Next collection in $$SECONDS_UNTIL_MIDNIGHT seconds ($$(($$SECONDS_UNTIL_MIDNIGHT / 3600)) hours $$(($$SECONDS_UNTIL_MIDNIGHT % 3600 / 60)) minutes)\"
           
           # Sleep until midnight
-          sleep \$SECONDS_UNTIL_MIDNIGHT
+          sleep $$SECONDS_UNTIL_MIDNIGHT
           
           # Run daily collection
           echo \"[INFO] ====== Starting daily data collection ======\"
-          echo \"[INFO] Time: \$(TZ=Asia/Seoul date)\"
+          echo \"[INFO] Time: $$(TZ=Asia/Seoul date)\"
           python scripts/daily_data_collection_mongo.py
           echo \"[INFO] ====== Daily collection completed ======\"
           
