@@ -261,9 +261,6 @@ export default function MembersPage() {
                   GitHub
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Slack
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Role
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -277,7 +274,7 @@ export default function MembersPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {members.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     No members found. Click &quot;Add Member&quot; to create one.
                   </td>
                 </tr>
@@ -308,11 +305,6 @@ export default function MembersPage() {
                       ) : (
                         <span className="text-sm text-gray-400">-</span>
                       )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">
-                        {member.identifiers.slack || "-"}
-                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {member.role ? (

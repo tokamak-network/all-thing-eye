@@ -37,8 +37,8 @@ Today's major features and improvements:
 • Update member information and identifiers
 • Manage member-related data in one place
 • Improved member management workflow
+• Project data management functionality coming soon
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Any Feedback Welcome!
-
