@@ -3,7 +3,10 @@
 import Link from 'next/link';
 import { useAppStats } from '@/hooks/useAppStats';
 import { useEffect, useState } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line, CartesianGrid, AreaChart, Area } from 'recharts';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, BarChart, Bar
+} from 'recharts';
 
 export default function Home() {
   const { stats, loading, error } = useAppStats();
@@ -135,6 +138,30 @@ export default function Home() {
     if (diffHours < 24) return { status: '✓ Fresh', color: 'text-green-600', bgColor: 'bg-green-100' };
     if (diffHours < 48) return { status: '⚠ 1d old', color: 'text-yellow-600', bgColor: 'bg-yellow-100' };
     return { status: '⚠ Stale', color: 'text-red-600', bgColor: 'bg-red-100' };
+  };
+
+  const formatTimeAgo = (isoTime: string | null) => {
+    if (!isoTime) return 'Never';
+    try {
+      const date = new Date(isoTime);
+      const now = new Date();
+      const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 30) return `${days}d ago`;
+      const months = Math.floor(days / 30);
+      if (months < 12) return `${months}mo ago`;
+      const years = Math.floor(months / 12);
+      return `${years}y ago`;
+    } catch (e) {
+      console.error("Error formatting time ago:", e);
+      return "Unknown";
+    }
   };
 
   // Custom tooltip for charts
@@ -284,60 +311,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pie Chart - Activity Distribution */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-3xl">🥧</span>
-            Activity Distribution
-          </h2>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={activityData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percentage }) => `${name} (${percentage.toFixed(1)}%)`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {activityData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        {/* Bar Chart - Activities by Source */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-3xl">📊</span>
-            Activities by Source
-          </h2>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={activityData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                  {activityData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
 
       {/* Team Activity Flow (Activity Trends) */}
       <div className="bg-white rounded-xl shadow-lg p-6">
@@ -362,6 +336,10 @@ export default function Home() {
                     <stop offset="5%" stopColor="#f97316" stopOpacity={0.8}/>
                     <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
                   </linearGradient>
+                  <linearGradient id="colorDrive" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0F9D58" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#0F9D58" stopOpacity={0}/>
+                  </linearGradient>
                 </defs>
                 <XAxis 
                   dataKey="date" 
@@ -381,6 +359,7 @@ export default function Home() {
                 <Area type="monotone" dataKey="github" name="GitHub" stackId="1" stroke="#24292e" fill="url(#colorGithub)" animationDuration={1000} />
                 <Area type="monotone" dataKey="slack" name="Slack" stackId="1" stroke="#4A154B" fill="url(#colorSlack)" animationDuration={1000} />
                 <Area type="monotone" dataKey="notion" name="Notion" stackId="1" stroke="#f97316" fill="url(#colorNotion)" animationDuration={1000} />
+                <Area type="monotone" dataKey="drive" name="Drive" stackId="1" stroke="#0F9D58" fill="url(#colorDrive)" animationDuration={1000} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -393,192 +372,132 @@ export default function Home() {
         )}
       </div>
 
-      {/* Deep Insights Section: Pulse & Context */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Project Pulse Heatmap */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
+      {/* Distribution & Health Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+           {/* Activity Distribution */}
+           <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                 <span className="text-2xl">📊</span> Source Distribution
+              </h2>
+              <div className="h-[250px] w-full">
+                 <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                       <Pie
+                          data={[
+                            { name: 'GitHub', value: stats.activity_summary?.github?.total_activities || 0, color: '#24292e' },
+                            { name: 'Slack', value: stats.activity_summary?.slack?.total_activities || 0, color: '#4A154B' },
+                            { name: 'Notion', value: stats.activity_summary?.notion?.total_activities || 0, color: '#f97316' },
+                            { name: 'Drive', value: stats.activity_summary?.drive?.total_activities || 0, color: '#0F9D58' },
+                          ].filter(d => d.value > 0)}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                       >
+                          {[
+                            { name: 'GitHub', value: stats.activity_summary?.github?.total_activities || 0, color: '#24292e' },
+                            { name: 'Slack', value: stats.activity_summary?.slack?.total_activities || 0, color: '#4A154B' },
+                            { name: 'Notion', value: stats.activity_summary?.notion?.total_activities || 0, color: '#f97316' },
+                            { name: 'Drive', value: stats.activity_summary?.drive?.total_activities || 0, color: '#0F9D58' },
+                          ].filter(d => d.value > 0).map((entry, index) => (
+                             <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                       </Pie>
+                       <Tooltip formatter={(value: number) => value.toLocaleString()} />
+                       <Legend />
+                    </PieChart>
+                 </ResponsiveContainer>
+              </div>
+           </div>
+
+           {/* System Health */}
+           <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                 <span className="text-2xl">🏥</span> System Health
+              </h2>
+              <div className="space-y-4">
+                 {[
+                    { label: 'GitHub', time: stats.last_collected?.github, icon: '🐙' },
+                    { label: 'Slack', time: stats.last_collected?.slack, icon: '💬' },
+                    { label: 'Notion', time: stats.last_collected?.notion, icon: '📝' },
+                    { label: 'Drive', time: stats.last_collected?.drive, icon: '📁' },
+                    { label: 'Database', time: stats.generated_at, icon: '🗄️' },
+                 ].map((item, idx) => {
+                    if (!item.time) return null;
+                    const lastUpdate = new Date(item.time);
+                    const now = new Date();
+                    const diffHours = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60);
+                    const isHealthy = diffHours < 25; // Allocating 1 hour buffer
+                    
+                    return (
+                       <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center gap-3">
+                             <span className="text-xl">{item.icon}</span>
+                             <div>
+                                <div className="font-medium text-gray-900">{item.label}</div>
+                                <div className="text-xs text-gray-500">
+                                   Last sync: {formatTimeAgo(item.time)}
+                                </div>
+                             </div>
+                          </div>
+                          <div className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 ${
+                             isHealthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                             <div className={`w-2 h-2 rounded-full ${isHealthy ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                             {isHealthy ? 'Healthy' : 'Sync Needed'}
+                          </div>
+                       </div>
+                    );
+                 })}
+              </div>
+           </div>
+        </div>
+
+        {/* Context Word Cloud (Full Width) */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-3xl">🔥</span>
-            Project Pulse
+            <span className="text-3xl">🧠</span>
+            Context Cloud
           </h2>
-          <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
-             <div className="grid grid-rows-7 grid-flow-col gap-1 w-max">
-                {(() => {
-                   const today = new Date();
-                   // Map stores the full object now for detailed tooltip
-                   const trendMap = new Map(stats.daily_trends?.map((d: any) => [d.date, d]) || []);
+          <div className="bg-gray-50 rounded-lg p-6 min-h-[200px] flex flex-wrap gap-x-6 gap-y-4 justify-center items-center content-center h-full">
+            {stats.top_keywords && stats.top_keywords.length > 0 ? (
+                stats.top_keywords.map((kw: any, idx: number) => {
+                   const maxVal = Math.max(...(stats.top_keywords?.map((k: any) => k.value) || [1]));
+                   const minVal = Math.min(...(stats.top_keywords?.map((k: any) => k.value) || [0]));
                    
-                   // Generate last 20 weeks (140 days)
-                   const weeks = 20;
-                   const totalDays = weeks * 7;
+                   // Normalize size
+                   const normalize = (val: number) => (val - minVal) / (maxVal - minVal || 1);
+                   const size = 1 + normalize(kw.value) * 2; // 1rem to 3rem
                    
-                   const cells = [];
-                   for (let i = 0; i < totalDays; i++) {
-                      // Calculate date from (today - totalDays) + i
-                      const d = new Date(today);
-                      d.setDate(d.getDate() - (totalDays - 1 - i));
-                      const dateStr = d.toISOString().split('T')[0];
-                      
-                      const dayData = trendMap.get(dateStr);
-                      const count = dayData ? (dayData.github + dayData.slack + dayData.notion) : 0;
-                      
-                      let colorClass = "bg-gray-200";
-                      if (count > 0) colorClass = "bg-green-200";
-                      if (count > 5) colorClass = "bg-green-300";
-                      if (count > 10) colorClass = "bg-green-400";
-                      if (count > 20) colorClass = "bg-green-500";
-                      if (count > 40) colorClass = "bg-green-600";
-                      
-                      // Detailed Tooltip
-                      const tooltip = `${dateStr}\nTotal Activities: ${count}\n• GitHub: ${dayData?.github || 0}\n• Slack: ${dayData?.slack || 0}\n• Notion: ${dayData?.notion || 0}`;
-                      
-                      cells.push(
-                        <div 
-                          key={dateStr} 
-                          title={tooltip}
-                          className={`w-3 h-3 rounded-sm ${colorClass} hover:ring-2 ring-gray-400 ring-offset-1 cursor-pointer transition-all hover:scale-125 relative z-0 hover:z-10`}
-                        ></div>
-                      );
-                   }
-                   return cells;
-                })()}
-             </div>
-             <div className="flex justify-between items-center mt-3 border-t border-gray-100 pt-3">
-                <div className="text-xs text-gray-500 font-medium">
-                   {(() => {
-                      const today = new Date();
-                      const start = new Date(today);
-                      start.setDate(today.getDate() - 139);
-                      const formatDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                      return `${formatDate(start)} - ${formatDate(today)}`;
-                   })()}
+                   // Color intensity based on value
+                   const opacity = 0.6 + normalize(kw.value) * 0.4;
+                   
+                   return (
+                      <span 
+                        key={idx}
+                        className="font-medium hover:text-blue-600 hover:scale-110 transition-all cursor-default"
+                        style={{ 
+                            fontSize: `${size}rem`, 
+                            opacity,
+                            color: `rgba(31, 41, 55, ${opacity})` 
+                        }}
+                        title={`${kw.text}: ${kw.value} occurrences`}
+                      >
+                        {kw.text}
+                      </span>
+                   );
+                })
+            ) : (
+                <div className="flex flex-col items-center justify-center text-gray-400 text-center">
+                    <span className="text-2xl mb-2">☁️</span>
+                   <span>Gathering context data...</span>
+                   <span className="text-xs mt-1">Check back after data collection</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <span>Less</span>
-                    <div className="w-3 h-3 bg-gray-200 rounded-sm"></div>
-                    <div className="w-3 h-3 bg-green-200 rounded-sm"></div>
-                    <div className="w-3 h-3 bg-green-400 rounded-sm"></div>
-                    <div className="w-3 h-3 bg-green-600 rounded-sm"></div>
-                    <span>More</span>
-                </div>
-             </div>
+            )}
           </div>
         </div>
-
-        {/* Recent Critical Events */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-3xl">⚡</span>
-            Recent Events
-          </h2>
-          <div className="space-y-0 pt-2">
-             {stats.recent_events && stats.recent_events.length > 0 ? (
-                stats.recent_events.map((event: any, idx: number) => (
-                   <div key={idx} className="flex gap-4 items-start group">
-                      {/* Icon Column */}
-                      <div className="flex flex-col items-center mt-0.5">
-                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm border z-10 relative
-                            ${event.source === 'github' ? 'bg-gray-50 border-gray-200 text-gray-700' : ''}
-                            ${event.source === 'notion' ? 'bg-orange-50 border-orange-200 text-orange-600' : ''}
-                         `}>
-                            {event.source === 'github' && (event.type === 'pull_request' ? '🔀' : '💻')}
-                            {event.source === 'notion' && '📝'}
-                         </div>
-                         {idx !== (stats.recent_events?.length || 0) - 1 && (
-                            <div className="w-0.5 h-full bg-gray-100 my-0 absolute top-8 bottom-0 -z-0 group-hover:bg-gray-200 transition-colors" style={{ height: 'calc(100% + 16px)' }}></div>
-                         )}
-                      </div>
-                      
-                      {/* Content Column */}
-                      <div className="flex-1 pb-6 group-hover:bg-gray-50/50 rounded-lg px-2 -ml-2 -mt-1 py-1 transition-colors">
-                         <div className="flex justify-between items-start">
-                             <a href={event.url} target="_blank" rel="noopener noreferrer" className="text-gray-900 font-semibold hover:text-blue-600 text-sm line-clamp-1 block mb-0.5">
-                                {event.title}
-                             </a>
-                             <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
-                                {new Date(event.time).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
-                             </span>
-                         </div>
-                         <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
-                            <span className="font-medium text-gray-700">{event.user}</span>
-                            <span className="text-gray-300">•</span>
-                            <span className={`capitalize ${
-                                event.meta === 'open' ? 'text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-medium' : 
-                                event.meta === 'merged' ? 'text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded font-medium' :
-                                ''
-                            }`}>{event.meta}</span>
-                            <span className="text-gray-300">•</span>
-                            <span className="text-gray-400 capitalize">{event.source}</span>
-                         </div>
-                      </div>
-                   </div>
-                ))
-             ) : (
-                <div className="flex flex-col items-center justify-center text-gray-400 text-center py-10">
-                    <span className="text-2xl mb-2">📭</span>
-                   <span>No recent critical events found</span>
-                   <span className="text-xs mt-1">Collecting PRs, Commits, and Pages...</span>
-                </div>
-             )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* Database Overview */}
-      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl shadow-lg p-6 border-2 border-indigo-200">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-          <span className="text-3xl">🗄️</span>
-          Database Overview
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg p-6 shadow-md hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-4xl">📚</div>
-              <div className="text-indigo-600 bg-indigo-100 rounded-full p-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-            </div>
-            <div className="text-sm font-medium text-gray-600 mb-2">Total Collections</div>
-            <div className="text-4xl font-bold text-indigo-900">
-              {stats.database.total_collections}
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg p-6 shadow-md hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-4xl">📄</div>
-              <div className="text-pink-600 bg-pink-100 rounded-full p-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-            </div>
-            <div className="text-sm font-medium text-gray-600 mb-2">Total Documents</div>
-            <div className="text-4xl font-bold text-pink-900">
-              {stats.database.total_documents.toLocaleString()}
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg p-6 shadow-md hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-4xl">📊</div>
-              <div className="text-teal-600 bg-teal-100 rounded-full p-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-            </div>
-            <div className="text-sm font-medium text-gray-600 mb-2">Avg Docs/Collection</div>
-            <div className="text-4xl font-bold text-teal-900">
-              {Math.round(stats.database.total_documents / stats.database.total_collections).toLocaleString()}
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">

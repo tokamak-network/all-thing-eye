@@ -34,15 +34,10 @@ export interface AppStats {
     drive: number;
   }>;
 
-  // Recent critical events
-  recent_events?: Array<{
-    source: string;
-    type: string;
-    title: string;
-    user: string;
-    time: string;
-    url?: string;
-    meta?: string;
+  // Context keywords (Recent 7 days)
+  top_keywords?: Array<{
+    text: string;
+    value: number;
   }>;
   
   // Database information
