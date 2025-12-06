@@ -2277,27 +2277,33 @@ export default function ActivitiesPage() {
                             : "English"}
                         </p>
                       )}
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <div className="grid grid-cols-3 gap-4 mb-4">
-                          <div>
-                            <div className="text-sm text-gray-500">Meetings</div>
-                            <div className="text-xl font-bold text-gray-900">
-                              {selectedDailyAnalysis.analysis.summary.overview.meeting_count}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-gray-500">Total Time</div>
-                            <div className="text-xl font-bold text-gray-900">
-                              {selectedDailyAnalysis.analysis.summary.overview.total_time}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-gray-500">Main Topics</div>
-                            <div className="text-xl font-bold text-gray-900">
-                              {selectedDailyAnalysis.analysis.summary.topics?.length || 0}
-                            </div>
-                          </div>
+                      
+                      {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.text ? (
+                        <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                          {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.text}
                         </div>
+                      ) : (
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <div className="grid grid-cols-3 gap-4 mb-4">
+                            <div>
+                              <div className="text-sm text-gray-500">Meetings</div>
+                              <div className="text-xl font-bold text-gray-900">
+                                {selectedDailyAnalysis.analysis.summary.overview.meeting_count}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-gray-500">Total Time</div>
+                              <div className="text-xl font-bold text-gray-900">
+                                {selectedDailyAnalysis.analysis.summary.overview.total_time}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-gray-500">Main Topics</div>
+                              <div className="text-xl font-bold text-gray-900">
+                                {selectedDailyAnalysis.analysis.summary.topics?.length || 0}
+                              </div>
+                            </div>
+                          </div>
                         {/* Meeting Titles */}
                         {selectedDailyAnalysis.meeting_titles &&
                           selectedDailyAnalysis.meeting_titles.length > 0 && (
@@ -2421,8 +2427,9 @@ export default function ActivitiesPage() {
                             </div>
                           )}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                )}
 
                   {/* Topics Tab */}
                   {dailyAnalysisTab === "topics" &&
@@ -2492,17 +2499,27 @@ export default function ActivitiesPage() {
                             let translatedTopics = selectedDailyAnalysis.analysis.summary.topics;
                             const translationKey = `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`;
                             const translatedText = translations[translationKey]?.text;
+                            let parseFailed = false;
                             
                             if (translatedText) {
                               try {
                                 const parsed = JSON.parse(translatedText);
                                 if (Array.isArray(parsed) && parsed.length > 0) {
                                   translatedTopics = parsed;
+                                } else {
+                                  parseFailed = true;
                                 }
                               } catch (e) {
-                                // Fall back to original if parsing fails
-                                translatedTopics = selectedDailyAnalysis.analysis.summary.topics;
+                                parseFailed = true;
                               }
+                            }
+                            
+                            if (parseFailed && translatedText) {
+                                return (
+                                    <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                                        {translatedText}
+                                    </div>
+                                );
                             }
                             
                             return translatedTopics.map(
