@@ -7,7 +7,9 @@ This ensures data consistency across all frontend pages.
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import Counter
+import re
 
 from src.utils.logger import get_logger
 from backend.middleware.jwt_auth import require_admin
@@ -172,7 +174,138 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
                 }
             }
         
-        # 5. Get last collection times
+        # 5. Get daily trends
+        daily_trends = []
+        try:
+            # Last 90 days
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=90)
+            
+            # Helper for aggregation
+            async def get_daily_counts(collection_name, date_field):
+                try:
+                    coll = db[collection_name]
+                    pipeline = [
+                        {
+                            "$match": {
+                                date_field: {"$gte": start_date}
+                            }
+                        },
+                        {
+                            "$group": {
+                                "_id": {
+                                    "$dateToString": {
+                                        "format": "%Y-%m-%d", 
+                                        "date": f"${date_field}"
+                                    }
+                                },
+                                "count": {"$sum": 1}
+                            }
+                        },
+                        {"$sort": {"_id": 1}}
+                    ]
+                    result = await coll.aggregate(pipeline).to_list(None)
+                    return {doc["_id"]: doc["count"] for doc in result if doc["_id"] is not None}
+                except Exception as e:
+                    logger.warning(f"Trend aggregation failed for {collection_name}: {e}")
+                    return {}
+
+            # Execute aggregations
+            github_trend = await get_daily_counts("github_commits", "date")
+            slack_trend = await get_daily_counts("slack_messages", "posted_at")
+            notion_trend = await get_daily_counts("notion_pages", "last_edited_time")
+            drive_trend = await get_daily_counts("drive_activities", "time")
+            
+            # Initialize map with 0s for all dates in range
+            trend_map = {}
+            current = start_date
+            while current <= end_date:
+                d = current.strftime("%Y-%m-%d")
+                trend_map[d] = {
+                    "date": d, 
+                    "github": 0, 
+                    "slack": 0, 
+                    "notion": 0, 
+                    "drive": 0
+                }
+                current += timedelta(days=1)
+                
+            # Fill data
+            for date_str, count in github_trend.items():
+                if date_str in trend_map: trend_map[date_str]["github"] = count
+            for date_str, count in slack_trend.items():
+                if date_str in trend_map: trend_map[date_str]["slack"] = count
+            for date_str, count in notion_trend.items():
+                if date_str in trend_map: trend_map[date_str]["notion"] = count
+            for date_str, count in drive_trend.items():
+                if date_str in trend_map: trend_map[date_str]["drive"] = count
+                
+            daily_trends = sorted(trend_map.values(), key=lambda x: x["date"])
+            
+        except Exception as e:
+            logger.error(f"Failed to generate daily trends: {e}")
+
+        # 6. Get context keywords
+        top_keywords = []
+        try:
+            # Recent 7 days for context
+            keyword_start_date = datetime.utcnow() - timedelta(days=7)
+            
+            # Helper to fetch text from collection
+            async def get_recent_texts(collection_name, text_field, date_field):
+                try:
+                    coll = db[collection_name]
+                    cursor = coll.find(
+                        {date_field: {"$gte": keyword_start_date}},
+                        {text_field: 1, "_id": 0}
+                    ).sort(date_field, -1).limit(200) # Limit to 200 documents per source
+                    
+                    texts = []
+                    async for doc in cursor:
+                        if text_field in doc and doc[text_field]:
+                            texts.append(doc[text_field])
+                    return texts
+                except Exception:
+                    return []
+            
+            # Fetch texts
+            github_texts = await get_recent_texts("github_commits", "message", "date")
+            slack_texts = await get_recent_texts("slack_messages", "text", "posted_at")
+            notion_texts = await get_recent_texts("notion_pages", "title", "last_edited_time")
+            
+            all_texts = github_texts + slack_texts + notion_texts
+            
+            # Simple keyword extraction
+            if all_texts:
+                # Basic stopwords
+                stopwords = set([
+                    "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", 
+                    "it", "for", "not", "on", "with", "he", "as", "you", "do", "at", 
+                    "this", "but", "his", "by", "from", "they", "we", "say", "her", 
+                    "she", "or", "an", "will", "my", "one", "all", "would", "there", 
+                    "their", "what", "so", "up", "out", "if", "about", "who", "get", 
+                    "which", "go", "me", "https", "http", "com", "www", "github", 
+                    "slack", "drive", "google", "feat", "fix", "chore", "docs", "refactor",
+                    "merge", "branch", "pull", "request", "update", "delete", "create",
+                    "add", "remove", "test", "main", "master", "dev", "prod", "is", "are", "was"
+                ])
+                
+                words = []
+                for text in all_texts:
+                    # Remove URLs and special chars
+                    clean_text = re.sub(r'http\S+', '', str(text))
+                    clean_text = re.sub(r'[^\w\s]', '', clean_text)
+                    tokens = clean_text.lower().split()
+                    words.extend([w for w in tokens if w not in stopwords and len(w) > 2])
+                
+                # Get top 30
+                common_words = Counter(words).most_common(30)
+                top_keywords = [{"text": word, "value": count} for word, count in common_words]
+                
+        except Exception as e:
+            logger.warning(f"Failed to extract keywords: {e}")
+
+        # 7. Get last collection times
         sources = {
             "github": ["github_commits", "github_pull_requests", "github_issues"],
             "slack": ["slack_messages"],
@@ -201,7 +334,7 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             
             last_collected[source] = latest_time.isoformat() + 'Z' if latest_time else None
         
-        # 6. Compile final response
+        # 8. Compile final response
         return {
             # Main statistics (for Dashboard cards)
             "total_members": total_members,
@@ -211,6 +344,8 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             
             # Activity breakdown (for Dashboard summary section)
             "activity_summary": activity_summary,
+            "daily_trends": daily_trends,
+            "top_keywords": top_keywords,
             
             # Database information (for Database Viewer)
             "database": {

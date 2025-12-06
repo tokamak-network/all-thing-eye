@@ -2514,12 +2514,12 @@ export default function ActivitiesPage() {
                               }
                             }
                             
+                            // If parsing failed but we have translated text, try to display it in a structured way
+                            // Otherwise fall back to original topics
                             if (parseFailed && translatedText) {
-                                return (
-                                    <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700 font-sans">
-                                        {translatedText}
-                                    </div>
-                                );
+                                // Try to parse as markdown or structured text and display similar to original format
+                                // For now, fall back to original to maintain consistent styling
+                                translatedTopics = selectedDailyAnalysis.analysis.summary.topics;
                             }
                             
                             return translatedTopics.map(
@@ -2655,15 +2655,27 @@ export default function ActivitiesPage() {
                           </p>
                         )}
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`]?.text
-                            ? translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`].text.split("\n").map((decision: string, idx: number) => (
+                          {(() => {
+                            const translationKey = `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`;
+                            const translatedText = translations[translationKey]?.text;
+                            
+                            if (translatedText && translatedText.trim()) {
+                              // Split by newline and filter out empty lines
+                              const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                              if (translatedItems.length > 0) {
+                                return translatedItems.map((decision: string, idx: number) => (
+                                  <li key={idx}>{decision.trim()}</li>
+                                ));
+                              }
+                            }
+                            
+                            // Fall back to original
+                            return selectedDailyAnalysis.analysis.summary.key_decisions.map(
+                              (decision: string, idx: number) => (
                                 <li key={idx}>{decision}</li>
-                              ))
-                            : selectedDailyAnalysis.analysis.summary.key_decisions.map(
-                                (decision: string, idx: number) => (
-                                  <li key={idx}>{decision}</li>
-                                )
-                              )}
+                              )
+                            );
+                          })()}
                         </ul>
                       </div>
                     )}
@@ -2731,15 +2743,27 @@ export default function ActivitiesPage() {
                           </p>
                         )}
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`]?.text
-                            ? translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`].text.split("\n").map((achievement: string, idx: number) => (
+                          {(() => {
+                            const translationKey = `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`;
+                            const translatedText = translations[translationKey]?.text;
+                            
+                            if (translatedText && translatedText.trim()) {
+                              // Split by newline and filter out empty lines
+                              const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                              if (translatedItems.length > 0) {
+                                return translatedItems.map((achievement: string, idx: number) => (
+                                  <li key={idx}>{achievement.trim()}</li>
+                                ));
+                              }
+                            }
+                            
+                            // Fall back to original
+                            return selectedDailyAnalysis.analysis.summary.major_achievements.map(
+                              (achievement: string, idx: number) => (
                                 <li key={idx}>{achievement}</li>
-                              ))
-                            : selectedDailyAnalysis.analysis.summary.major_achievements.map(
-                                (achievement: string, idx: number) => (
-                                  <li key={idx}>{achievement}</li>
-                                )
-                              )}
+                              )
+                            );
+                          })()}
                         </ul>
                       </div>
                     )}
@@ -2807,15 +2831,27 @@ export default function ActivitiesPage() {
                           </p>
                         )}
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`]?.text
-                            ? translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`].text.split("\n").map((issue: string, idx: number) => (
+                          {(() => {
+                            const translationKey = `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`;
+                            const translatedText = translations[translationKey]?.text;
+                            
+                            if (translatedText && translatedText.trim()) {
+                              // Split by newline and filter out empty lines
+                              const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                              if (translatedItems.length > 0) {
+                                return translatedItems.map((issue: string, idx: number) => (
+                                  <li key={idx}>{issue.trim()}</li>
+                                ));
+                              }
+                            }
+                            
+                            // Fall back to original
+                            return selectedDailyAnalysis.analysis.summary.common_issues.map(
+                              (issue: string, idx: number) => (
                                 <li key={idx}>{issue}</li>
-                              ))
-                            : selectedDailyAnalysis.analysis.summary.common_issues.map(
-                                (issue: string, idx: number) => (
-                                  <li key={idx}>{issue}</li>
-                                )
-                              )}
+                              )
+                            );
+                          })()}
                         </ul>
                       </div>
                     )}
@@ -2889,16 +2925,24 @@ export default function ActivitiesPage() {
                             const translationKey = `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`;
                             const translatedText = translations[translationKey]?.text;
                             
-                            if (translatedText) {
+                            if (translatedText && translatedText.trim()) {
                               try {
                                 const parsed = JSON.parse(translatedText);
                                 if (Array.isArray(parsed) && parsed.length > 0) {
                                   translatedParticipants = parsed;
+                                  console.log("Using translated participants:", translatedParticipants.length);
+                                } else {
+                                  // If parsed but not an array or empty, fall back to original
+                                  console.warn("Translated participants is not a valid array, using original");
+                                  translatedParticipants = selectedDailyAnalysis.analysis.participants;
                                 }
                               } catch (e) {
                                 // Fall back to original if parsing fails
+                                console.warn("Failed to parse translated participants:", e, "Using original");
                                 translatedParticipants = selectedDailyAnalysis.analysis.participants;
                               }
+                            } else {
+                              console.log("No translated text found, using original participants");
                             }
                             
                             // Apply member filter if set

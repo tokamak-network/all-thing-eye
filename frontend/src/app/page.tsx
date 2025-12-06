@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useAppStats } from '@/hooks/useAppStats';
 import { useEffect, useState } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line, CartesianGrid } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line, CartesianGrid, AreaChart, Area } from 'recharts';
 
 export default function Home() {
   const { stats, loading, error } = useAppStats();
@@ -339,44 +339,169 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Activity Breakdown with Progress Bars */}
+      {/* Team Activity Flow (Activity Trends) */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-          <span className="text-3xl">📋</span>
-          Detailed Activity Breakdown
+          <span className="text-3xl">🌊</span>
+          Team Activity Flow
         </h2>
-        <div className="space-y-4">
-          {activityData.map((item) => {
-            const style = getSourceStyle(item.source);
-            return (
-              <div key={item.source} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl">{style.icon}</span>
-                    <div>
-                      <span className="font-bold text-gray-900 text-lg capitalize">{item.source}</span>
-                      <p className="text-sm text-gray-500">{item.types} activity type{item.types !== 1 ? 's' : ''}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-bold text-gray-900 text-2xl">{item.count.toLocaleString()}</span>
-                    <p className="text-sm text-gray-500">{item.percentage.toFixed(1)}%</p>
-                  </div>
+        {stats.daily_trends && stats.daily_trends.length > 0 ? (
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stats.daily_trends} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorGithub" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#24292e" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#24292e" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorSlack" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4A154B" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#4A154B" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorNotion" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorDrive" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0F9D58" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#0F9D58" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis 
+                  dataKey="date" 
+                  tickFormatter={(str) => str.slice(5)} 
+                  stroke="#9ca3af"
+                  fontSize={12}
+                  tickMargin={10}
+                />
+                <YAxis stroke="#9ca3af" fontSize={12} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#fff', borderRadius: '0.5rem', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                  itemStyle={{ fontSize: '0.875rem' }}
+                  labelStyle={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#111827' }}
+                />
+                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                <Area type="monotone" dataKey="github" name="GitHub" stackId="1" stroke="#24292e" fill="url(#colorGithub)" animationDuration={1000} />
+                <Area type="monotone" dataKey="slack" name="Slack" stackId="1" stroke="#4A154B" fill="url(#colorSlack)" animationDuration={1000} />
+                <Area type="monotone" dataKey="notion" name="Notion" stackId="1" stroke="#f97316" fill="url(#colorNotion)" animationDuration={1000} />
+                <Area type="monotone" dataKey="drive" name="Drive" stackId="1" stroke="#0F9D58" fill="url(#colorDrive)" animationDuration={1000} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-80 bg-gray-50 rounded-lg text-gray-400">
+            <span className="text-4xl mb-2">📉</span>
+            <p>No activity trend data available yet.</p>
+            <p className="text-sm mt-1">Collecting data over time...</p>
+          </div>
+        )}
+      </div>
+
+      {/* Deep Insights Section: Pulse & Context */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Project Pulse Heatmap */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <span className="text-3xl">🔥</span>
+            Project Pulse
+          </h2>
+          <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
+             <div className="grid grid-rows-7 grid-flow-col gap-1 w-max">
+                {(() => {
+                   const today = new Date();
+                   const trendMap = new Map(stats.daily_trends?.map((d: any) => [d.date, d.github + d.slack + d.notion + d.drive]) || []);
+                   
+                   // Generate last 20 weeks (approx 140 days)
+                   const weeks = 20;
+                   const totalDays = weeks * 7;
+                   
+                   const cells = [];
+                   for (let i = 0; i < totalDays; i++) {
+                      // Calculate date from (today - totalDays) + i
+                      const d = new Date(today);
+                      d.setDate(d.getDate() - (totalDays - 1 - i));
+                      const dateStr = d.toISOString().split('T')[0];
+                      const count = trendMap.get(dateStr) || 0;
+                      
+                      let colorClass = "bg-gray-200";
+                      if (count > 0) colorClass = "bg-green-200";
+                      if (count > 5) colorClass = "bg-green-300";
+                      if (count > 10) colorClass = "bg-green-400";
+                      if (count > 20) colorClass = "bg-green-500";
+                      if (count > 40) colorClass = "bg-green-600";
+                      
+                      cells.push(
+                        <div 
+                          key={dateStr} 
+                          title={`${dateStr}: ${count} activities`}
+                          className={`w-3 h-3 rounded-sm ${colorClass} hover:ring-1 ring-gray-400 cursor-pointer transition-colors`}
+                        ></div>
+                      );
+                   }
+                   return cells;
+                })()}
+             </div>
+             <div className="flex justify-between items-center mt-2">
+                <div className="text-xs text-gray-400">Last 20 weeks</div>
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span>Less</span>
+                    <div className="w-3 h-3 bg-gray-200 rounded-sm"></div>
+                    <div className="w-3 h-3 bg-green-200 rounded-sm"></div>
+                    <div className="w-3 h-3 bg-green-400 rounded-sm"></div>
+                    <div className="w-3 h-3 bg-green-600 rounded-sm"></div>
+                    <span>More</span>
                 </div>
-                <div className="relative w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                  <div
-                    className="h-4 rounded-full transition-all duration-1000 ease-out"
-                    style={{ 
-                      width: mounted ? `${item.percentage}%` : '0%',
-                      backgroundColor: style.chartColor
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
-                </div>
-              </div>
-            );
-          })}
+             </div>
+          </div>
         </div>
+
+        {/* Context Word Cloud */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <span className="text-3xl">🧠</span>
+            Context Cloud
+          </h2>
+          <div className="bg-gray-50 rounded-lg p-6 min-h-[160px] flex flex-wrap gap-x-4 gap-y-2 justify-center items-center content-center h-full">
+            {stats.top_keywords && stats.top_keywords.length > 0 ? (
+                stats.top_keywords.map((kw: any, idx: number) => {
+                   const maxVal = Math.max(...(stats.top_keywords?.map((k: any) => k.value) || [1]));
+                   const minVal = Math.min(...(stats.top_keywords?.map((k: any) => k.value) || [0]));
+                   
+                   // Normalize size
+                   const normalize = (val: number) => (val - minVal) / (maxVal - minVal || 1);
+                   const size = 0.8 + normalize(kw.value) * 1.5; // 0.8rem to 2.3rem
+                   
+                   // Color intensity based on value
+                   // e.g. from Slate-500 to Blue-600
+                   const opacity = 0.5 + normalize(kw.value) * 0.5;
+                   
+                   return (
+                      <span 
+                        key={idx}
+                        className="font-medium hover:text-blue-600 hover:scale-110 transition-all cursor-default"
+                        style={{ 
+                            fontSize: `${size}rem`, 
+                            opacity,
+                            color: `rgba(31, 41, 55, ${opacity + 0.2})` 
+                        }}
+                        title={`${kw.text}: ${kw.value} occurrences`}
+                      >
+                        {kw.text}
+                      </span>
+                   );
+                })
+            ) : (
+                <div className="flex flex-col items-center justify-center text-gray-400 text-center">
+                    <span className="text-2xl mb-2">☁️</span>
+                   <span>Gathering context data...</span>
+                   <span className="text-xs mt-1">Check back after data collection</span>
+                </div>
+            )}
+          </div>
+        </div>
+
       </div>
 
       {/* Database Overview */}

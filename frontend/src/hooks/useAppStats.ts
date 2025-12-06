@@ -25,6 +25,21 @@ export interface AppStats {
     };
   };
   
+  // Daily activity trends (Recent 30 days)
+  daily_trends?: Array<{
+    date: string;
+    github: number;
+    slack: number;
+    notion: number;
+    drive: number;
+  }>;
+
+  // Context keywords (Recent 7 days)
+  top_keywords?: Array<{
+    text: string;
+    value: number;
+  }>;
+  
   // Database information
   database: {
     total_collections: number;
