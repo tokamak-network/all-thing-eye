@@ -69,6 +69,7 @@ export default function ActivitiesPage() {
     Record<string, { text: string; lang: string }>
   >({});
   const [translating, setTranslating] = useState<string | null>(null);
+  const [translatingSet, setTranslatingSet] = useState<Set<string>>(new Set());
 
   // AI Meeting Analysis states
   const [meetingAnalysis, setMeetingAnalysis] = useState<any>(null);
@@ -188,10 +189,8 @@ export default function ActivitiesPage() {
     text: string,
     targetLang: string,
     sourceLang?: string
-  ) => {
-    if (!text || translating) return;
-
-    const key = `${activityId}_${targetLang}`;
+  ): Promise<void> => {
+    if (!text) return Promise.resolve();
 
     // If already translated to this language, toggle back to original
     if (translations[activityId]?.lang === targetLang) {
@@ -200,10 +199,22 @@ export default function ActivitiesPage() {
         delete newTranslations[activityId];
         return newTranslations;
       });
-      return;
+      return Promise.resolve();
     }
 
+    // Check if this specific translation is already in progress
+    setTranslatingSet((prev) => {
+      if (prev.has(activityId)) {
+        return prev; // Already translating, skip
+      }
+      const newSet = new Set(prev);
+      newSet.add(activityId);
+      return newSet;
+    });
+
+    // Also set the main translating state for backward compatibility
     setTranslating(activityId);
+    
     try {
       const result = await apiClient.translateText(text, targetLang, sourceLang);
       setTranslations((prev) => ({
@@ -212,10 +223,15 @@ export default function ActivitiesPage() {
       }));
     } catch (err: any) {
       console.error("Translation error:", err);
-      // Show error but don't block UI
-      alert("Translation failed. Please try again.");
+      // Show error but don't block UI - don't alert for individual translations in batch
     } finally {
-      setTranslating(null);
+      setTranslatingSet((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(activityId);
+        return newSet;
+      });
+      // Only clear main translating if this was the last one
+      setTranslating((prev) => (prev === activityId ? null : prev));
     }
   };
 
@@ -2440,6 +2456,90 @@ export default function ActivitiesPage() {
                           <h3 className="text-lg font-semibold text-gray-900">
                             Topics
                           </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={async () => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const topics = selectedDailyAnalysis.analysis.summary.topics;
+                                
+                                // Collect all translation promises for parallel execution
+                                const translationPromises: Promise<void>[] = [];
+                                
+                                topics.forEach((topic: any, idx: number) => {
+                                  const topicKey = `daily_analysis_topic_${dateId}_${idx}`;
+                                  
+                                  if (topic.key_discussions?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                  if (topic.key_decisions?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                  if (topic.progress?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                  if (topic.issues?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                });
+                                
+                                // Execute all translations in parallel
+                                await Promise.all(translationPromises);
+                              }}
+                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_topic_"))}
+                              className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const topics = selectedDailyAnalysis.analysis.summary.topics;
+                                
+                                // Collect all translation promises for parallel execution
+                                const translationPromises: Promise<void>[] = [];
+                                
+                                topics.forEach((topic: any, idx: number) => {
+                                  const topicKey = `daily_analysis_topic_${dateId}_${idx}`;
+                                  
+                                  if (topic.key_discussions?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                  if (topic.key_decisions?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                  if (topic.progress?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                  if (topic.issues?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                });
+                                
+                                // Execute all translations in parallel
+                                await Promise.all(translationPromises);
+                              }}
+                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_topic_"))}
+                              className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
+                            >
+                              KR
+                            </button>
+                          </div>
                         </div>
                         <div className="space-y-4">
                           {selectedDailyAnalysis.analysis.summary.topics.map(
@@ -2467,55 +2567,9 @@ export default function ActivitiesPage() {
                                   id={`topic-${idx}`}
                                   className="border border-gray-200 rounded-lg p-4 transition-all"
                                 >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <h4 className="font-semibold text-gray-900">
-                                      {topic.topic}
-                                    </h4>
-                                    <div className="flex gap-1">
-                                      <button
-                                        onClick={() => {
-                                          // Translate all fields for this topic
-                                          if (topic.key_discussions?.length > 0) {
-                                            handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "en", "ko");
-                                          }
-                                          if (topic.key_decisions?.length > 0) {
-                                            handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "en", "ko");
-                                          }
-                                          if (topic.progress?.length > 0) {
-                                            handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "en", "ko");
-                                          }
-                                          if (topic.issues?.length > 0) {
-                                            handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "en", "ko");
-                                          }
-                                        }}
-                                        disabled={translating?.startsWith(topicKey)}
-                                        className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
-                                      >
-                                        EN
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          // Translate all fields for this topic
-                                          if (topic.key_discussions?.length > 0) {
-                                            handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "ko", "en");
-                                          }
-                                          if (topic.key_decisions?.length > 0) {
-                                            handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "ko", "en");
-                                          }
-                                          if (topic.progress?.length > 0) {
-                                            handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "ko", "en");
-                                          }
-                                          if (topic.issues?.length > 0) {
-                                            handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "ko", "en");
-                                          }
-                                        }}
-                                        disabled={translating?.startsWith(topicKey)}
-                                        className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
-                                      >
-                                        KR
-                                      </button>
-                                    </div>
-                                  </div>
+                                  <h4 className="font-semibold text-gray-900 mb-2">
+                                    {topic.topic}
+                                  </h4>
                                   {topic.key_discussions &&
                                     topic.key_discussions.length > 0 && (
                                       <div className="mb-2">
@@ -2849,11 +2903,108 @@ export default function ActivitiesPage() {
                           <h3 className="text-lg font-semibold text-gray-900">
                             Participants
                           </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={async () => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const participants = selectedDailyAnalysis.analysis.participants;
+                                
+                                // Collect all translation promises for parallel execution
+                                const translationPromises: Promise<void>[] = [];
+                                
+                                participants.forEach((participant: any, idx: number) => {
+                                  const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
+                                  
+                                  if (participant.key_activities?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                  if (participant.action_items?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                  if (participant.progress?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                  if (participant.issues?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                  if (participant.collaboration?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "en", "ko")
+                                    );
+                                  }
+                                });
+                                
+                                // Execute all translations in parallel
+                                await Promise.all(translationPromises);
+                              }}
+                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
+                              className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const participants = selectedDailyAnalysis.analysis.participants;
+                                
+                                // Collect all translation promises for parallel execution
+                                const translationPromises: Promise<void>[] = [];
+                                
+                                participants.forEach((participant: any, idx: number) => {
+                                  const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
+                                  
+                                  if (participant.key_activities?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                  if (participant.action_items?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                  if (participant.progress?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                  if (participant.issues?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                  if (participant.collaboration?.length > 0) {
+                                    translationPromises.push(
+                                      handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "ko", "en")
+                                    );
+                                  }
+                                });
+                                
+                                // Execute all translations in parallel
+                                await Promise.all(translationPromises);
+                              }}
+                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
+                              className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
+                            >
+                              KR
+                            </button>
+                          </div>
                         </div>
                         <div className="space-y-4">
                           {(() => {
+                            const dateId = selectedDailyAnalysis.target_date;
+                            const allParticipants = selectedDailyAnalysis.analysis.participants;
+                            
                             // Apply member filter if set
-                            let filtered = [...selectedDailyAnalysis.analysis.participants];
+                            let filtered = allParticipants.map((p: any, idx: number) => ({ ...p, originalIdx: idx }));
                             if (memberFilter) {
                               filtered = filtered.filter((p: any) =>
                                 p.name?.toLowerCase().includes(memberFilter.toLowerCase())
@@ -2868,9 +3019,8 @@ export default function ActivitiesPage() {
                             });
                             
                             return filtered.map(
-                              (participant: any, idx: number) => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
+                              (participant: any, displayIdx: number) => {
+                                const participantKey = `daily_analysis_participant_${dateId}_${participant.originalIdx}`;
                                 
                                 // Helper function to get translated text for a field
                                 const getTranslatedField = (fieldName: string, originalArray: string[]) => {
@@ -2888,68 +3038,16 @@ export default function ActivitiesPage() {
                                 
                                 return (
                                   <div
-                                    key={idx}
+                                    key={displayIdx}
                                     className="border border-gray-200 rounded-lg p-4"
                                   >
                                     <div className="flex items-center justify-between mb-2">
                                       <h4 className="font-semibold text-gray-900">
                                         {participant.name}
                                       </h4>
-                                      <div className="flex items-center gap-2">
-                                        <div className="text-sm text-gray-500">
-                                          {participant.speaking_time} (
-                                          {participant.speaking_percentage?.toFixed(1) || 0}%)
-                                        </div>
-                                        <div className="flex gap-1">
-                                          <button
-                                            onClick={() => {
-                                              // Translate key_activities and action_items for this participant
-                                              if (participant.key_activities?.length > 0) {
-                                                handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "en", "ko");
-                                              }
-                                              if (participant.action_items?.length > 0) {
-                                                handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "en", "ko");
-                                              }
-                                              if (participant.progress?.length > 0) {
-                                                handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "en", "ko");
-                                              }
-                                              if (participant.issues?.length > 0) {
-                                                handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "en", "ko");
-                                              }
-                                              if (participant.collaboration?.length > 0) {
-                                                handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "en", "ko");
-                                              }
-                                            }}
-                                            disabled={translating?.startsWith(participantKey)}
-                                            className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
-                                          >
-                                            EN
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              // Translate key_activities and action_items for this participant
-                                              if (participant.key_activities?.length > 0) {
-                                                handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "ko", "en");
-                                              }
-                                              if (participant.action_items?.length > 0) {
-                                                handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "ko", "en");
-                                              }
-                                              if (participant.progress?.length > 0) {
-                                                handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "ko", "en");
-                                              }
-                                              if (participant.issues?.length > 0) {
-                                                handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "ko", "en");
-                                              }
-                                              if (participant.collaboration?.length > 0) {
-                                                handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "ko", "en");
-                                              }
-                                            }}
-                                            disabled={translating?.startsWith(participantKey)}
-                                            className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
-                                          >
-                                            KR
-                                          </button>
-                                        </div>
+                                      <div className="text-sm text-gray-500">
+                                        {participant.speaking_time} (
+                                        {participant.speaking_percentage?.toFixed(1) || 0}%)
                                       </div>
                                     </div>
                                     <div className="grid grid-cols-3 gap-4 text-sm mb-3">
