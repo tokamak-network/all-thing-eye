@@ -2440,98 +2440,82 @@ export default function ActivitiesPage() {
                           <h3 className="text-lg font-semibold text-gray-900">
                             Topics
                           </h3>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const topicsText = JSON.stringify(selectedDailyAnalysis.analysis.summary.topics);
-                                if (dateId && topicsText) {
-                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "en", "ko");
-                                }
-                              }}
-                              disabled={translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`}
-                              className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                              } ${
-                                translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`
-                                  ? "opacity-50 cursor-wait"
-                                  : ""
-                              }`}
-                            >
-                              EN
-                            </button>
-                            <button
-                              onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const topicsText = JSON.stringify(selectedDailyAnalysis.analysis.summary.topics);
-                                if (dateId && topicsText) {
-                                  handleTranslate(`daily_analysis_topics_${dateId}`, topicsText, "ko", "en");
-                                }
-                              }}
-                              disabled={translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`}
-                              className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                              } ${
-                                translating === `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`
-                                  ? "opacity-50 cursor-wait"
-                                  : ""
-                              }`}
-                            >
-                              KR
-                            </button>
-                          </div>
                         </div>
-                        {translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`] && (
-                          <p className="text-xs text-gray-400 mb-2">
-                            🌐 Translated to{" "}
-                            {translations[`daily_analysis_topics_${selectedDailyAnalysis?.target_date}`].lang === "ko"
-                              ? "Korean"
-                              : "English"}
-                          </p>
-                        )}
                         <div className="space-y-4">
-                          {(() => {
-                            // Use translated topics if available, otherwise use original
-                            let translatedTopics = selectedDailyAnalysis.analysis.summary.topics;
-                            const translationKey = `daily_analysis_topics_${selectedDailyAnalysis?.target_date}`;
-                            const translatedText = translations[translationKey]?.text;
-                            let parseFailed = false;
-                            
-                            if (translatedText) {
-                              try {
-                                const parsed = JSON.parse(translatedText);
-                                if (Array.isArray(parsed) && parsed.length > 0) {
-                                  translatedTopics = parsed;
-                                } else {
-                                  parseFailed = true;
+                          {selectedDailyAnalysis.analysis.summary.topics.map(
+                            (topic: any, idx: number) => {
+                              const dateId = selectedDailyAnalysis.target_date;
+                              const topicKey = `daily_analysis_topic_${dateId}_${idx}`;
+                              
+                              // Helper function to get translated text for a field
+                              const getTranslatedField = (fieldName: string, originalArray: string[]) => {
+                                const translationKey = `${topicKey}_${fieldName}`;
+                                const translatedText = translations[translationKey]?.text;
+                                
+                                if (translatedText && translatedText.trim()) {
+                                  const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                                  if (translatedItems.length > 0) {
+                                    return translatedItems;
+                                  }
                                 }
-                              } catch (e) {
-                                parseFailed = true;
-                              }
-                            }
-                            
-                            // If parsing failed but we have translated text, try to display it in a structured way
-                            // Otherwise fall back to original topics
-                            if (parseFailed && translatedText) {
-                                // Try to parse as markdown or structured text and display similar to original format
-                                // For now, fall back to original to maintain consistent styling
-                                translatedTopics = selectedDailyAnalysis.analysis.summary.topics;
-                            }
-                            
-                            return translatedTopics.map(
-                              (topic: any, idx: number) => (
+                                return originalArray;
+                              };
+                              
+                              return (
                                 <div
                                   key={idx}
                                   id={`topic-${idx}`}
                                   className="border border-gray-200 rounded-lg p-4 transition-all"
                                 >
-                                  <h4 className="font-semibold text-gray-900 mb-2">
-                                    {topic.topic}
-                                  </h4>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h4 className="font-semibold text-gray-900">
+                                      {topic.topic}
+                                    </h4>
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={() => {
+                                          // Translate all fields for this topic
+                                          if (topic.key_discussions?.length > 0) {
+                                            handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "en", "ko");
+                                          }
+                                          if (topic.key_decisions?.length > 0) {
+                                            handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "en", "ko");
+                                          }
+                                          if (topic.progress?.length > 0) {
+                                            handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "en", "ko");
+                                          }
+                                          if (topic.issues?.length > 0) {
+                                            handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "en", "ko");
+                                          }
+                                        }}
+                                        disabled={translating?.startsWith(topicKey)}
+                                        className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                      >
+                                        EN
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          // Translate all fields for this topic
+                                          if (topic.key_discussions?.length > 0) {
+                                            handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "ko", "en");
+                                          }
+                                          if (topic.key_decisions?.length > 0) {
+                                            handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "ko", "en");
+                                          }
+                                          if (topic.progress?.length > 0) {
+                                            handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "ko", "en");
+                                          }
+                                          if (topic.issues?.length > 0) {
+                                            handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "ko", "en");
+                                          }
+                                        }}
+                                        disabled={translating?.startsWith(topicKey)}
+                                        className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                      >
+                                        KR
+                                      </button>
+                                    </div>
+                                  </div>
                                   {topic.key_discussions &&
                                     topic.key_discussions.length > 0 && (
                                       <div className="mb-2">
@@ -2539,7 +2523,7 @@ export default function ActivitiesPage() {
                                           Key Discussions:
                                         </div>
                                         <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {topic.key_discussions.map((disc: string, i: number) => (
+                                          {getTranslatedField("key_discussions", topic.key_discussions).map((disc: string, i: number) => (
                                             <li key={i}>{disc}</li>
                                           ))}
                                         </ul>
@@ -2552,7 +2536,7 @@ export default function ActivitiesPage() {
                                           Key Decisions:
                                         </div>
                                         <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {topic.key_decisions.map((dec: string, i: number) => (
+                                          {getTranslatedField("key_decisions", topic.key_decisions).map((dec: string, i: number) => (
                                             <li key={i}>{dec}</li>
                                           ))}
                                         </ul>
@@ -2565,7 +2549,7 @@ export default function ActivitiesPage() {
                                           Progress:
                                         </div>
                                         <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {topic.progress.map((prog: string, i: number) => (
+                                          {getTranslatedField("progress", topic.progress).map((prog: string, i: number) => (
                                             <li key={i}>{prog}</li>
                                           ))}
                                         </ul>
@@ -2578,16 +2562,16 @@ export default function ActivitiesPage() {
                                           Issues:
                                         </div>
                                         <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {topic.issues.map((issue: string, i: number) => (
+                                          {getTranslatedField("issues", topic.issues).map((issue: string, i: number) => (
                                             <li key={i}>{issue}</li>
                                           ))}
                                         </ul>
                                       </div>
                                     )}
                                 </div>
-                              )
-                            );
-                          })()}
+                              );
+                            }
+                          )}
                         </div>
                       </div>
                     )}
@@ -2865,88 +2849,11 @@ export default function ActivitiesPage() {
                           <h3 className="text-lg font-semibold text-gray-900">
                             Participants
                           </h3>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const participantsText = JSON.stringify(selectedDailyAnalysis.analysis.participants);
-                                if (dateId && participantsText) {
-                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "en", "ko");
-                                }
-                              }}
-                              disabled={translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`}
-                              className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                              } ${
-                                translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`
-                                  ? "opacity-50 cursor-wait"
-                                  : ""
-                              }`}
-                            >
-                              EN
-                            </button>
-                            <button
-                              onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const participantsText = JSON.stringify(selectedDailyAnalysis.analysis.participants);
-                                if (dateId && participantsText) {
-                                  handleTranslate(`daily_analysis_participants_${dateId}`, participantsText, "ko", "en");
-                                }
-                              }}
-                              disabled={translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`}
-                              className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                              } ${
-                                translating === `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`
-                                  ? "opacity-50 cursor-wait"
-                                  : ""
-                              }`}
-                            >
-                              KR
-                            </button>
-                          </div>
                         </div>
-                        {translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`] && (
-                          <p className="text-xs text-gray-400 mb-2">
-                            🌐 Translated to{" "}
-                            {translations[`daily_analysis_participants_${selectedDailyAnalysis?.target_date}`].lang === "ko"
-                              ? "Korean"
-                              : "English"}
-                          </p>
-                        )}
                         <div className="space-y-4">
                           {(() => {
-                            // Use translated participants if available, otherwise use original
-                            let translatedParticipants = selectedDailyAnalysis.analysis.participants;
-                            const translationKey = `daily_analysis_participants_${selectedDailyAnalysis?.target_date}`;
-                            const translatedText = translations[translationKey]?.text;
-                            
-                            if (translatedText && translatedText.trim()) {
-                              try {
-                                const parsed = JSON.parse(translatedText);
-                                if (Array.isArray(parsed) && parsed.length > 0) {
-                                  translatedParticipants = parsed;
-                                  console.log("Using translated participants:", translatedParticipants.length);
-                                } else {
-                                  // If parsed but not an array or empty, fall back to original
-                                  console.warn("Translated participants is not a valid array, using original");
-                                  translatedParticipants = selectedDailyAnalysis.analysis.participants;
-                                }
-                              } catch (e) {
-                                // Fall back to original if parsing fails
-                                console.warn("Failed to parse translated participants:", e, "Using original");
-                                translatedParticipants = selectedDailyAnalysis.analysis.participants;
-                              }
-                            } else {
-                              console.log("No translated text found, using original participants");
-                            }
-                            
                             // Apply member filter if set
-                            let filtered = [...translatedParticipants];
+                            let filtered = [...selectedDailyAnalysis.analysis.participants];
                             if (memberFilter) {
                               filtered = filtered.filter((p: any) =>
                                 p.name?.toLowerCase().includes(memberFilter.toLowerCase())
@@ -2961,107 +2868,178 @@ export default function ActivitiesPage() {
                             });
                             
                             return filtered.map(
-                              (participant: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="border border-gray-200 rounded-lg p-4"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <h4 className="font-semibold text-gray-900">
-                                      {participant.name}
-                                    </h4>
-                                    <div className="text-sm text-gray-500">
-                                      {participant.speaking_time} (
-                                      {participant.speaking_percentage?.toFixed(1) || 0}%)
+                              (participant: any, idx: number) => {
+                                const dateId = selectedDailyAnalysis.target_date;
+                                const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
+                                
+                                // Helper function to get translated text for a field
+                                const getTranslatedField = (fieldName: string, originalArray: string[]) => {
+                                  const translationKey = `${participantKey}_${fieldName}`;
+                                  const translatedText = translations[translationKey]?.text;
+                                  
+                                  if (translatedText && translatedText.trim()) {
+                                    const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                                    if (translatedItems.length > 0) {
+                                      return translatedItems;
+                                    }
+                                  }
+                                  return originalArray;
+                                };
+                                
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="border border-gray-200 rounded-lg p-4"
+                                  >
+                                    <div className="flex items-center justify-between mb-2">
+                                      <h4 className="font-semibold text-gray-900">
+                                        {participant.name}
+                                      </h4>
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-sm text-gray-500">
+                                          {participant.speaking_time} (
+                                          {participant.speaking_percentage?.toFixed(1) || 0}%)
+                                        </div>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => {
+                                              // Translate key_activities and action_items for this participant
+                                              if (participant.key_activities?.length > 0) {
+                                                handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "en", "ko");
+                                              }
+                                              if (participant.action_items?.length > 0) {
+                                                handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "en", "ko");
+                                              }
+                                              if (participant.progress?.length > 0) {
+                                                handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "en", "ko");
+                                              }
+                                              if (participant.issues?.length > 0) {
+                                                handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "en", "ko");
+                                              }
+                                              if (participant.collaboration?.length > 0) {
+                                                handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "en", "ko");
+                                              }
+                                            }}
+                                            disabled={translating?.startsWith(participantKey)}
+                                            className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                          >
+                                            EN
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              // Translate key_activities and action_items for this participant
+                                              if (participant.key_activities?.length > 0) {
+                                                handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "ko", "en");
+                                              }
+                                              if (participant.action_items?.length > 0) {
+                                                handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "ko", "en");
+                                              }
+                                              if (participant.progress?.length > 0) {
+                                                handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "ko", "en");
+                                              }
+                                              if (participant.issues?.length > 0) {
+                                                handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "ko", "en");
+                                              }
+                                              if (participant.collaboration?.length > 0) {
+                                                handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "ko", "en");
+                                              }
+                                            }}
+                                            disabled={translating?.startsWith(participantKey)}
+                                            className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                          >
+                                            KR
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
+                                    <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                                      <div>
+                                        <span className="text-gray-500">Speaks:</span>{" "}
+                                        <span className="font-medium">
+                                          {participant.speak_count || 0}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">Words:</span>{" "}
+                                        <span className="font-medium">
+                                          {participant.word_count || 0}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">Time:</span>{" "}
+                                        <span className="font-medium">
+                                          {participant.speaking_time || "N/A"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {participant.key_activities &&
+                                      participant.key_activities.length > 0 && (
+                                        <div className="mt-2">
+                                          <div className="text-sm text-gray-500 mb-1">
+                                            Key Activities:
+                                          </div>
+                                          <ul className="list-disc list-inside text-sm text-gray-700">
+                                            {getTranslatedField("key_activities", participant.key_activities).map((item: string, i: number) => (
+                                              <li key={i}>{item}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    {participant.action_items &&
+                                      participant.action_items.length > 0 && (
+                                        <div className="mt-2">
+                                          <div className="text-sm text-gray-500 mb-1">
+                                            Action Items:
+                                          </div>
+                                          <ul className="list-disc list-inside text-sm text-gray-700">
+                                            {getTranslatedField("action_items", participant.action_items).map((item: string, i: number) => (
+                                              <li key={i}>{item}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    {participant.progress &&
+                                      participant.progress.length > 0 && (
+                                        <div className="mt-2">
+                                          <div className="text-sm text-gray-500 mb-1">
+                                            Progress:
+                                          </div>
+                                          <ul className="list-disc list-inside text-sm text-gray-700">
+                                            {getTranslatedField("progress", participant.progress).map((prog: string, i: number) => (
+                                              <li key={i}>{prog}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    {participant.issues &&
+                                      participant.issues.length > 0 && (
+                                        <div className="mt-2">
+                                          <div className="text-sm text-gray-500 mb-1">
+                                            Issues:
+                                          </div>
+                                          <ul className="list-disc list-inside text-sm text-gray-700">
+                                            {getTranslatedField("issues", participant.issues).map((issue: string, i: number) => (
+                                              <li key={i}>{issue}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    {participant.collaboration &&
+                                      participant.collaboration.length > 0 && (
+                                        <div className="mt-2">
+                                          <div className="text-sm text-gray-500 mb-1">
+                                            Collaboration:
+                                          </div>
+                                          <ul className="list-disc list-inside text-sm text-gray-700">
+                                            {getTranslatedField("collaboration", participant.collaboration).map((collab: string, i: number) => (
+                                              <li key={i}>{collab}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
                                   </div>
-                                  <div className="grid grid-cols-3 gap-4 text-sm mb-3">
-                                    <div>
-                                      <span className="text-gray-500">Speaks:</span>{" "}
-                                      <span className="font-medium">
-                                        {participant.speak_count || 0}
-                                      </span>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Words:</span>{" "}
-                                      <span className="font-medium">
-                                        {participant.word_count || 0}
-                                      </span>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Time:</span>{" "}
-                                      <span className="font-medium">
-                                        {participant.speaking_time || "N/A"}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  {participant.key_activities &&
-                                    participant.key_activities.length > 0 && (
-                                      <div className="mt-2">
-                                        <div className="text-sm text-gray-500 mb-1">
-                                          Key Activities:
-                                        </div>
-                                        <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {participant.key_activities.map((item: string, i: number) => (
-                                            <li key={i}>{item}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  {participant.action_items &&
-                                    participant.action_items.length > 0 && (
-                                      <div className="mt-2">
-                                        <div className="text-sm text-gray-500 mb-1">
-                                          Action Items:
-                                        </div>
-                                        <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {participant.action_items.map((item: string, i: number) => (
-                                            <li key={i}>{item}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  {participant.progress &&
-                                    participant.progress.length > 0 && (
-                                      <div className="mt-2">
-                                        <div className="text-sm text-gray-500 mb-1">
-                                          Progress:
-                                        </div>
-                                        <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {participant.progress.map((prog: string, i: number) => (
-                                            <li key={i}>{prog}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  {participant.issues &&
-                                    participant.issues.length > 0 && (
-                                      <div className="mt-2">
-                                        <div className="text-sm text-gray-500 mb-1">
-                                          Issues:
-                                        </div>
-                                        <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {participant.issues.map((issue: string, i: number) => (
-                                            <li key={i}>{issue}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  {participant.collaboration &&
-                                    participant.collaboration.length > 0 && (
-                                      <div className="mt-2">
-                                        <div className="text-sm text-gray-500 mb-1">
-                                          Collaboration:
-                                        </div>
-                                        <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {participant.collaboration.map((collab: string, i: number) => (
-                                            <li key={i}>{collab}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                </div>
-                              )
+                                );
+                              }
                             );
                           })()}
                         </div>
