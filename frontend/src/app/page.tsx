@@ -445,49 +445,7 @@ export default function Home() {
            </div>
         </div>
 
-        {/* Context Word Cloud (Full Width) */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-3xl">🧠</span>
-            Context Cloud
-          </h2>
-          <div className="bg-gray-50 rounded-lg p-6 min-h-[200px] flex flex-wrap gap-x-6 gap-y-4 justify-center items-center content-center h-full">
-            {stats.top_keywords && stats.top_keywords.length > 0 ? (
-                stats.top_keywords.map((kw: any, idx: number) => {
-                   const maxVal = Math.max(...(stats.top_keywords?.map((k: any) => k.value) || [1]));
-                   const minVal = Math.min(...(stats.top_keywords?.map((k: any) => k.value) || [0]));
-                   
-                   // Normalize size
-                   const normalize = (val: number) => (val - minVal) / (maxVal - minVal || 1);
-                   const size = 1 + normalize(kw.value) * 2; // 1rem to 3rem
-                   
-                   // Color intensity based on value
-                   const opacity = 0.6 + normalize(kw.value) * 0.4;
-                   
-                   return (
-                      <span 
-                        key={idx}
-                        className="font-medium hover:text-blue-600 hover:scale-110 transition-all cursor-default"
-                        style={{ 
-                            fontSize: `${size}rem`, 
-                            opacity,
-                            color: `rgba(31, 41, 55, ${opacity})` 
-                        }}
-                        title={`${kw.text}: ${kw.value} occurrences`}
-                      >
-                        {kw.text}
-                      </span>
-                   );
-                })
-            ) : (
-                <div className="flex flex-col items-center justify-center text-gray-400 text-center">
-                    <span className="text-2xl mb-2">☁️</span>
-                   <span>Gathering context data...</span>
-                   <span className="text-xs mt-1">Check back after data collection</span>
-                </div>
-            )}
-          </div>
-        </div>
+
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
