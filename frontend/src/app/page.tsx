@@ -362,10 +362,6 @@ export default function Home() {
                     <stop offset="5%" stopColor="#f97316" stopOpacity={0.8}/>
                     <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
                   </linearGradient>
-                  <linearGradient id="colorDrive" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0F9D58" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#0F9D58" stopOpacity={0}/>
-                  </linearGradient>
                 </defs>
                 <XAxis 
                   dataKey="date" 
@@ -385,7 +381,6 @@ export default function Home() {
                 <Area type="monotone" dataKey="github" name="GitHub" stackId="1" stroke="#24292e" fill="url(#colorGithub)" animationDuration={1000} />
                 <Area type="monotone" dataKey="slack" name="Slack" stackId="1" stroke="#4A154B" fill="url(#colorSlack)" animationDuration={1000} />
                 <Area type="monotone" dataKey="notion" name="Notion" stackId="1" stroke="#f97316" fill="url(#colorNotion)" animationDuration={1000} />
-                <Area type="monotone" dataKey="drive" name="Drive" stackId="1" stroke="#0F9D58" fill="url(#colorDrive)" animationDuration={1000} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -411,9 +406,10 @@ export default function Home() {
              <div className="grid grid-rows-7 grid-flow-col gap-1 w-max">
                 {(() => {
                    const today = new Date();
-                   const trendMap = new Map(stats.daily_trends?.map((d: any) => [d.date, d.github + d.slack + d.notion + d.drive]) || []);
+                   // Map stores the full object now for detailed tooltip
+                   const trendMap = new Map(stats.daily_trends?.map((d: any) => [d.date, d]) || []);
                    
-                   // Generate last 20 weeks (approx 140 days)
+                   // Generate last 20 weeks (140 days)
                    const weeks = 20;
                    const totalDays = weeks * 7;
                    
@@ -423,7 +419,9 @@ export default function Home() {
                       const d = new Date(today);
                       d.setDate(d.getDate() - (totalDays - 1 - i));
                       const dateStr = d.toISOString().split('T')[0];
-                      const count = trendMap.get(dateStr) || 0;
+                      
+                      const dayData = trendMap.get(dateStr);
+                      const count = dayData ? (dayData.github + dayData.slack + dayData.notion) : 0;
                       
                       let colorClass = "bg-gray-200";
                       if (count > 0) colorClass = "bg-green-200";
@@ -432,19 +430,30 @@ export default function Home() {
                       if (count > 20) colorClass = "bg-green-500";
                       if (count > 40) colorClass = "bg-green-600";
                       
+                      // Detailed Tooltip
+                      const tooltip = `${dateStr}\nTotal Activities: ${count}\n• GitHub: ${dayData?.github || 0}\n• Slack: ${dayData?.slack || 0}\n• Notion: ${dayData?.notion || 0}`;
+                      
                       cells.push(
                         <div 
                           key={dateStr} 
-                          title={`${dateStr}: ${count} activities`}
-                          className={`w-3 h-3 rounded-sm ${colorClass} hover:ring-1 ring-gray-400 cursor-pointer transition-colors`}
+                          title={tooltip}
+                          className={`w-3 h-3 rounded-sm ${colorClass} hover:ring-2 ring-gray-400 ring-offset-1 cursor-pointer transition-all hover:scale-125 relative z-0 hover:z-10`}
                         ></div>
                       );
                    }
                    return cells;
                 })()}
              </div>
-             <div className="flex justify-between items-center mt-2">
-                <div className="text-xs text-gray-400">Last 20 weeks</div>
+             <div className="flex justify-between items-center mt-3 border-t border-gray-100 pt-3">
+                <div className="text-xs text-gray-500 font-medium">
+                   {(() => {
+                      const today = new Date();
+                      const start = new Date(today);
+                      start.setDate(today.getDate() - 139);
+                      const formatDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      return `${formatDate(start)} - ${formatDate(today)}`;
+                   })()}
+                </div>
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                     <span>Less</span>
                     <div className="w-3 h-3 bg-gray-200 rounded-sm"></div>
@@ -457,48 +466,61 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Context Word Cloud */}
+        {/* Recent Critical Events */}
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-3xl">🧠</span>
-            Context Cloud
+            <span className="text-3xl">⚡</span>
+            Recent Events
           </h2>
-          <div className="bg-gray-50 rounded-lg p-6 min-h-[160px] flex flex-wrap gap-x-4 gap-y-2 justify-center items-center content-center h-full">
-            {stats.top_keywords && stats.top_keywords.length > 0 ? (
-                stats.top_keywords.map((kw: any, idx: number) => {
-                   const maxVal = Math.max(...(stats.top_keywords?.map((k: any) => k.value) || [1]));
-                   const minVal = Math.min(...(stats.top_keywords?.map((k: any) => k.value) || [0]));
-                   
-                   // Normalize size
-                   const normalize = (val: number) => (val - minVal) / (maxVal - minVal || 1);
-                   const size = 0.8 + normalize(kw.value) * 1.5; // 0.8rem to 2.3rem
-                   
-                   // Color intensity based on value
-                   // e.g. from Slate-500 to Blue-600
-                   const opacity = 0.5 + normalize(kw.value) * 0.5;
-                   
-                   return (
-                      <span 
-                        key={idx}
-                        className="font-medium hover:text-blue-600 hover:scale-110 transition-all cursor-default"
-                        style={{ 
-                            fontSize: `${size}rem`, 
-                            opacity,
-                            color: `rgba(31, 41, 55, ${opacity + 0.2})` 
-                        }}
-                        title={`${kw.text}: ${kw.value} occurrences`}
-                      >
-                        {kw.text}
-                      </span>
-                   );
-                })
-            ) : (
-                <div className="flex flex-col items-center justify-center text-gray-400 text-center">
-                    <span className="text-2xl mb-2">☁️</span>
-                   <span>Gathering context data...</span>
-                   <span className="text-xs mt-1">Check back after data collection</span>
+          <div className="space-y-0 pt-2">
+             {stats.recent_events && stats.recent_events.length > 0 ? (
+                stats.recent_events.map((event: any, idx: number) => (
+                   <div key={idx} className="flex gap-4 items-start group">
+                      {/* Icon Column */}
+                      <div className="flex flex-col items-center mt-0.5">
+                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm border z-10 relative
+                            ${event.source === 'github' ? 'bg-gray-50 border-gray-200 text-gray-700' : ''}
+                            ${event.source === 'notion' ? 'bg-orange-50 border-orange-200 text-orange-600' : ''}
+                         `}>
+                            {event.source === 'github' && (event.type === 'pull_request' ? '🔀' : '💻')}
+                            {event.source === 'notion' && '📝'}
+                         </div>
+                         {idx !== (stats.recent_events?.length || 0) - 1 && (
+                            <div className="w-0.5 h-full bg-gray-100 my-0 absolute top-8 bottom-0 -z-0 group-hover:bg-gray-200 transition-colors" style={{ height: 'calc(100% + 16px)' }}></div>
+                         )}
+                      </div>
+                      
+                      {/* Content Column */}
+                      <div className="flex-1 pb-6 group-hover:bg-gray-50/50 rounded-lg px-2 -ml-2 -mt-1 py-1 transition-colors">
+                         <div className="flex justify-between items-start">
+                             <a href={event.url} target="_blank" rel="noopener noreferrer" className="text-gray-900 font-semibold hover:text-blue-600 text-sm line-clamp-1 block mb-0.5">
+                                {event.title}
+                             </a>
+                             <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
+                                {new Date(event.time).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                             </span>
+                         </div>
+                         <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
+                            <span className="font-medium text-gray-700">{event.user}</span>
+                            <span className="text-gray-300">•</span>
+                            <span className={`capitalize ${
+                                event.meta === 'open' ? 'text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-medium' : 
+                                event.meta === 'merged' ? 'text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded font-medium' :
+                                ''
+                            }`}>{event.meta}</span>
+                            <span className="text-gray-300">•</span>
+                            <span className="text-gray-400 capitalize">{event.source}</span>
+                         </div>
+                      </div>
+                   </div>
+                ))
+             ) : (
+                <div className="flex flex-col items-center justify-center text-gray-400 text-center py-10">
+                    <span className="text-2xl mb-2">📭</span>
+                   <span>No recent critical events found</span>
+                   <span className="text-xs mt-1">Collecting PRs, Commits, and Pages...</span>
                 </div>
-            )}
+             )}
           </div>
         </div>
 

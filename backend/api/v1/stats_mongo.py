@@ -154,15 +154,15 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
                 }
             }
         
-        # Drive
-        drive_activities = await db["drive_activities"].count_documents({})
-        if drive_activities > 0:
-            activity_summary["drive"] = {
-                "total_activities": drive_activities,
-                "activity_types": {
-                    "file_activity": drive_activities
-                }
-            }
+        # Drive (Temporarily disabled)
+        # drive_activities = await db["drive_activities"].count_documents({})
+        # if drive_activities > 0:
+        #     activity_summary["drive"] = {
+        #         "total_activities": drive_activities,
+        #         "activity_types": {
+        #             "file_activity": drive_activities
+        #         }
+        #     }
         
         # Recordings
         recordings = await shared_db["recordings"].count_documents({})
@@ -214,7 +214,7 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             github_trend = await get_daily_counts("github_commits", "date")
             slack_trend = await get_daily_counts("slack_messages", "posted_at")
             notion_trend = await get_daily_counts("notion_pages", "last_edited_time")
-            drive_trend = await get_daily_counts("drive_activities", "time")
+            # drive_trend = await get_daily_counts("drive_activities", "time") # Disabled
             
             # Initialize map with 0s for all dates in range
             trend_map = {}
@@ -237,73 +237,87 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
                 if date_str in trend_map: trend_map[date_str]["slack"] = count
             for date_str, count in notion_trend.items():
                 if date_str in trend_map: trend_map[date_str]["notion"] = count
-            for date_str, count in drive_trend.items():
-                if date_str in trend_map: trend_map[date_str]["drive"] = count
+            # for date_str, count in drive_trend.items():
+            #     if date_str in trend_map: trend_map[date_str]["drive"] = count
                 
             daily_trends = sorted(trend_map.values(), key=lambda x: x["date"])
             
         except Exception as e:
             logger.error(f"Failed to generate daily trends: {e}")
 
-        # 6. Get context keywords
-        top_keywords = []
+        # 6. Get recent critical events (Timeline)
+        recent_events = []
         try:
-            # Recent 7 days for context
-            keyword_start_date = datetime.utcnow() - timedelta(days=7)
+            limit_per_source = 5
             
-            # Helper to fetch text from collection
-            async def get_recent_texts(collection_name, text_field, date_field):
-                try:
-                    coll = db[collection_name]
-                    cursor = coll.find(
-                        {date_field: {"$gte": keyword_start_date}},
-                        {text_field: 1, "_id": 0}
-                    ).sort(date_field, -1).limit(200) # Limit to 200 documents per source
-                    
-                    texts = []
-                    async for doc in cursor:
-                        if text_field in doc and doc[text_field]:
-                            texts.append(doc[text_field])
-                    return texts
-                except Exception:
-                    return []
+            # 1. GitHub PRs
+            prs = await db["github_pull_requests"].find(
+                {}, 
+                {"title": 1, "user.login": 1, "created_at": 1, "html_url": 1, "state": 1, "_id": 0}
+            ).sort("created_at", -1).limit(limit_per_source).to_list(None)
             
-            # Fetch texts
-            github_texts = await get_recent_texts("github_commits", "message", "date")
-            slack_texts = await get_recent_texts("slack_messages", "text", "posted_at")
-            notion_texts = await get_recent_texts("notion_pages", "title", "last_edited_time")
+            for pr in prs:
+                recent_events.append({
+                    "source": "github",
+                    "type": "pull_request",
+                    "title": pr.get("title", "Untitled PR"),
+                    "user": pr.get("user", {}).get("login", "Unknown"),
+                    "time": pr.get("created_at"),
+                    "url": pr.get("html_url"),
+                    "meta": pr.get("state", "open")
+                })
+
+            # 2. GitHub Commits
+            commits = await db["github_commits"].find(
+                {}, 
+                {"message": 1, "author.name": 1, "date": 1, "html_url": 1, "_id": 0}
+            ).sort("date", -1).limit(limit_per_source).to_list(None)
             
-            all_texts = github_texts + slack_texts + notion_texts
+            for commit in commits:
+                recent_events.append({
+                    "source": "github",
+                    "type": "commit",
+                    "title": commit.get("message", "No message"),
+                    "user": commit.get("author", {}).get("name", "Unknown"),
+                    "time": commit.get("date"),
+                    "url": commit.get("html_url"),
+                    "meta": "commit"
+                })
+
+            # 3. Notion Pages (Created)
+            pages = await db["notion_pages"].find(
+                {}, 
+                {"title": 1, "created_by.name": 1, "created_time": 1, "url": 1, "_id": 0}
+            ).sort("created_time", -1).limit(limit_per_source).to_list(None)
             
-            # Simple keyword extraction
-            if all_texts:
-                # Basic stopwords
-                stopwords = set([
-                    "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", 
-                    "it", "for", "not", "on", "with", "he", "as", "you", "do", "at", 
-                    "this", "but", "his", "by", "from", "they", "we", "say", "her", 
-                    "she", "or", "an", "will", "my", "one", "all", "would", "there", 
-                    "their", "what", "so", "up", "out", "if", "about", "who", "get", 
-                    "which", "go", "me", "https", "http", "com", "www", "github", 
-                    "slack", "drive", "google", "feat", "fix", "chore", "docs", "refactor",
-                    "merge", "branch", "pull", "request", "update", "delete", "create",
-                    "add", "remove", "test", "main", "master", "dev", "prod", "is", "are", "was"
-                ])
-                
-                words = []
-                for text in all_texts:
-                    # Remove URLs and special chars
-                    clean_text = re.sub(r'http\S+', '', str(text))
-                    clean_text = re.sub(r'[^\w\s]', '', clean_text)
-                    tokens = clean_text.lower().split()
-                    words.extend([w for w in tokens if w not in stopwords and len(w) > 2])
-                
-                # Get top 30
-                common_words = Counter(words).most_common(30)
-                top_keywords = [{"text": word, "value": count} for word, count in common_words]
-                
+            for page in pages:
+                recent_events.append({
+                    "source": "notion",
+                    "type": "page_create",
+                    "title": page.get("title", "Untitled Page"),
+                    "user": page.get("created_by", {}).get("name", "Unknown"),
+                    "time": page.get("created_time"),
+                    "url": page.get("url"),
+                    "meta": "created"
+                })
+
+            # Sort and Slice
+            def get_time_val(e):
+                t = e["time"]
+                if isinstance(t, str): return t
+                if hasattr(t, 'isoformat'): return t.isoformat()
+                return ""
+
+            recent_events.sort(key=get_time_val, reverse=True)
+            recent_events = recent_events[:7] # Top 7 latest events
+            
+            # Serialize
+            for e in recent_events:
+                if hasattr(e["time"], 'isoformat'):
+                    e["time"] = e["time"].isoformat()
+
         except Exception as e:
-            logger.warning(f"Failed to extract keywords: {e}")
+            logger.warning(f"Failed to fetch recent events: {e}")
 
         # 7. Get last collection times
         sources = {
@@ -345,7 +359,7 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             # Activity breakdown (for Dashboard summary section)
             "activity_summary": activity_summary,
             "daily_trends": daily_trends,
-            "top_keywords": top_keywords,
+            "recent_events": recent_events,
             
             # Database information (for Database Viewer)
             "database": {
