@@ -426,11 +426,10 @@ export default function Home() {
                      if (item.key === 'database') {
                         infoText = `Total: ${stats.database.total_documents.toLocaleString()} docs`;
                      } else {
-                        // Find today's trend
-                        const today = new Date().toISOString().split('T')[0];
-                        const todayData = stats.daily_trends?.find((d: any) => d.date === today);
-                        const count = todayData ? (todayData as any)[item.key] : 0;
-                        infoText = `Today: ${count} activities`;
+                        // Use total summary instead of daily trend to prevent "0 activities" confusion due to UTC dates
+                        const summary = (stats.activity_summary as any)[item.key];
+                        const total = summary ? summary.total_activities : 0;
+                        infoText = `Total: ${total.toLocaleString()}`;
                      }
                      
                      return (
