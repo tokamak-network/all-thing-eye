@@ -2945,10 +2945,18 @@ export default function ActivitiesPage() {
                                 // Execute all translations in parallel
                                 try {
                                   await Promise.all(translationPromises);
-                                  // Force re-render by updating a dummy state
-                                  setTranslations((prev) => ({ ...prev }));
+                                  // Small delay to ensure all translations are saved to state
+                                  await new Promise(resolve => setTimeout(resolve, 100));
+                                  // Force re-render by creating a new object reference
+                                  setTranslations((prev) => {
+                                    const updated = { ...prev };
+                                    // Trigger re-render by updating reference
+                                    return { ...updated };
+                                  });
                                 } catch (error) {
                                   console.error("Batch translation error:", error);
+                                  // Even on error, try to refresh translations
+                                  setTranslations((prev) => ({ ...prev }));
                                 }
                               }}
                               disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
@@ -2997,10 +3005,18 @@ export default function ActivitiesPage() {
                                 // Execute all translations in parallel
                                 try {
                                   await Promise.all(translationPromises);
-                                  // Force re-render by updating a dummy state
-                                  setTranslations((prev) => ({ ...prev }));
+                                  // Small delay to ensure all translations are saved to state
+                                  await new Promise(resolve => setTimeout(resolve, 100));
+                                  // Force re-render by creating a new object reference
+                                  setTranslations((prev) => {
+                                    const updated = { ...prev };
+                                    // Trigger re-render by updating reference
+                                    return { ...updated };
+                                  });
                                 } catch (error) {
                                   console.error("Batch translation error:", error);
+                                  // Even on error, try to refresh translations
+                                  setTranslations((prev) => ({ ...prev }));
                                 }
                               }}
                               disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
@@ -3015,8 +3031,14 @@ export default function ActivitiesPage() {
                             const dateId = selectedDailyAnalysis.target_date;
                             const allParticipants = selectedDailyAnalysis.analysis.participants;
                             
+                            // Create a map of participant names to original indices for reliable key lookup
+                            const participantIndexMap = new Map<string, number>();
+                            allParticipants.forEach((p: any, idx: number) => {
+                              participantIndexMap.set(p.name, idx);
+                            });
+                            
                             // Apply member filter if set
-                            let filtered = allParticipants.map((p: any, idx: number) => ({ ...p, originalIdx: idx }));
+                            let filtered = [...allParticipants];
                             if (memberFilter) {
                               filtered = filtered.filter((p: any) =>
                                 p.name?.toLowerCase().includes(memberFilter.toLowerCase())
@@ -3032,21 +3054,14 @@ export default function ActivitiesPage() {
                             
                             return filtered.map(
                               (participant: any, displayIdx: number) => {
-                                const participantKey = `daily_analysis_participant_${dateId}_${participant.originalIdx}`;
+                                // Use the original index from the map to ensure consistency
+                                const originalIdx = participantIndexMap.get(participant.name) ?? displayIdx;
+                                const participantKey = `daily_analysis_participant_${dateId}_${originalIdx}`;
                                 
                                 // Helper function to get translated text for a field
                                 const getTranslatedField = (fieldName: string, originalArray: string[]) => {
                                   const translationKey = `${participantKey}_${fieldName}`;
                                   const translatedText = translations[translationKey]?.text;
-                                  
-                                  // Debug: Log translation lookup
-                                  if (process.env.NODE_ENV === 'development') {
-                                    console.log(`Looking for translation: ${translationKey}`, {
-                                      found: !!translatedText,
-                                      text: translatedText?.substring(0, 50),
-                                      allKeys: Object.keys(translations).filter(k => k.includes(`participant_${dateId}_`))
-                                    });
-                                  }
                                   
                                   if (translatedText && translatedText.trim()) {
                                     const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
