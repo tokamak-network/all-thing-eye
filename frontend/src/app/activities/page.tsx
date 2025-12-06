@@ -2943,7 +2943,13 @@ export default function ActivitiesPage() {
                                 });
                                 
                                 // Execute all translations in parallel
-                                await Promise.all(translationPromises);
+                                try {
+                                  await Promise.all(translationPromises);
+                                  // Force re-render by updating a dummy state
+                                  setTranslations((prev) => ({ ...prev }));
+                                } catch (error) {
+                                  console.error("Batch translation error:", error);
+                                }
                               }}
                               disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
                               className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
@@ -2989,7 +2995,13 @@ export default function ActivitiesPage() {
                                 });
                                 
                                 // Execute all translations in parallel
-                                await Promise.all(translationPromises);
+                                try {
+                                  await Promise.all(translationPromises);
+                                  // Force re-render by updating a dummy state
+                                  setTranslations((prev) => ({ ...prev }));
+                                } catch (error) {
+                                  console.error("Batch translation error:", error);
+                                }
                               }}
                               disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
                               className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
@@ -3027,6 +3039,15 @@ export default function ActivitiesPage() {
                                   const translationKey = `${participantKey}_${fieldName}`;
                                   const translatedText = translations[translationKey]?.text;
                                   
+                                  // Debug: Log translation lookup
+                                  if (process.env.NODE_ENV === 'development') {
+                                    console.log(`Looking for translation: ${translationKey}`, {
+                                      found: !!translatedText,
+                                      text: translatedText?.substring(0, 50),
+                                      allKeys: Object.keys(translations).filter(k => k.includes(`participant_${dateId}_`))
+                                    });
+                                  }
+                                  
                                   if (translatedText && translatedText.trim()) {
                                     const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
                                     if (translatedItems.length > 0) {
@@ -3035,6 +3056,7 @@ export default function ActivitiesPage() {
                                   }
                                   return originalArray;
                                 };
+                                
                                 
                                 return (
                                   <div

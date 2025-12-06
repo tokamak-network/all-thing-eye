@@ -387,7 +387,7 @@ export default function Home() {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ name, percentage }) => `${name} (${percentage.toFixed(1)}%)`}
+                        label={({ name, percentage }) => percentage > 3 ? `${name} (${percentage.toFixed(1)}%)` : ''}
                         outerRadius={100}
                         fill="#8884d8"
                         dataKey="value"
@@ -397,6 +397,7 @@ export default function Home() {
                         ))}
                       </Pie>
                       <Tooltip content={<CustomTooltip />} />
+                      <Legend />
                     </PieChart>
                  </ResponsiveContainer>
               </div>
@@ -408,39 +409,50 @@ export default function Home() {
                  <span className="text-2xl">🏥</span> System Health
               </h2>
               <div className="space-y-4">
-                 {[
-                    { label: 'GitHub', time: stats.last_collected?.github, icon: '🐙' },
-                    { label: 'Slack', time: stats.last_collected?.slack, icon: '💬' },
-                    { label: 'Notion', time: stats.last_collected?.notion, icon: '📝' },
-                    { label: 'Drive', time: stats.last_collected?.drive, icon: '📁' },
-                    { label: 'Database', time: stats.generated_at, icon: '🗄️' },
-                 ].map((item, idx) => {
-                    if (!item.time) return null;
-                    const lastUpdate = new Date(item.time);
-                    const now = new Date();
-                    const diffHours = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60);
-                    const isHealthy = diffHours < 25; // Allocating 1 hour buffer
-                    
-                    return (
-                       <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                             <span className="text-xl">{item.icon}</span>
-                             <div>
-                                <div className="font-medium text-gray-900">{item.label}</div>
-                                <div className="text-xs text-gray-500">
-                                   Last sync: {formatTimeAgo(item.time)}
-                                </div>
-                             </div>
-                          </div>
-                          <div className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 ${
-                             isHealthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}>
-                             <div className={`w-2 h-2 rounded-full ${isHealthy ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
-                             {isHealthy ? 'Healthy' : 'Sync Needed'}
-                          </div>
-                       </div>
-                    );
-                 })}
+                  {[
+                     { label: 'GitHub', key: 'github', time: stats.last_collected?.github, icon: '🐙' },
+                     { label: 'Slack', key: 'slack', time: stats.last_collected?.slack, icon: '💬' },
+                     { label: 'Notion', key: 'notion', time: stats.last_collected?.notion, icon: '📝' },
+                     { label: 'Drive', key: 'drive', time: stats.last_collected?.drive, icon: '📁' },
+                     { label: 'Database', key: 'database', time: stats.generated_at, icon: '🗄️' },
+                  ].map((item, idx) => {
+                     if (!item.time) return null;
+                     const lastUpdate = new Date(item.time);
+                     const now = new Date();
+                     const diffHours = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60);
+                     const isHealthy = diffHours < 25; // Allocating 1 hour buffer
+                     
+                     let infoText = '';
+                     if (item.key === 'database') {
+                        infoText = `Total: ${stats.database.total_documents.toLocaleString()} docs`;
+                     } else {
+                        // Find today's trend
+                        const today = new Date().toISOString().split('T')[0];
+                        const todayData = stats.daily_trends?.find((d: any) => d.date === today);
+                        const count = todayData ? (todayData as any)[item.key] : 0;
+                        infoText = `Today: ${count} activities`;
+                     }
+                     
+                     return (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                           <div className="flex items-center gap-3">
+                              <span className="text-xl">{item.icon}</span>
+                              <div>
+                                 <div className="font-medium text-gray-900">{item.label}</div>
+                                 <div className="text-xs text-gray-500">
+                                    {infoText}
+                                 </div>
+                              </div>
+                           </div>
+                           <div className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 ${
+                              isHealthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                           }`}>
+                              <div className={`w-2 h-2 rounded-full ${isHealthy ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                              {isHealthy ? 'Healthy' : 'Sync Needed'}
+                           </div>
+                        </div>
+                     );
+                  })}
               </div>
            </div>
         </div>
