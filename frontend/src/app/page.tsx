@@ -379,34 +379,24 @@ export default function Home() {
               <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
                  <span className="text-2xl">📊</span> Source Distribution
               </h2>
-              <div className="h-[250px] w-full">
+              <div className="h-80">
                  <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                       <Pie
-                          data={[
-                            { name: 'GitHub', value: stats.activity_summary?.github?.total_activities || 0, color: '#24292e' },
-                            { name: 'Slack', value: stats.activity_summary?.slack?.total_activities || 0, color: '#4A154B' },
-                            { name: 'Notion', value: stats.activity_summary?.notion?.total_activities || 0, color: '#f97316' },
-                            { name: 'Drive', value: stats.activity_summary?.drive?.total_activities || 0, color: '#0F9D58' },
-                          ].filter(d => d.value > 0)}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={80}
-                          paddingAngle={5}
-                          dataKey="value"
-                       >
-                          {[
-                            { name: 'GitHub', value: stats.activity_summary?.github?.total_activities || 0, color: '#24292e' },
-                            { name: 'Slack', value: stats.activity_summary?.slack?.total_activities || 0, color: '#4A154B' },
-                            { name: 'Notion', value: stats.activity_summary?.notion?.total_activities || 0, color: '#f97316' },
-                            { name: 'Drive', value: stats.activity_summary?.drive?.total_activities || 0, color: '#0F9D58' },
-                          ].filter(d => d.value > 0).map((entry, index) => (
-                             <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                       </Pie>
-                       <Tooltip formatter={(value: number) => value.toLocaleString()} />
-                       <Legend />
+                      <Pie
+                        data={activityData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percentage }) => `${name} (${percentage.toFixed(1)}%)`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {activityData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
                     </PieChart>
                  </ResponsiveContainer>
               </div>
