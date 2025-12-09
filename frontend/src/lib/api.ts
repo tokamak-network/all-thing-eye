@@ -140,8 +140,7 @@ class ApiClient {
     source_type?: string;
     activity_type?: string;
     member_id?: number;
-    member_name?: string; // Filter by member name
-    participant_name?: string; // Filter by participant name (for recordings and daily analysis)
+    member_name?: string; // Filter by member name (for recordings and daily analysis, filters by participant)
     start_date?: string;
     end_date?: string;
     limit?: number;

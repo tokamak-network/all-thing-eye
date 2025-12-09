@@ -166,8 +166,7 @@ async def get_activities(
     request: Request,
     source_type: Optional[str] = Query(None, description="Filter by source (github, slack, notion, google_drive)"),
     activity_type: Optional[str] = Query(None, description="Filter by activity type"),
-    member_name: Optional[str] = Query(None, description="Filter by member name"),
-    participant_name: Optional[str] = Query(None, description="Filter by participant name (for recordings and daily analysis)"),
+    member_name: Optional[str] = Query(None, description="Filter by member name (for recordings and daily analysis, filters by participant)"),
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
     limit: int = Query(100, ge=1, le=1000),
@@ -184,9 +183,8 @@ async def get_activities(
         db = mongo.async_db
         activities = []
         
-        # IMPORTANT: Store filter member_name and participant_name separately to avoid overwriting in loops
+        # IMPORTANT: Store filter member_name separately to avoid overwriting in loops
         filter_member_name = member_name
-        filter_participant_name = participant_name
         
         # Load member mappings once for all activities (performance optimization)
         member_mappings = await load_member_mappings(db)
@@ -518,13 +516,11 @@ async def get_activities(
                 shared_db = mongo.shared_async_db
                 recordings = shared_db["recordings"]
                 query = {}
-                if filter_member_name:
-                    query['createdBy'] = {"$regex": filter_member_name, "$options": "i"}
                 if date_filter:
                     query['modifiedTime'] = date_filter
                 
-                # If filtering by participant, we need to check gemini.recordings
-                if filter_participant_name:
+                # For recordings, filter by participant (not createdBy)
+                if filter_member_name:
                     from backend.api.v1.ai_processed import get_gemini_db
                     from bson import ObjectId
                     gemini_db = get_gemini_db()
@@ -532,7 +528,7 @@ async def get_activities(
                     
                     # Find meeting_ids where participant matches
                     participant_query = {
-                        "participants": {"$regex": filter_participant_name, "$options": "i"}
+                        "participants": {"$regex": filter_member_name, "$options": "i"}
                     }
                     matching_meetings = list(gemini_recordings_col.find(
                         participant_query,
@@ -620,13 +616,13 @@ async def get_activities(
                     
                     for daily in daily_docs:
                         try:
-                            # Filter by participant if specified
-                            if filter_participant_name:
+                            # Filter by participant if member_name is specified
+                            if filter_member_name:
                                 analysis = daily.get('analysis', {})
                                 participants = analysis.get('participants', [])
                                 # Check if any participant name matches (case-insensitive)
                                 participant_names = [p.get('name', '') for p in participants if isinstance(p, dict)]
-                                if not any(filter_participant_name.lower() in name.lower() for name in participant_names):
+                                if not any(filter_member_name.lower() in name.lower() for name in participant_names):
                                     continue  # Skip this daily analysis if participant doesn't match
                             
                             # Convert timestamp
