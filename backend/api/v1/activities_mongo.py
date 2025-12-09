@@ -167,6 +167,7 @@ async def get_activities(
     source_type: Optional[str] = Query(None, description="Filter by source (github, slack, notion, google_drive)"),
     activity_type: Optional[str] = Query(None, description="Filter by activity type"),
     member_name: Optional[str] = Query(None, description="Filter by member name"),
+    participant_name: Optional[str] = Query(None, description="Filter by participant name (for recordings and daily analysis)"),
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
     limit: int = Query(100, ge=1, le=1000),
@@ -183,8 +184,9 @@ async def get_activities(
         db = mongo.async_db
         activities = []
         
-        # IMPORTANT: Store filter member_name separately to avoid overwriting in loops
+        # IMPORTANT: Store filter member_name and participant_name separately to avoid overwriting in loops
         filter_member_name = member_name
+        filter_participant_name = participant_name
         
         # Load member mappings once for all activities (performance optimization)
         member_mappings = await load_member_mappings(db)
@@ -521,6 +523,41 @@ async def get_activities(
                 if date_filter:
                     query['modifiedTime'] = date_filter
                 
+                # If filtering by participant, we need to check gemini.recordings
+                if filter_participant_name:
+                    from backend.api.v1.ai_processed import get_gemini_db
+                    from bson import ObjectId
+                    gemini_db = get_gemini_db()
+                    gemini_recordings_col = gemini_db["recordings"]
+                    
+                    # Find meeting_ids where participant matches
+                    participant_query = {
+                        "participants": {"$regex": filter_participant_name, "$options": "i"}
+                    }
+                    matching_meetings = list(gemini_recordings_col.find(
+                        participant_query,
+                        {"meeting_id": 1}
+                    ))
+                    
+                    # Extract meeting_ids (could be ObjectId or string)
+                    matching_meeting_ids = []
+                    for m in matching_meetings:
+                        meeting_id = m.get('meeting_id')
+                        if meeting_id:
+                            # If it's already an ObjectId, use it directly
+                            if isinstance(meeting_id, ObjectId):
+                                matching_meeting_ids.append(meeting_id)
+                            # If it's a string, try to convert to ObjectId
+                            elif isinstance(meeting_id, str) and ObjectId.is_valid(meeting_id):
+                                matching_meeting_ids.append(ObjectId(meeting_id))
+                    
+                    if matching_meeting_ids:
+                        # Filter recordings by matching meeting_ids (using _id)
+                        query['_id'] = {'$in': matching_meeting_ids}
+                    else:
+                        # No matching participants, return empty
+                        query['_id'] = {'$in': []}
+                
                 async for recording in recordings.find(query).sort("modifiedTime", -1).limit(limit):
                     modified_time = recording.get('modifiedTime')
                     # Add 'Z' to indicate UTC timezone for proper frontend conversion
@@ -583,6 +620,15 @@ async def get_activities(
                     
                     for daily in daily_docs:
                         try:
+                            # Filter by participant if specified
+                            if filter_participant_name:
+                                analysis = daily.get('analysis', {})
+                                participants = analysis.get('participants', [])
+                                # Check if any participant name matches (case-insensitive)
+                                participant_names = [p.get('name', '') for p in participants if isinstance(p, dict)]
+                                if not any(filter_participant_name.lower() in name.lower() for name in participant_names):
+                                    continue  # Skip this daily analysis if participant doesn't match
+                            
                             # Convert timestamp
                             timestamp = daily.get("timestamp")
                             if isinstance(timestamp, datetime):

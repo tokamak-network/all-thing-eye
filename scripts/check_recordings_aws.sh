@@ -14,8 +14,12 @@ if [ ! -f "scripts/check_recordings_participants.py" ]; then
     exit 1
 fi
 
-# Run the Python script
-echo "📊 Running data structure check..."
+# Run the Python script inside Docker container (recommended)
+echo "📊 Running data structure check in Docker container..."
 echo ""
-python3 scripts/check_recordings_participants.py
+docker exec -it all-thing-eye-backend python scripts/check_recordings_participants.py
+
+# Alternative: If you want to run locally, uncomment below and install pymongo first
+# pip3 install pymongo
+# python3 scripts/check_recordings_participants.py
 

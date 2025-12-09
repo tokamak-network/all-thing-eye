@@ -45,6 +45,7 @@ export default function ActivitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [memberFilter, setMemberFilter] = useState<string>("");
+  const [participantFilter, setParticipantFilter] = useState<string>("");
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -138,6 +139,7 @@ export default function ActivitiesPage() {
           limit: loadLimit,
           source_type: sourceFilter || undefined,
           member_name: memberFilter || undefined, // Filter by member on backend
+          participant_name: participantFilter || undefined, // Filter by participant on backend (for recordings and daily analysis)
         });
         setAllActivities(response);
         setCurrentPage(1); // Reset to first page when filter changes
@@ -150,7 +152,7 @@ export default function ActivitiesPage() {
     }
 
     fetchActivities();
-  }, [sourceFilter, memberFilter, itemsPerPage]); // Reload when any filter changes
+  }, [sourceFilter, memberFilter, participantFilter, itemsPerPage]); // Reload when any filter changes
 
   // Activities are already filtered by backend, but we need to filter out Kevin's Google Drive activities (noise)
   const filteredActivities = allActivities
@@ -368,6 +370,19 @@ export default function ActivitiesPage() {
             {allMembers.map((member) => (
               <option key={member} value={member}>
                 {member}
+              </option>
+            ))}
+          </select>
+          <select
+            value={participantFilter}
+            onChange={(e) => setParticipantFilter(e.target.value)}
+            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+            title="Filter by participant (for recordings and daily analysis)"
+          >
+            <option value="">All Participants</option>
+            {allMembers.map((member) => (
+              <option key={member} value={member}>
+                👥 {member}
               </option>
             ))}
           </select>
