@@ -197,6 +197,11 @@ class NotionPluginMongo(DataSourcePlugin):
         """Search for pages updated after start_date"""
         pages = []
         
+        # Ensure start_date is timezone-aware (UTC)
+        if start_date.tzinfo is None:
+            import pytz
+            start_date = start_date.replace(tzinfo=pytz.UTC)
+        
         try:
             query = {
                 "filter": {
@@ -269,6 +274,11 @@ class NotionPluginMongo(DataSourcePlugin):
     def _fetch_databases(self, start_date: datetime) -> List[Dict[str, Any]]:
         """Search for databases updated after start_date"""
         databases = []
+        
+        # Ensure start_date is timezone-aware (UTC)
+        if start_date.tzinfo is None:
+            import pytz
+            start_date = start_date.replace(tzinfo=pytz.UTC)
         
         try:
             query = {

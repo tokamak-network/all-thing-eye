@@ -132,14 +132,17 @@ async def collect_slack(mongo_manager: MongoDBManager, start_date: datetime, end
             logger.error("   ❌ Slack authentication failed")
             return
         
-        # Collect data
-        data = plugin.collect_data(start_date=start_date, end_date=end_date)
+        # Collect data (returns a list with one dict)
+        data_list = plugin.collect_data(start_date=start_date, end_date=end_date)
         
-        # Save to MongoDB
-        await plugin.save_data(data)
-        
-        messages_count = len(data.get('messages', []))
-        logger.info(f"   ✅ Slack: {messages_count} messages")
+        # Save to MongoDB (extract the dict from the list)
+        if data_list:
+            data = data_list[0]
+            await plugin.save_data(data)
+            messages_count = len(data.get('messages', []))
+            logger.info(f"   ✅ Slack: {messages_count} messages")
+        else:
+            logger.warning("   ⚠️  Slack collection returned empty data")
         
     except Exception as e:
         logger.error(f"   ❌ Slack collection failed: {e}", exc_info=True)
@@ -163,25 +166,31 @@ async def collect_notion(mongo_manager: MongoDBManager, start_date: datetime, en
             logger.error("   ❌ Notion authentication failed")
             return
         
-        # Collect data
-        data = plugin.collect_data(start_date=start_date, end_date=end_date)
+        # Ensure start_date and end_date are timezone-aware
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=ZoneInfo("UTC"))
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=ZoneInfo("UTC"))
         
-        # Save to MongoDB
-        await plugin.save_data(data)
+        # Collect data (returns a list with one dict)
+        data_list = plugin.collect_data(start_date=start_date, end_date=end_date)
         
-        pages_count = len(data.get('pages', []))
-        logger.info(f"   ✅ Notion: {pages_count} pages")
+        # Save to MongoDB (extract the dict from the list)
+        if data_list:
+            data = data_list[0]
+            await plugin.save_data(data)
+            pages_count = len(data.get('pages', []))
+            logger.info(f"   ✅ Notion: {pages_count} pages")
+        else:
+            logger.warning("   ⚠️  Notion collection returned empty data")
         
     except Exception as e:
         logger.error(f"   ❌ Notion collection failed: {e}", exc_info=True)
 
 
-async def collect_google_drive(mongo_manager: MongoDBManager):
+async def collect_google_drive(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime):
     """
-    Collect Google Drive data for the past 1 day.
-    
-    Note: Google Drive API works with 'days' parameter, not specific date ranges.
-    We collect last 1 day to capture yesterday's activities.
+    Collect Google Drive data for the specified date range.
     """
     try:
         logger.info("📂 Collecting Google Drive data...")
@@ -199,14 +208,23 @@ async def collect_google_drive(mongo_manager: MongoDBManager):
             logger.error("   ❌ Google Drive authentication failed")
             return
         
-        # Collect last 1 day
-        data = plugin.collect_data(days=1)
+        # Ensure dates are timezone-aware (Google Drive plugin expects UTC)
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=ZoneInfo("UTC"))
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=ZoneInfo("UTC"))
         
-        # Save to MongoDB
-        await plugin.save_data(data)
+        # Collect data (returns a list with one dict)
+        data_list = plugin.collect_data(start_date=start_date, end_date=end_date)
         
-        activities_count = len(data.get('activities', []))
-        logger.info(f"   ✅ Google Drive: {activities_count} activities")
+        # Save to MongoDB (extract the dict from the list)
+        if data_list:
+            data = data_list[0]
+            await plugin.save_data(data)
+            activities_count = len(data.get('activities', []))
+            logger.info(f"   ✅ Google Drive: {activities_count} activities")
+        else:
+            logger.warning("   ⚠️  Google Drive collection returned empty data")
         
     except Exception as e:
         logger.error(f"   ❌ Google Drive collection failed: {e}", exc_info=True)
@@ -281,7 +299,7 @@ async def main():
             await collect_notion(mongo_manager, start_utc, end_utc)
         
         if 'drive' in sources:
-            await collect_google_drive(mongo_manager)
+            await collect_google_drive(mongo_manager, start_utc, end_utc)
         
         # Show summary
         logger.info("\n" + "=" * 80)
