@@ -2383,47 +2383,18 @@ export default function ActivitiesPage() {
                           selectedDailyAnalysis.analysis.participants.length > 0 && (
                             <div>
                               <div className="text-sm text-gray-500 mb-2">
-                                Participants ({(() => {
-                                  // Filter and sort participants
-                                  let filtered = [...selectedDailyAnalysis.analysis.participants];
-                                  
-                                  // Apply member filter if set
-                                  if (memberFilter) {
-                                    filtered = filtered.filter((p: any) =>
-                                      p.name?.toLowerCase().includes(memberFilter.toLowerCase())
-                                    );
-                                  }
-                                  
-                                  // Sort alphabetically by name
-                                  filtered.sort((a: any, b: any) => {
-                                    const nameA = (a.name || "").toLowerCase();
-                                    const nameB = (b.name || "").toLowerCase();
-                                    return nameA.localeCompare(nameB);
-                                  });
-                                  
-                                  return filtered.length;
-                                })()}):
+                                Participants ({selectedDailyAnalysis.analysis.participants.length}):
                               </div>
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {(() => {
-                                  // Filter and sort participants
-                                  let filtered = [...selectedDailyAnalysis.analysis.participants];
-                                  
-                                  // Apply member filter if set
-                                  if (memberFilter) {
-                                    filtered = filtered.filter((p: any) =>
-                                      p.name?.toLowerCase().includes(memberFilter.toLowerCase())
-                                    );
-                                  }
-                                  
-                                  // Sort alphabetically by name
-                                  filtered.sort((a: any, b: any) => {
+                                  // Sort participants alphabetically by name
+                                  const sorted = [...selectedDailyAnalysis.analysis.participants].sort((a: any, b: any) => {
                                     const nameA = (a.name || "").toLowerCase();
                                     const nameB = (b.name || "").toLowerCase();
                                     return nameA.localeCompare(nameB);
                                   });
                                   
-                                  return filtered;
+                                  return sorted;
                                 })().map(
                                   (participant: any, idx: number) => (
                                     <div
@@ -3037,22 +3008,14 @@ export default function ActivitiesPage() {
                               participantIndexMap.set(p.name, idx);
                             });
                             
-                            // Apply member filter if set
-                            let filtered = [...allParticipants];
-                            if (memberFilter) {
-                              filtered = filtered.filter((p: any) =>
-                                p.name?.toLowerCase().includes(memberFilter.toLowerCase())
-                              );
-                            }
-                            
-                            // Sort alphabetically by name
-                            filtered.sort((a: any, b: any) => {
+                            // Sort alphabetically by name (show all participants, backend already filtered the daily analysis)
+                            const sorted = [...allParticipants].sort((a: any, b: any) => {
                               const nameA = (a.name || "").toLowerCase();
                               const nameB = (b.name || "").toLowerCase();
                               return nameA.localeCompare(nameB);
                             });
                             
-                            return filtered.map(
+                            return sorted.map(
                               (participant: any, displayIdx: number) => {
                                 // Use the original index from the map to ensure consistency
                                 const originalIdx = participantIndexMap.get(participant.name) ?? displayIdx;
