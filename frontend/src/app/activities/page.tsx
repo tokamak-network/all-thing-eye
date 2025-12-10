@@ -45,8 +45,10 @@ export default function ActivitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [memberFilter, setMemberFilter] = useState<string>("");
+  const [projectFilter, setProjectFilter] = useState<string>("");
   const [keywordFilter, setKeywordFilter] = useState<string>(""); // Input field value
   const [searchKeyword, setSearchKeyword] = useState<string>(""); // Actual search keyword used in API
+  const [projects, setProjects] = useState<Array<{key: string; name: string}>>([]);
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -129,6 +131,20 @@ export default function ActivitiesPage() {
     fetchMembersAndMappings();
   }, []);
 
+  // Fetch projects for filter dropdown
+  useEffect(() => {
+    async function fetchProjects() {
+      try {
+        const response = await apiClient.getProjectsManagement(true); // Active only
+        setProjects(response.projects.map((p: any) => ({ key: p.key, name: p.name })));
+      } catch (err: any) {
+        console.error("Error fetching projects:", err);
+        // Don't show error, just continue without project filter
+      }
+    }
+    fetchProjects();
+  }, []);
+
   // Fetch activities with filters (including member filter from backend)
   useEffect(() => {
     async function fetchActivities() {
@@ -141,6 +157,7 @@ export default function ActivitiesPage() {
           source_type: sourceFilter || undefined,
           member_name: memberFilter || undefined, // Filter by member on backend (for recordings/daily analysis, this filters by participant)
           keyword: searchKeyword || undefined, // Search keyword (only updated when search button is clicked)
+          project_key: projectFilter || undefined, // Filter by project
         });
         setAllActivities(response);
         setCurrentPage(1); // Reset to first page when filter changes
@@ -153,7 +170,7 @@ export default function ActivitiesPage() {
     }
 
     fetchActivities();
-  }, [sourceFilter, memberFilter, searchKeyword, itemsPerPage]); // Reload when any filter changes
+  }, [sourceFilter, memberFilter, projectFilter, searchKeyword, itemsPerPage]); // Reload when any filter changes
 
   // Activities are already filtered by backend, but we need to filter out Kevin's Google Drive activities (noise)
   const filteredActivities = allActivities
@@ -369,6 +386,18 @@ export default function ActivitiesPage() {
               Search
             </button>
           </div>
+          <select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+          >
+            <option value="">All Projects</option>
+            {projects.map((project) => (
+              <option key={project.key} value={project.key}>
+                {project.name}
+              </option>
+            ))}
+          </select>
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}

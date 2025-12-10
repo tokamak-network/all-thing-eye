@@ -142,6 +142,7 @@ class ApiClient {
     member_id?: number;
     member_name?: string; // Filter by member name (for recordings and daily analysis, filters by participant)
     keyword?: string; // Search keyword (searches in titles, content, messages)
+    project_key?: string; // Filter by project key (filters activities by project repositories, channels, folders, etc.)
     start_date?: string;
     end_date?: string;
     limit?: number;
@@ -178,6 +179,73 @@ class ApiClient {
 
   async getProjectMembers(projectKey: string) {
     const response = await this.client.get(`/projects/${projectKey}/members`);
+    return response.data;
+  }
+
+  // Projects Management API (CRUD operations)
+  // Note: These endpoints use the projects-management router which is mounted at /api/v1
+  // The router itself defines /projects, so the full path is /api/v1/projects
+  async getProjectsManagement(activeOnly: boolean = false) {
+    // Use a different endpoint path - check if projects-management has a separate prefix
+    // Actually, projects_management router is mounted at /api/v1, and it defines /projects
+    // So we need to check the actual route structure
+    // Let's use the management endpoints directly
+    const response = await this.client.get("/projects-management/projects", {
+      params: { active_only: activeOnly },
+    });
+    return response.data;
+  }
+
+  async getProjectManagement(projectKey: string) {
+    const response = await this.client.get(`/projects-management/projects/${projectKey}`);
+    return response.data;
+  }
+
+  async createProject(projectData: {
+    key: string;
+    name: string;
+    description?: string;
+    slack_channel?: string;
+    slack_channel_id?: string;
+    lead?: string;
+    github_team_slug?: string;
+    drive_folders?: string[];
+    notion_page_ids?: string[];
+    notion_parent_page_id?: string;
+    sub_projects?: string[];
+    is_active?: boolean;
+  }) {
+    const response = await this.client.post("/projects-management/projects", projectData);
+    return response.data;
+  }
+
+  async updateProject(
+    projectKey: string,
+    projectData: {
+      name?: string;
+      description?: string;
+      slack_channel?: string;
+      slack_channel_id?: string;
+      lead?: string;
+      github_team_slug?: string;
+      drive_folders?: string[];
+      notion_page_ids?: string[];
+      notion_parent_page_id?: string;
+      sub_projects?: string[];
+      is_active?: boolean;
+    }
+  ) {
+    const response = await this.client.put(`/projects-management/projects/${projectKey}`, projectData);
+    return response.data;
+  }
+
+  async deleteProject(projectKey: string) {
+    const response = await this.client.delete(`/projects-management/projects/${projectKey}`);
+    return response.data;
+  }
+
+  async syncProjectRepositories(projectKey: string) {
+    const response = await this.client.post(`/projects-management/projects/${projectKey}/sync-repositories`);
     return response.data;
   }
 

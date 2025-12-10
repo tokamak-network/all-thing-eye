@@ -168,6 +168,7 @@ async def get_activities(
     activity_type: Optional[str] = Query(None, description="Filter by activity type"),
     member_name: Optional[str] = Query(None, description="Filter by member name (for recordings and daily analysis, filters by participant)"),
     keyword: Optional[str] = Query(None, description="Search keyword (searches in titles, content, messages)"),
+    project_key: Optional[str] = Query(None, description="Filter by project key (filters activities by project repositories, channels, folders, etc.)"),
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
     limit: int = Query(100, ge=1, le=1000),
@@ -187,6 +188,37 @@ async def get_activities(
         # IMPORTANT: Store filter member_name separately to avoid overwriting in loops
         filter_member_name = member_name
         filter_keyword = keyword
+        filter_project_key = project_key
+        
+        # Load project configuration if project_key is provided
+        project_config = None
+        if filter_project_key:
+            projects_collection = db["projects"]
+            project_doc = await projects_collection.find_one({"key": filter_project_key, "is_active": True})
+            if project_doc:
+                project_config = {
+                    "repositories": project_doc.get("repositories", []),
+                    "slack_channel_id": project_doc.get("slack_channel_id"),
+                    "drive_folders": project_doc.get("drive_folders", []),
+                    "notion_page_ids": project_doc.get("notion_page_ids", []),
+                }
+            else:
+                # Project not found or inactive, return empty results
+                return ActivityListResponse(
+                    total=0,
+                    activities=[],
+                    filters={
+                        'source_type': source_type,
+                        'activity_type': activity_type,
+                        'member_name': filter_member_name,
+                        'project_key': filter_project_key,
+                        'keyword': filter_keyword,
+                        'start_date': start_date,
+                        'end_date': end_date,
+                        'limit': limit,
+                        'offset': offset
+                    }
+                )
         
         # Load member mappings once for all activities (performance optimization)
         member_mappings = await load_member_mappings(db)
@@ -240,6 +272,9 @@ async def get_activities(
                     if filter_keyword:
                         # Search in commit message
                         query['message'] = {'$regex': filter_keyword, '$options': 'i'}
+                    if project_config and project_config['repositories']:
+                        # Filter by project repositories
+                        query['repository'] = {'$in': project_config['repositories']}
                     
                     async for commit in commits.find(query).sort("date", -1).limit(source_limit):
                         commit_date = commit.get('date')
@@ -290,6 +325,9 @@ async def get_activities(
                     if filter_keyword:
                         # Search in PR title
                         query['title'] = {'$regex': filter_keyword, '$options': 'i'}
+                    if project_config and project_config['repositories']:
+                        # Filter by project repositories
+                        query['repository'] = {'$in': project_config['repositories']}
                     
                     async for pr in prs.find(query).sort("created_at", -1).limit(source_limit):
                         created_at = pr.get('created_at')
@@ -340,6 +378,9 @@ async def get_activities(
                 if filter_keyword:
                     # Search in message text
                     query['text'] = {'$regex': filter_keyword, '$options': 'i'}
+                if project_config and project_config['slack_channel_id']:
+                    # Filter by project Slack channel
+                    query['channel_id'] = project_config['slack_channel_id']
                 
                 async for msg in messages.find(query).sort("posted_at", -1).limit(source_limit):
                     posted_at = msg.get('posted_at')
@@ -444,6 +485,19 @@ async def get_activities(
                         }
                     else:
                         query['$or'] = keyword_conditions
+                if project_config and project_config['notion_page_ids']:
+                    # Filter by project Notion page IDs
+                    if '$and' in query:
+                        query['$and'].append({'id': {'$in': project_config['notion_page_ids']}})
+                    elif '$or' in query:
+                        query = {
+                            '$and': [
+                                {'$or': query['$or']},
+                                {'id': {'$in': project_config['notion_page_ids']}}
+                            ]
+                        }
+                    else:
+                        query['id'] = {'$in': project_config['notion_page_ids']}
                 
                 async for page in pages.find(query).sort("created_time", -1).limit(source_limit):
                     created_time = page.get('created_time')
@@ -516,6 +570,16 @@ async def get_activities(
                 if filter_keyword:
                     # Search in document title
                     query['doc_title'] = {'$regex': filter_keyword, '$options': 'i'}
+                if project_config and project_config['drive_folders']:
+                    # Filter by project Drive folders (check if doc_id or parent_folder_id matches)
+                    folder_conditions = [
+                        {'doc_id': {'$in': project_config['drive_folders']}},
+                        {'parent_folder_id': {'$in': project_config['drive_folders']}}
+                    ]
+                    if query:
+                        query['$or'] = folder_conditions
+                    else:
+                        query = {'$or': folder_conditions}
                 
                 async for activity in drive_activities.find(query).sort("timestamp", -1).limit(source_limit):
                     timestamp_val = activity.get('timestamp')
@@ -789,6 +853,8 @@ async def get_activities(
                 'source_type': source_type,
                 'activity_type': activity_type,
                 'member_name': filter_member_name,
+                'project_key': filter_project_key,
+                'keyword': filter_keyword,
                 'start_date': start_date,
                 'end_date': end_date,
                 'limit': limit,

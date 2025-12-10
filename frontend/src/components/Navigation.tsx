@@ -26,6 +26,7 @@ export default function Navigation() {
     { href: "/activities", label: "📋 Activities" },
     { href: "/custom-export", label: "🎨 Custom Export" },
     { href: "/members", label: "Members" },
+    { href: "/projects", label: "Projects" },
   ];
 
   const isActive = (href: string) => {

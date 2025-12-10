@@ -179,7 +179,7 @@ app.include_router(
 
 app.include_router(
     projects_management.router,
-    prefix="/api/v1",
+    prefix="/api/v1/projects-management",
     tags=["projects-management"]
 )
 
