@@ -53,12 +53,10 @@ export default function ProjectsPage() {
     github_team_slug: '',
     repositories: [] as string[],
     drive_folders: [] as string[],
-    sub_projects: [] as string[],
     is_active: true,
   });
 
   const [newDriveFolder, setNewDriveFolder] = useState('');
-  const [newSubProject, setNewSubProject] = useState('');
 
   const fetchProjects = useCallback(async () => {
       try {
@@ -88,11 +86,9 @@ export default function ProjectsPage() {
       github_team_slug: '',
       repositories: [],
       drive_folders: [],
-      sub_projects: [],
       is_active: true,
     });
     setNewDriveFolder('');
-    setNewSubProject('');
     setShowCreateModal(true);
   }
 
@@ -106,11 +102,9 @@ export default function ProjectsPage() {
       github_team_slug: project.github_team_slug || '',
       repositories: project.repositories || [],
       drive_folders: project.drive_folders || [],
-      sub_projects: project.sub_projects || [],
       is_active: project.is_active,
     });
     setNewDriveFolder('');
-    setNewSubProject('');
     setShowCreateModal(true);
   }
 
@@ -127,7 +121,6 @@ export default function ProjectsPage() {
           github_team_slug: formData.github_team_slug || undefined,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
-          sub_projects: formData.sub_projects,
           is_active: formData.is_active,
         });
       } else {
@@ -140,7 +133,6 @@ export default function ProjectsPage() {
           github_team_slug: formData.github_team_slug || undefined,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
-          sub_projects: formData.sub_projects,
           is_active: formData.is_active,
         });
       }
@@ -184,22 +176,6 @@ export default function ProjectsPage() {
     });
   }
 
-  function addSubProject() {
-    if (newSubProject.trim()) {
-      setFormData({
-        ...formData,
-        sub_projects: [...formData.sub_projects, newSubProject.trim()],
-      });
-      setNewSubProject('');
-    }
-  }
-
-  function removeSubProject(index: number) {
-    setFormData({
-      ...formData,
-      sub_projects: formData.sub_projects.filter((_, i) => i !== index),
-    });
-  }
 
   if (loading && !data) {
     return (
@@ -561,51 +537,6 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
-                  {/* Sub Projects */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Sub Projects
-                    </label>
-                    <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={newSubProject}
-                        onChange={(e) => setNewSubProject(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addSubProject();
-                          }
-                        }}
-                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="Sub project key (e.g., drb)"
-                      />
-                      <button
-                        type="button"
-                        onClick={addSubProject}
-                        className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-                      >
-                        Add
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {formData.sub_projects.map((subProject, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded text-sm"
-                        >
-                          {subProject}
-                          <button
-                            type="button"
-                            onClick={() => removeSubProject(index)}
-                            className="text-green-600 hover:text-green-800"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
 
                   <div className="flex items-center">
                     <input
