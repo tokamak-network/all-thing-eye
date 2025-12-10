@@ -98,7 +98,7 @@ async def get_projects(request: Request, active_only: bool = False):
     """
     try:
         mongo = get_mongo()
-        db = mongo.get_database_sync()
+        db = mongo.db
         projects_collection = db["projects"]
         
         query = {"is_active": True} if active_only else {}
@@ -162,7 +162,7 @@ async def get_project(request: Request, project_key: str):
     """
     try:
         mongo = get_mongo()
-        db = mongo.get_database_sync()
+        db = mongo.db
         projects_collection = db["projects"]
         
         doc = projects_collection.find_one({"key": project_key})
@@ -223,7 +223,7 @@ async def create_project(request: Request, body: ProjectCreateRequest):
     """
     try:
         mongo = get_mongo()
-        db = mongo.get_database_sync()
+        db = mongo.db
         projects_collection = db["projects"]
         
         # Check if project key already exists
@@ -299,7 +299,7 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
     """
     try:
         mongo = get_mongo()
-        db = mongo.get_database_sync()
+        db = mongo.db
         projects_collection = db["projects"]
         
         # Check if project exists
@@ -385,7 +385,7 @@ async def delete_project(request: Request, project_key: str):
     """
     try:
         mongo = get_mongo()
-        db = mongo.get_database_sync()
+        db = mongo.db
         projects_collection = db["projects"]
         
         # Check if project exists
