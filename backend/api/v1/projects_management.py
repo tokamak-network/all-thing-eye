@@ -106,6 +106,19 @@ async def get_projects(request: Request, active_only: bool = False):
         
         projects = []
         for doc in cursor:
+            # Safely handle datetime fields - MongoDB returns datetime objects or None
+            created_at = doc.get("created_at")
+            if not isinstance(created_at, datetime):
+                created_at = datetime.utcnow()
+            
+            updated_at = doc.get("updated_at")
+            if not isinstance(updated_at, datetime):
+                updated_at = datetime.utcnow()
+            
+            repositories_synced_at = doc.get("repositories_synced_at")
+            if repositories_synced_at is not None and not isinstance(repositories_synced_at, datetime):
+                repositories_synced_at = None
+            
             projects.append(ProjectResponse(
                 id=str(doc["_id"]),
                 key=doc["key"],
@@ -115,15 +128,15 @@ async def get_projects(request: Request, active_only: bool = False):
                 slack_channel_id=doc.get("slack_channel_id"),
                 lead=doc.get("lead"),
                 repositories=doc.get("repositories", []),
-                repositories_synced_at=doc.get("repositories_synced_at"),
+                repositories_synced_at=repositories_synced_at,
                 github_team_slug=doc.get("github_team_slug"),
                 drive_folders=doc.get("drive_folders", []),
                 notion_page_ids=doc.get("notion_page_ids", []),
                 notion_parent_page_id=doc.get("notion_parent_page_id"),
                 sub_projects=doc.get("sub_projects", []),
                 is_active=doc.get("is_active", True),
-                created_at=doc.get("created_at", datetime.utcnow()),
-                updated_at=doc.get("updated_at", datetime.utcnow())
+                created_at=created_at,
+                updated_at=updated_at
             ))
         
         return ProjectListResponse(
@@ -132,8 +145,8 @@ async def get_projects(request: Request, active_only: bool = False):
         )
         
     except Exception as e:
-        logger.error(f"Error fetching projects: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch projects")
+        logger.error(f"Error fetching projects: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch projects: {str(e)}")
 
 
 @router.get("/projects/{project_key}", response_model=ProjectResponse)
@@ -157,6 +170,19 @@ async def get_project(request: Request, project_key: str):
         if not doc:
             raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
         
+        # Safely handle datetime fields
+        created_at = doc.get("created_at")
+        if not isinstance(created_at, datetime):
+            created_at = datetime.utcnow()
+        
+        updated_at = doc.get("updated_at")
+        if not isinstance(updated_at, datetime):
+            updated_at = datetime.utcnow()
+        
+        repositories_synced_at = doc.get("repositories_synced_at")
+        if repositories_synced_at is not None and not isinstance(repositories_synced_at, datetime):
+            repositories_synced_at = None
+        
         return ProjectResponse(
             id=str(doc["_id"]),
             key=doc["key"],
@@ -166,22 +192,22 @@ async def get_project(request: Request, project_key: str):
             slack_channel_id=doc.get("slack_channel_id"),
             lead=doc.get("lead"),
             repositories=doc.get("repositories", []),
-            repositories_synced_at=doc.get("repositories_synced_at"),
+            repositories_synced_at=repositories_synced_at,
             github_team_slug=doc.get("github_team_slug"),
             drive_folders=doc.get("drive_folders", []),
             notion_page_ids=doc.get("notion_page_ids", []),
             notion_parent_page_id=doc.get("notion_parent_page_id"),
             sub_projects=doc.get("sub_projects", []),
             is_active=doc.get("is_active", True),
-            created_at=doc.get("created_at", datetime.utcnow()),
-            updated_at=doc.get("updated_at", datetime.utcnow())
+            created_at=created_at,
+            updated_at=updated_at
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching project: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch project")
+        logger.error(f"Error fetching project: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch project: {str(e)}")
 
 
 @router.post("/projects", response_model=ProjectResponse, status_code=201)
