@@ -49,20 +49,15 @@ export default function ProjectsPage() {
     key: '',
     name: '',
     description: '',
-    slack_channel: '',
-    slack_channel_id: '',
     lead: '',
     github_team_slug: '',
     repositories: [] as string[],
     drive_folders: [] as string[],
-    notion_page_ids: [] as string[],
-    notion_parent_page_id: '',
     sub_projects: [] as string[],
     is_active: true,
   });
 
   const [newDriveFolder, setNewDriveFolder] = useState('');
-  const [newNotionPageId, setNewNotionPageId] = useState('');
   const [newSubProject, setNewSubProject] = useState('');
 
   const fetchProjects = useCallback(async () => {
@@ -89,19 +84,14 @@ export default function ProjectsPage() {
       key: '',
       name: '',
       description: '',
-      slack_channel: '',
-      slack_channel_id: '',
       lead: '',
       github_team_slug: '',
       repositories: [],
       drive_folders: [],
-      notion_page_ids: [],
-      notion_parent_page_id: '',
       sub_projects: [],
       is_active: true,
     });
     setNewDriveFolder('');
-    setNewNotionPageId('');
     setNewSubProject('');
     setShowCreateModal(true);
   }
@@ -112,19 +102,14 @@ export default function ProjectsPage() {
       key: project.key,
       name: project.name,
       description: project.description || '',
-      slack_channel: project.slack_channel || '',
-      slack_channel_id: project.slack_channel_id || '',
       lead: project.lead || '',
       github_team_slug: project.github_team_slug || '',
       repositories: project.repositories || [],
       drive_folders: project.drive_folders || [],
-      notion_page_ids: project.notion_page_ids || [],
-      notion_parent_page_id: project.notion_parent_page_id || '',
       sub_projects: project.sub_projects || [],
       is_active: project.is_active,
     });
     setNewDriveFolder('');
-    setNewNotionPageId('');
     setNewSubProject('');
     setShowCreateModal(true);
   }
@@ -138,14 +123,10 @@ export default function ProjectsPage() {
         await apiClient.updateProject(editingProject.key, {
           name: formData.name,
           description: formData.description || undefined,
-          slack_channel: formData.slack_channel || undefined,
-          slack_channel_id: formData.slack_channel_id || undefined,
           lead: formData.lead || undefined,
           github_team_slug: formData.github_team_slug || undefined,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
-          notion_page_ids: formData.notion_page_ids,
-          notion_parent_page_id: formData.notion_parent_page_id || undefined,
           sub_projects: formData.sub_projects,
           is_active: formData.is_active,
         });
@@ -155,14 +136,10 @@ export default function ProjectsPage() {
           key: formData.key,
           name: formData.name,
           description: formData.description || undefined,
-          slack_channel: formData.slack_channel || undefined,
-          slack_channel_id: formData.slack_channel_id || undefined,
           lead: formData.lead || undefined,
           github_team_slug: formData.github_team_slug || undefined,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
-          notion_page_ids: formData.notion_page_ids,
-          notion_parent_page_id: formData.notion_parent_page_id || undefined,
           sub_projects: formData.sub_projects,
           is_active: formData.is_active,
         });
@@ -204,23 +181,6 @@ export default function ProjectsPage() {
     setFormData({
       ...formData,
       drive_folders: formData.drive_folders.filter((_, i) => i !== index),
-    });
-  }
-
-  function addNotionPageId() {
-    if (newNotionPageId.trim()) {
-      setFormData({
-        ...formData,
-        notion_page_ids: [...formData.notion_page_ids, newNotionPageId.trim()],
-      });
-      setNewNotionPageId('');
-    }
-  }
-
-  function removeNotionPageId(index: number) {
-    setFormData({
-      ...formData,
-      notion_page_ids: formData.notion_page_ids.filter((_, i) => i !== index),
     });
   }
 
@@ -483,33 +443,6 @@ export default function ProjectsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
-                        Slack Channel
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.slack_channel}
-                        onChange={(e) => setFormData({ ...formData, slack_channel: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="project-ooo"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Slack Channel ID
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.slack_channel_id}
-                        onChange={(e) => setFormData({ ...formData, slack_channel_id: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="C06TY9X8XNQ"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
                         Project Lead
                       </label>
                       <input
@@ -533,19 +466,6 @@ export default function ProjectsPage() {
                       />
                     </div>
                 </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Notion Parent Page ID
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.notion_parent_page_id}
-                      onChange={(e) => setFormData({ ...formData, notion_parent_page_id: e.target.value })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                      placeholder="Notion page ID"
-                    />
-                  </div>
 
                   {/* GitHub Repositories */}
                   <div>
@@ -633,52 +553,6 @@ export default function ProjectsPage() {
                             type="button"
                             onClick={() => removeDriveFolder(index)}
                             className="text-blue-600 hover:text-blue-800"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Notion Page IDs */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notion Page IDs
-                    </label>
-                    <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={newNotionPageId}
-                        onChange={(e) => setNewNotionPageId(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addNotionPageId();
-                          }
-                        }}
-                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="Notion page ID"
-                      />
-                      <button
-                        type="button"
-                        onClick={addNotionPageId}
-                        className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-                      >
-                        Add
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {formData.notion_page_ids.map((pageId, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm"
-                        >
-                          {pageId}
-                          <button
-                            type="button"
-                            onClick={() => removeNotionPageId(index)}
-                            className="text-purple-600 hover:text-purple-800"
                           >
                             ×
                           </button>
