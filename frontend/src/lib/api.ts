@@ -141,6 +141,7 @@ class ApiClient {
     activity_type?: string;
     member_id?: number;
     member_name?: string; // Filter by member name (for recordings and daily analysis, filters by participant)
+    keyword?: string; // Search keyword (searches in titles, content, messages)
     start_date?: string;
     end_date?: string;
     limit?: number;

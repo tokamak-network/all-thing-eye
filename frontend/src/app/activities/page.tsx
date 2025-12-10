@@ -45,6 +45,7 @@ export default function ActivitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [memberFilter, setMemberFilter] = useState<string>("");
+  const [keywordFilter, setKeywordFilter] = useState<string>("");
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -138,6 +139,7 @@ export default function ActivitiesPage() {
           limit: loadLimit,
           source_type: sourceFilter || undefined,
           member_name: memberFilter || undefined, // Filter by member on backend (for recordings/daily analysis, this filters by participant)
+          keyword: keywordFilter || undefined, // Search keyword
         });
         setAllActivities(response);
         setCurrentPage(1); // Reset to first page when filter changes
@@ -150,7 +152,7 @@ export default function ActivitiesPage() {
     }
 
     fetchActivities();
-  }, [sourceFilter, memberFilter, itemsPerPage]); // Reload when any filter changes
+  }, [sourceFilter, memberFilter, keywordFilter, itemsPerPage]); // Reload when any filter changes
 
   // Activities are already filtered by backend, but we need to filter out Kevin's Google Drive activities (noise)
   const filteredActivities = allActivities
@@ -346,6 +348,13 @@ export default function ActivitiesPage() {
           </p>
         </div>
         <div className="flex space-x-2">
+          <input
+            type="text"
+            value={keywordFilter}
+            onChange={(e) => setKeywordFilter(e.target.value)}
+            placeholder="🔍 Search keywords..."
+            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 border w-48"
+          />
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}

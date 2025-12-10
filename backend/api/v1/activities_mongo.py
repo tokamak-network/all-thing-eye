@@ -167,6 +167,7 @@ async def get_activities(
     source_type: Optional[str] = Query(None, description="Filter by source (github, slack, notion, google_drive)"),
     activity_type: Optional[str] = Query(None, description="Filter by activity type"),
     member_name: Optional[str] = Query(None, description="Filter by member name (for recordings and daily analysis, filters by participant)"),
+    keyword: Optional[str] = Query(None, description="Search keyword (searches in titles, content, messages)"),
     start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (ISO format)"),
     limit: int = Query(100, ge=1, le=1000),
@@ -185,12 +186,19 @@ async def get_activities(
         
         # IMPORTANT: Store filter member_name separately to avoid overwriting in loops
         filter_member_name = member_name
+        filter_keyword = keyword
         
         # Load member mappings once for all activities (performance optimization)
         member_mappings = await load_member_mappings(db)
         
         # Determine which sources to query
         sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
+        
+        # For accurate keyword search and pagination, we need to fetch more data from each source
+        # then sort and limit globally. Use a multiplier to ensure we get enough results.
+        # If keyword is provided, we might need even more data to find matching results.
+        source_limit_multiplier = 3 if filter_keyword else 2  # Fetch 2-3x more per source when searching
+        source_limit = limit * source_limit_multiplier
         
         # Build date filter
         # MongoDB stores datetimes as timezone-naive (assumed UTC)
@@ -229,8 +237,11 @@ async def get_activities(
                             query['author_name'] = filter_member_name
                     if date_filter:
                         query['date'] = date_filter
+                    if filter_keyword:
+                        # Search in commit message
+                        query['message'] = {'$regex': filter_keyword, '$options': 'i'}
                     
-                    async for commit in commits.find(query).sort("date", -1).limit(limit):
+                    async for commit in commits.find(query).sort("date", -1).limit(source_limit):
                         commit_date = commit.get('date')
                         # Add 'Z' to indicate UTC timezone for proper frontend conversion
                         if isinstance(commit_date, datetime):
@@ -276,8 +287,11 @@ async def get_activities(
                             query['author'] = filter_member_name
                     if date_filter:
                         query['created_at'] = date_filter
+                    if filter_keyword:
+                        # Search in PR title
+                        query['title'] = {'$regex': filter_keyword, '$options': 'i'}
                     
-                    async for pr in prs.find(query).sort("created_at", -1).limit(limit):
+                    async for pr in prs.find(query).sort("created_at", -1).limit(source_limit):
                         created_at = pr.get('created_at')
                         # Add 'Z' to indicate UTC timezone for proper frontend conversion
                         if isinstance(created_at, datetime):
@@ -323,8 +337,11 @@ async def get_activities(
                     query['$or'] = or_conditions
                 if date_filter:
                     query['posted_at'] = date_filter
+                if filter_keyword:
+                    # Search in message text
+                    query['text'] = {'$regex': filter_keyword, '$options': 'i'}
                 
-                async for msg in messages.find(query).sort("posted_at", -1).limit(limit):
+                async for msg in messages.find(query).sort("posted_at", -1).limit(source_limit):
                     posted_at = msg.get('posted_at')
                     # Add 'Z' to indicate UTC timezone for proper frontend conversion
                     if isinstance(posted_at, datetime):
@@ -410,8 +427,25 @@ async def get_activities(
                     query['$or'] = or_conditions
                 if date_filter:
                     query['created_time'] = date_filter
+                if filter_keyword:
+                    # Search in page title and content
+                    # Use $and to combine member filter with keyword search
+                    keyword_conditions = [
+                        {'title': {'$regex': filter_keyword, '$options': 'i'}},
+                        {'content': {'$regex': filter_keyword, '$options': 'i'}}
+                    ]
+                    if '$or' in query:
+                        # If member filter exists, combine with keyword search using $and
+                        query = {
+                            '$and': [
+                                {'$or': query['$or']},
+                                {'$or': keyword_conditions}
+                            ]
+                        }
+                    else:
+                        query['$or'] = keyword_conditions
                 
-                async for page in pages.find(query).sort("created_time", -1).limit(limit):
+                async for page in pages.find(query).sort("created_time", -1).limit(source_limit):
                     created_time = page.get('created_time')
                     # Add 'Z' to indicate UTC timezone for proper frontend conversion
                     if isinstance(created_time, datetime):
@@ -479,8 +513,11 @@ async def get_activities(
                         query['user_email'] = {"$regex": filter_member_name, "$options": "i"}
                 if date_filter:
                     query['timestamp'] = date_filter
+                if filter_keyword:
+                    # Search in document title
+                    query['doc_title'] = {'$regex': filter_keyword, '$options': 'i'}
                 
-                async for activity in drive_activities.find(query).sort("timestamp", -1).limit(limit):
+                async for activity in drive_activities.find(query).sort("timestamp", -1).limit(source_limit):
                     timestamp_val = activity.get('timestamp')
                     # Add 'Z' to indicate UTC timezone for proper frontend conversion
                     if isinstance(timestamp_val, datetime):
@@ -586,7 +623,20 @@ async def get_activities(
                         # No matching participants, return empty
                         query['_id'] = {'$in': []}
                 
-                async for recording in recordings.find(query).sort("modifiedTime", -1).limit(limit):
+                if filter_keyword:
+                    # Search in recording name
+                    if '_id' in query and isinstance(query['_id'], dict) and '$in' in query['_id']:
+                        # Combine participant filter with keyword search using $and
+                        query = {
+                            '$and': [
+                                {'_id': query['_id']},
+                                {'name': {'$regex': filter_keyword, '$options': 'i'}}
+                            ]
+                        }
+                    else:
+                        query['name'] = {'$regex': filter_keyword, '$options': 'i'}
+                
+                async for recording in recordings.find(query).sort("modifiedTime", -1).limit(source_limit):
                     modified_time = recording.get('modifiedTime')
                     # Add 'Z' to indicate UTC timezone for proper frontend conversion
                     if isinstance(modified_time, datetime):
@@ -619,11 +669,14 @@ async def get_activities(
                     if date_filter:
                         # Use target_date for filtering
                         query['target_date'] = date_filter
+                    if filter_keyword:
+                        # Search in full_analysis_text
+                        query['analysis.full_analysis_text'] = {'$regex': filter_keyword, '$options': 'i'}
                     
                     # Get documents (sync operation)
                     # Sort by timestamp if available, otherwise by target_date (as date, not string)
                     # We'll sort in Python after fetching to ensure proper date sorting
-                    daily_docs = list(recordings_daily_col.find(query).limit(limit * 2))  # Fetch more to sort properly
+                    daily_docs = list(recordings_daily_col.find(query).limit(source_limit))  # Fetch more to sort properly
                     
                     # Sort by target_date as date (not string) - newest first
                     def sort_daily_doc(doc):
