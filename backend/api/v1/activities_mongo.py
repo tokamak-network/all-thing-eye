@@ -527,13 +527,45 @@ async def get_activities(
                     gemini_recordings_col = gemini_db["recordings"]
                     
                     # Find meeting_ids where participant matches
-                    participant_query = {
-                        "participants": {"$regex": filter_member_name, "$options": "i"}
-                    }
-                    matching_meetings = list(gemini_recordings_col.find(
-                        participant_query,
-                        {"meeting_id": 1}
-                    ))
+                    # MongoDB array field search: use $expr with $regexMatch for array elements
+                    # This works for MongoDB 4.2+
+                    try:
+                        # Try using $expr with $regexMatch for array field search
+                        participant_query = {
+                            "$expr": {
+                                "$anyElementTrue": {
+                                    "$map": {
+                                        "input": "$participants",
+                                        "as": "participant",
+                                        "in": {
+                                            "$regexMatch": {
+                                                "input": "$$participant",
+                                                "regex": filter_member_name,
+                                                "options": "i"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        matching_meetings = list(gemini_recordings_col.find(
+                            participant_query,
+                            {"meeting_id": 1}
+                        ))
+                    except Exception:
+                        # Fallback: filter in Python if MongoDB query fails
+                        # Get all documents and filter in Python for case-insensitive partial match
+                        all_meetings = list(gemini_recordings_col.find(
+                            {},
+                            {"meeting_id": 1, "participants": 1}
+                        ))
+                        matching_meetings = [
+                            m for m in all_meetings
+                            if m.get("participants") and any(
+                                filter_member_name.lower() in p.lower() 
+                                for p in m.get("participants", [])
+                            )
+                        ]
                     
                     # Extract meeting_ids (could be ObjectId or string)
                     matching_meeting_ids = []
