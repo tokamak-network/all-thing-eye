@@ -209,6 +209,7 @@ class ApiClient {
     slack_channel_id?: string;
     lead?: string;
     github_team_slug?: string;
+    repositories?: string[];
     drive_folders?: string[];
     notion_page_ids?: string[];
     notion_parent_page_id?: string;
@@ -228,6 +229,7 @@ class ApiClient {
       slack_channel_id?: string;
       lead?: string;
       github_team_slug?: string;
+      repositories?: string[];
       drive_folders?: string[];
       notion_page_ids?: string[];
       notion_parent_page_id?: string;

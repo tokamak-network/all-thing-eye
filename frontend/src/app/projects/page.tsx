@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import apiClient from '@/lib/api';
 import {
   PlusIcon,
   PencilIcon,
   TrashIcon,
-  ArrowPathIcon,
   FolderIcon,
 } from '@heroicons/react/24/outline';
 
@@ -66,23 +65,23 @@ export default function ProjectsPage() {
   const [newNotionPageId, setNewNotionPageId] = useState('');
   const [newSubProject, setNewSubProject] = useState('');
 
-  useEffect(() => {
-    fetchProjects();
-  }, [activeOnly]);
-
-    async function fetchProjects() {
-      try {
-        setLoading(true);
+  const fetchProjects = useCallback(async () => {
+    try {
+      setLoading(true);
       setError(null);
       const response = await apiClient.getProjectsManagement(activeOnly);
-        setData(response);
-      } catch (err: any) {
-        console.error('Error fetching projects:', err);
+      setData(response);
+    } catch (err: any) {
+      console.error('Error fetching projects:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to fetch projects');
-      } finally {
-        setLoading(false);
-      }
+    } finally {
+      setLoading(false);
     }
+  }, [activeOnly]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
 
   function openCreateModal() {
     setEditingProject(null);
@@ -143,7 +142,7 @@ export default function ProjectsPage() {
           slack_channel_id: formData.slack_channel_id || undefined,
           lead: formData.lead || undefined,
           github_team_slug: formData.github_team_slug || undefined,
-          repositories: formData.repositories,
+          // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
           notion_page_ids: formData.notion_page_ids,
           notion_parent_page_id: formData.notion_parent_page_id || undefined,
@@ -160,7 +159,7 @@ export default function ProjectsPage() {
           slack_channel_id: formData.slack_channel_id || undefined,
           lead: formData.lead || undefined,
           github_team_slug: formData.github_team_slug || undefined,
-          repositories: formData.repositories,
+          // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
           notion_page_ids: formData.notion_page_ids,
           notion_parent_page_id: formData.notion_parent_page_id || undefined,
@@ -190,16 +189,6 @@ export default function ProjectsPage() {
     }
   }
 
-  async function handleSyncRepositories(projectKey: string) {
-    try {
-      setError(null);
-      await apiClient.syncProjectRepositories(projectKey);
-    fetchProjects();
-    } catch (err: any) {
-      console.error('Error syncing repositories:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to sync repositories');
-    }
-  }
 
   function addDriveFolder() {
     if (newDriveFolder.trim()) {
@@ -374,13 +363,6 @@ export default function ProjectsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => handleSyncRepositories(project.key)}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Sync repositories"
-                        >
-                          <ArrowPathIcon className="h-5 w-5" />
-                        </button>
-                        <button
                           onClick={() => openEditModal(project)}
                           className="text-indigo-600 hover:text-indigo-900"
                           title="Edit project"
@@ -548,20 +530,10 @@ export default function ProjectsPage() {
 
                   {/* GitHub Repositories */}
                   <div>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="mb-2">
                       <label className="block text-sm font-medium text-gray-700">
                         GitHub Repositories
                       </label>
-                      {editingProject && (
-                        <button
-                          type="button"
-                          onClick={() => handleSyncRepositories(editingProject.key)}
-                          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                        >
-                          <ArrowPathIcon className="h-4 w-4" />
-                          Sync from GitHub Teams
-                        </button>
-                      )}
                     </div>
                     <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-3">
                       <div className="flex items-start gap-2">
@@ -570,10 +542,10 @@ export default function ProjectsPage() {
                         </svg>
                         <div className="flex-1">
                           <p className="text-sm text-blue-800 font-medium mb-1">
-                            Manage repositories via GitHub Teams
+                            Repositories are automatically synced from GitHub Teams
                           </p>
                           <p className="text-xs text-blue-700 mb-2">
-                            To add or remove repositories, please go to{' '}
+                            Repositories are managed on{' '}
                             <a
                               href="https://github.com/orgs/tokamak-network/teams"
                               target="_blank"
@@ -582,7 +554,7 @@ export default function ProjectsPage() {
                             >
                               GitHub Teams page
                             </a>
-                            {' '}and manage repositories for the team "{formData.github_team_slug || formData.key}". After updating repositories on GitHub, click "Sync from GitHub Teams" to refresh the list here.
+                            {' '}for the team &quot;{formData.github_team_slug || formData.key}&quot;. The data collector automatically syncs repositories from GitHub Teams to the database every day at midnight (KST).
                           </p>
                         </div>
                       </div>
@@ -599,10 +571,10 @@ export default function ProjectsPage() {
                     </div>
                     {formData.repositories.length === 0 && (
                       <p className="text-xs text-gray-500 mt-2">
-                        No repositories found. Add repositories to the GitHub team and click "Sync from GitHub Teams" to update.
+                        No repositories found. Add repositories to the GitHub team and they will be automatically synced at midnight (KST).
                       </p>
-                    )}
-                  </div>
+                )}
+              </div>
 
                   {/* Drive Folders */}
                   <div>

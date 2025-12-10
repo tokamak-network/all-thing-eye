@@ -296,8 +296,10 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
             update_doc["lead"] = body.lead
         if body.github_team_slug is not None:
             update_doc["github_team_slug"] = body.github_team_slug
-        if body.repositories is not None:
-            update_doc["repositories"] = body.repositories
+        # repositories are automatically synced from GitHub Teams by data collector
+        # Do not allow manual updates via API
+        # if body.repositories is not None:
+        #     update_doc["repositories"] = body.repositories
         if body.drive_folders is not None:
             update_doc["drive_folders"] = body.drive_folders
         if body.notion_page_ids is not None:
