@@ -66,17 +66,17 @@ export default function ProjectsPage() {
   const [newSubProject, setNewSubProject] = useState('');
 
   const fetchProjects = useCallback(async () => {
-    try {
-      setLoading(true);
+      try {
+        setLoading(true);
       setError(null);
       const response = await apiClient.getProjectsManagement(activeOnly);
-      setData(response);
-    } catch (err: any) {
-      console.error('Error fetching projects:', err);
+        setData(response);
+      } catch (err: any) {
+        console.error('Error fetching projects:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to fetch projects');
-    } finally {
-      setLoading(false);
-    }
+      } finally {
+        setLoading(false);
+      }
   }, [activeOnly]);
 
   useEffect(() => {
@@ -249,7 +249,7 @@ export default function ProjectsPage() {
     );
   }
 
-  return (
+    return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
       {/* TBD Banner */}
@@ -336,9 +336,12 @@ export default function ProjectsPage() {
                   <tr key={project.key} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {project.name}
-                        </div>
+                        <button
+                          onClick={() => router.push(`/projects/${project.key}`)}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                        >
+                  {project.name}
+                        </button>
                         <div className="text-sm text-gray-500">
                           {project.key}
                         </div>

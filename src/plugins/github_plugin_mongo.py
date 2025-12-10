@@ -219,7 +219,7 @@ class GitHubPluginMongo(DataSourcePlugin):
             Number of projects successfully synced
         """
         try:
-            db = self.mongo.get_database_sync()
+            db = self.mongo.db
             projects_collection = db["projects"]
             
             # Get all active projects
