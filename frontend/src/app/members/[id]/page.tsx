@@ -10,7 +10,23 @@ import {
   BriefcaseIcon,
   FolderIcon,
   SparklesIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/outline";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Legend,
+} from "recharts";
 import DateRangePicker from "@/components/DateRangePicker";
 
 // Helper function to safely format timestamps
@@ -45,6 +61,13 @@ interface ActivityStats {
     timestamp: string;
     description: string;
     repository?: string;
+  }>;
+  daily_trends?: Array<{
+    date: string;
+    github: number;
+    slack: number;
+    notion: number;
+    drive: number;
   }>;
 }
 
@@ -429,6 +452,122 @@ export default function MemberDetailPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Analytics Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Stacked Area Chart - Activity Trends */}
+          <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
+             <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <ChartBarIcon className="h-5 w-5 text-indigo-500" />
+                Activity Trends (Last 90 Days)
+              </h2>
+            </div>
+                    <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3">
+              <span className="text-xl">⚠️</span>
+              <div>
+                <h3 className="text-sm font-medium text-yellow-800">Drive Data Temporarily Disabled</h3>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Google Drive activity data is currently excluded from visualizations due to high volume noise causing skewness. We are optimizing the filtering logic.
+                </p>
+              </div>
+            </div>
+            
+            <div className="h-[300px] w-full">
+              {member.activity_stats.daily_trends && member.activity_stats.daily_trends.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={member.activity_stats.daily_trends}
+                    margin={{
+                      top: 10,
+                      right: 10,
+                      left: 0,
+                      bottom: 0,
+                    }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fontSize: 12 }} 
+                      tickFormatter={(value) => format(new Date(value), 'MM/dd')}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      labelFormatter={(value) => format(new Date(value), 'MMM dd, yyyy')}
+                    />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="github"
+                      name="GitHub"
+                      stackId="1"
+                      stroke="#3B82F6"
+                      fill="#3B82F6"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="slack"
+                      name="Slack"
+                      stackId="1"
+                      stroke="#8B5CF6"
+                      fill="#8B5CF6"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="notion"
+                      name="Notion"
+                      stackId="1"
+                      stroke="#14B8A6"
+                      fill="#14B8A6"
+                    />
+                    {/* Drive area hidden due to noise */}
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500">
+                  No trend data available
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Radar Chart - Activity Distribution */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <span className="text-xl">🎯</span>
+              Focus Areas
+            </h2>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart 
+                  cx="50%" 
+                  cy="50%" 
+                  outerRadius="80%" 
+                  data={[
+                    { subject: 'GitHub', A: member.activity_stats.by_source.github?.total || 0, fullMark: 100 },
+                    { subject: 'Slack', A: member.activity_stats.by_source.slack?.total || 0, fullMark: 100 },
+                    { subject: 'Notion', A: member.activity_stats.by_source.notion?.total || 0, fullMark: 100 },
+                    // Drive excluded due to noise
+                  ]}
+                >
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#4B5563', fontSize: 12 }} />
+
+                  <Radar
+                    name="Activities"
+                    dataKey="A"
+                    stroke="#4F46E5"
+                    fill="#4F46E5"
+                    fillOpacity={0.6}
+                  />
+                  <Tooltip />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
 
         {/* Activity Statistics */}

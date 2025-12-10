@@ -716,7 +716,80 @@ async def get_member_detail(
         # Sort recent activities by timestamp
         recent.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
         activity_stats["recent_activities"] = recent[:20]
-        
+
+        # Calculate daily trends (last 90 days)
+        from datetime import timedelta
+        daily_trends = []
+        try:
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=90)
+            
+            # Helper for aggregation with existing query
+            async def get_daily_counts_with_query(collection_name, query, date_field):
+                try:
+                    coll = db[collection_name]
+                    # Clone query and add date filter
+                    trend_query = query.copy()
+                    trend_query[date_field] = {"$gte": start_date}
+                    
+                    pipeline = [
+                        {"$match": trend_query},
+                        {
+                            "$group": {
+                                "_id": {
+                                    "$dateToString": {
+                                        "format": "%Y-%m-%d", 
+                                        "date": f"${date_field}"
+                                    }
+                                },
+                                "count": {"$sum": 1}
+                            }
+                        },
+                        {"$sort": {"_id": 1}}
+                    ]
+                    result = await coll.aggregate(pipeline).to_list(None)
+                    return {doc["_id"]: doc["count"] for doc in result if doc["_id"] is not None}
+                except Exception as e:
+                    logger.warning(f"Trend aggregation failed for {collection_name}: {e}")
+                    return {}
+
+            # Execute aggregations
+            github_trend = await get_daily_counts_with_query("github_commits", github_query, "date")
+            slack_trend = await get_daily_counts_with_query("slack_messages", slack_query, "posted_at")
+            notion_trend = await get_daily_counts_with_query("notion_pages", notion_query, "created_time")
+            drive_trend = await get_daily_counts_with_query("drive_activities", drive_query, "timestamp")
+            
+            # Initialize map with 0s for all dates in range
+            trend_map = {}
+            current = start_date
+            while current <= end_date:
+                d = current.strftime("%Y-%m-%d")
+                trend_map[d] = {
+                    "date": d, 
+                    "github": 0, 
+                    "slack": 0, 
+                    "notion": 0, 
+                    "drive": 0
+                }
+                current += timedelta(days=1)
+                
+            # Fill data
+            for date_str, count in github_trend.items():
+                if date_str in trend_map: trend_map[date_str]["github"] = count
+            for date_str, count in slack_trend.items():
+                if date_str in trend_map: trend_map[date_str]["slack"] = count
+            for date_str, count in notion_trend.items():
+                if date_str in trend_map: trend_map[date_str]["notion"] = count
+            for date_str, count in drive_trend.items():
+                # Force drive count to 0 for charts due to noise
+                if date_str in trend_map: trend_map[date_str]["drive"] = 0 
+                
+            daily_trends = sorted(trend_map.values(), key=lambda x: x["date"])
+            activity_stats["daily_trends"] = daily_trends
+            
+        except Exception as e:
+            logger.error(f"Failed to generate member daily trends: {e}")
+
         logger.info(f"Retrieved member detail: {member_name} ({member_id})")
         
         return {

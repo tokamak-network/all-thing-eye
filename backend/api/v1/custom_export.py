@@ -518,25 +518,30 @@ async def fetch_drive_data(db, members: List[str], date_filter: dict, member_inf
         query = {}
         or_conditions = []
         if identifiers["drive"]:
-            or_conditions.append({"actor_email": {"$in": identifiers["drive"]}})
-        or_conditions.append({"actor_name": {"$regex": f"^{member_name}", "$options": "i"}})
+            # Use user_email field (not actor_email)
+            or_conditions.append({"user_email": {"$in": identifiers["drive"]}})
         
-        query["$or"] = or_conditions
+        if or_conditions:
+            query["$or"] = or_conditions
         
         if date_filter:
-            query["activity_time"] = date_filter
+            # Use timestamp field (not activity_time)
+            query["timestamp"] = date_filter
         
-        activities = list(db["drive_activities"].find(query).sort("activity_time", -1))
+        # Use timestamp field for sorting (not activity_time)
+        activities = list(db["drive_activities"].find(query).sort("timestamp", -1))
         for activity in activities:
             results.append({
                 "source": "drive",
-                "type": activity.get("activity_type", "activity"),
+                "type": activity.get("action", "activity"),  # Use action field (not activity_type)
                 "member_name": member_name,
                 "member_email": member_info.get("email"),
-                "timestamp": activity.get("activity_time"),
-                "file_name": activity.get("file_name"),
-                "file_type": activity.get("mime_type"),
+                "timestamp": activity.get("timestamp"),  # Use timestamp field (not activity_time)
+                "file_name": activity.get("doc_title"),  # Use doc_title field (not file_name)
+                "file_type": activity.get("doc_type"),  # Use doc_type field (not mime_type)
                 "action": activity.get("action"),
+                "event_name": activity.get("event_name"),
+                "doc_id": activity.get("doc_id"),
             })
     
     return results
