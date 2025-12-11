@@ -25,9 +25,16 @@ interface Project {
   notion_page_ids: string[];
   notion_parent_page_id?: string;
   sub_projects: string[];
+  member_ids: string[];
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+interface Member {
+  id: string;
+  name: string;
+  email?: string;
 }
 
 interface ProjectListResponse {
@@ -53,10 +60,16 @@ export default function ProjectsPage() {
     github_team_slug: '',
     repositories: [] as string[],
     drive_folders: [] as string[],
+    notion_parent_page_id: '',
+    member_ids: [] as string[],
     is_active: true,
   });
 
   const [newDriveFolder, setNewDriveFolder] = useState('');
+  const [newNotionRoot, setNewNotionRoot] = useState('');
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
+  const [showMemberSelector, setShowMemberSelector] = useState(false);
 
   const fetchProjects = useCallback(async () => {
       try {
@@ -76,6 +89,25 @@ export default function ProjectsPage() {
     fetchProjects();
   }, [fetchProjects]);
 
+  // Fetch all members for member selector
+  useEffect(() => {
+    async function fetchMembers() {
+      try {
+        const response = await apiClient.getMembers({ limit: 1000 });
+        // Handle both response formats: {members: []} or []
+        const members = Array.isArray(response) ? response : (response.members || []);
+        setAllMembers(members.map((m: any) => ({
+          id: m.id || String(m._id),
+          name: m.name || '',
+          email: m.email || ''
+        })));
+      } catch (err: any) {
+        console.error('Error fetching members:', err);
+      }
+    }
+    fetchMembers();
+  }, []);
+
   function openCreateModal() {
     setEditingProject(null);
     setFormData({
@@ -86,9 +118,12 @@ export default function ProjectsPage() {
       github_team_slug: '',
       repositories: [],
       drive_folders: [],
+      notion_parent_page_id: '',
+      member_ids: [],
       is_active: true,
     });
     setNewDriveFolder('');
+    setNewNotionRoot('');
     setShowCreateModal(true);
   }
 
@@ -102,9 +137,12 @@ export default function ProjectsPage() {
       github_team_slug: project.github_team_slug || '',
       repositories: project.repositories || [],
       drive_folders: project.drive_folders || [],
+      notion_parent_page_id: project.notion_parent_page_id || '',
+      member_ids: project.member_ids || [],
       is_active: project.is_active,
     });
     setNewDriveFolder('');
+    setNewNotionRoot(project.notion_parent_page_id || '');
     setShowCreateModal(true);
   }
 
@@ -121,18 +159,28 @@ export default function ProjectsPage() {
           github_team_slug: formData.github_team_slug || undefined,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
+          notion_parent_page_id: formData.notion_parent_page_id || undefined,
+          member_ids: formData.member_ids,
           is_active: formData.is_active,
         });
       } else {
+        // Generate key from name: "Project OOO" -> "project-ooo"
+        const generatedKey = formData.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        
         // Create new project
         await apiClient.createProject({
-          key: formData.key,
+          key: generatedKey,
           name: formData.name,
           description: formData.description || undefined,
           lead: formData.lead || undefined,
-          github_team_slug: formData.github_team_slug || undefined,
+          github_team_slug: formData.github_team_slug || generatedKey,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
+          notion_parent_page_id: formData.notion_parent_page_id || undefined,
+          member_ids: formData.member_ids,
           is_active: formData.is_active,
         });
       }
@@ -159,13 +207,41 @@ export default function ProjectsPage() {
   }
 
 
+  // Extract folder ID from Drive URL
+  function extractDriveFolderId(urlOrId: string): string {
+    const trimmed = urlOrId.trim();
+    // If it's already just an ID (no slashes), return as is
+    if (!trimmed.includes('/')) {
+      return trimmed;
+    }
+    // Extract from URL: https://drive.google.com/drive/folders/FOLDER_ID
+    const match = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : trimmed;
+  }
+
+  // Extract page ID from Notion URL
+  function extractNotionPageId(urlOrId: string): string {
+    const trimmed = urlOrId.trim();
+    // If it's already just an ID (32 hex chars, possibly with dashes), return as is
+    if (/^[a-f0-9]{32}$/i.test(trimmed.replace(/-/g, ''))) {
+      return trimmed.replace(/-/g, '');
+    }
+    // Extract from URL: https://www.notion.so/workspace/Page-Title-PAGE_ID
+    // Notion URLs can have format: https://www.notion.so/[workspace]/[title]-[32-char-id]
+    const match = trimmed.match(/([a-f0-9]{32})/i);
+    return match ? match[1] : trimmed;
+  }
+
   function addDriveFolder() {
     if (newDriveFolder.trim()) {
-      setFormData({
-        ...formData,
-        drive_folders: [...formData.drive_folders, newDriveFolder.trim()],
-      });
-      setNewDriveFolder('');
+      const folderId = extractDriveFolderId(newDriveFolder);
+      if (folderId && !formData.drive_folders.includes(folderId)) {
+        setFormData({
+          ...formData,
+          drive_folders: [...formData.drive_folders, folderId],
+        });
+        setNewDriveFolder('');
+      }
     }
   }
 
@@ -175,6 +251,36 @@ export default function ProjectsPage() {
       drive_folders: formData.drive_folders.filter((_, i) => i !== index),
     });
   }
+
+  function updateNotionRoot() {
+    if (newNotionRoot.trim()) {
+      const pageId = extractNotionPageId(newNotionRoot);
+      setFormData({
+        ...formData,
+        notion_parent_page_id: pageId,
+      });
+    } else {
+      setFormData({
+        ...formData,
+        notion_parent_page_id: '',
+      });
+    }
+  }
+
+  function toggleMember(memberId: string) {
+    setFormData({
+      ...formData,
+      member_ids: formData.member_ids.includes(memberId)
+        ? formData.member_ids.filter(id => id !== memberId)
+        : [...formData.member_ids, memberId],
+    });
+  }
+
+  // Filter members based on search term
+  const filteredMembers = allMembers.filter(member =>
+    member.name.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+    member.email?.toLowerCase().includes(memberSearchTerm.toLowerCase())
+  );
 
 
   if (loading && !data) {
@@ -373,35 +479,19 @@ export default function ProjectsPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Project Key *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        disabled={!!editingProject}
-                        value={formData.key}
-                        onChange={(e) => setFormData({ ...formData, key: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="project-ooo"
-                      />
-                    </div>
-                <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Project Name *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="Project OOO"
-                      />
-                    </div>
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Project Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                      placeholder="Project OOO"
+                    />
+                  </div>
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700">
@@ -491,11 +581,14 @@ export default function ProjectsPage() {
                 )}
               </div>
 
-                  {/* Drive Folders */}
+                  {/* Google Drive Root Folder */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Google Drive Folders
+                      Google Drive Root Folder
                     </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Enter the root folder URL or ID for this project. All activities in this folder and its subfolders will be associated with this project.
+                    </p>
                     <div className="flex gap-2 mb-2">
                       <input
                         type="text"
@@ -507,8 +600,9 @@ export default function ProjectsPage() {
                             addDriveFolder();
                           }
                         }}
+                        onBlur={addDriveFolder}
                         className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="Drive folder ID or URL"
+                        placeholder="https://drive.google.com/drive/folders/FOLDER_ID or folder ID"
                       />
                       <button
                         type="button"
@@ -524,7 +618,14 @@ export default function ProjectsPage() {
                           key={index}
                           className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
                         >
-                          {folder}
+                          <a
+                            href={`https://drive.google.com/drive/folders/${folder}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                          >
+                            {folder}
+                          </a>
                           <button
                             type="button"
                             onClick={() => removeDriveFolder(index)}
@@ -537,6 +638,115 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
+                  {/* Notion Root Page */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notion Root Page
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Enter the root page URL or ID for this project. All pages under this root page will be associated with this project.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newNotionRoot}
+                        onChange={(e) => setNewNotionRoot(e.target.value)}
+                        onBlur={updateNotionRoot}
+                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                        placeholder="https://www.notion.so/workspace/Page-Title-PAGE_ID or page ID"
+                      />
+                    </div>
+                    {formData.notion_parent_page_id && (
+                      <div className="mt-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                          <a
+                            href={`https://www.notion.so/${formData.notion_parent_page_id.replace(/-/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                          >
+                            {formData.notion_parent_page_id}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewNotionRoot('');
+                              setFormData({ ...formData, notion_parent_page_id: '' });
+                            }}
+                            className="text-purple-600 hover:text-purple-800"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Project Members */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Project Members
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Select members who are part of this project.
+                    </p>
+                    <div className="relative">
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={memberSearchTerm}
+                          onChange={(e) => setMemberSearchTerm(e.target.value)}
+                          onFocus={() => setShowMemberSelector(true)}
+                          onBlur={() => setTimeout(() => setShowMemberSelector(false), 200)}
+                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                          placeholder="Search members..."
+                        />
+                      </div>
+                      {showMemberSelector && filteredMembers.length > 0 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          {filteredMembers.map((member) => (
+                            <label
+                              key={member.id}
+                              className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.member_ids.includes(member.id)}
+                                onChange={() => toggleMember(member.id)}
+                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                              />
+                              <span className="text-sm text-gray-900">{member.name}</span>
+                              {member.email && (
+                                <span className="text-xs text-gray-500">({member.email})</span>
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {formData.member_ids.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {formData.member_ids.map((memberId) => {
+                          const member = allMembers.find(m => m.id === memberId);
+                          return member ? (
+                            <span
+                              key={memberId}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded text-sm"
+                            >
+                              {member.name}
+                              <button
+                                type="button"
+                                onClick={() => toggleMember(memberId)}
+                                className="text-green-600 hover:text-green-800"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="flex items-center">
                     <input

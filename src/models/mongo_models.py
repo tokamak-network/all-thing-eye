@@ -648,6 +648,9 @@ class Project(BaseModel):
     # Sub-projects
     sub_projects: List[str] = Field(default_factory=list)  # e.g., ["drb"] for TRH
     
+    # Project members (member IDs from members collection)
+    member_ids: List[str] = Field(default_factory=list)  # List of member IDs
+    
     # Metadata
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)

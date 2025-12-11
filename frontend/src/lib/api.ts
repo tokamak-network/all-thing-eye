@@ -214,6 +214,7 @@ class ApiClient {
     notion_page_ids?: string[];
     notion_parent_page_id?: string;
     sub_projects?: string[];
+    member_ids?: string[];
     is_active?: boolean;
   }) {
     const response = await this.client.post("/projects-management/projects", projectData);
@@ -234,6 +235,7 @@ class ApiClient {
       notion_page_ids?: string[];
       notion_parent_page_id?: string;
       sub_projects?: string[];
+      member_ids?: string[];
       is_active?: boolean;
     }
   ) {

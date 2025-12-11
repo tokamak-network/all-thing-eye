@@ -33,6 +33,7 @@ class ProjectCreateRequest(BaseModel):
     notion_page_ids: List[str] = Field(default_factory=list)
     notion_parent_page_id: Optional[str] = None
     sub_projects: List[str] = Field(default_factory=list)
+    member_ids: List[str] = Field(default_factory=list, description="List of member IDs")
     is_active: bool = True
 
 
@@ -49,6 +50,7 @@ class ProjectUpdateRequest(BaseModel):
     notion_page_ids: Optional[List[str]] = None
     notion_parent_page_id: Optional[str] = None
     sub_projects: Optional[List[str]] = None
+    member_ids: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
 
@@ -68,6 +70,7 @@ class ProjectResponse(BaseModel):
     notion_page_ids: List[str] = Field(default_factory=list)
     notion_parent_page_id: Optional[str] = None
     sub_projects: List[str] = Field(default_factory=list)
+    member_ids: List[str] = Field(default_factory=list)
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -198,6 +201,7 @@ async def get_project(request: Request, project_key: str):
             notion_page_ids=doc.get("notion_page_ids", []),
             notion_parent_page_id=doc.get("notion_parent_page_id"),
             sub_projects=doc.get("sub_projects", []),
+            member_ids=doc.get("member_ids", []),
             is_active=doc.get("is_active", True),
             created_at=created_at,
             updated_at=updated_at
@@ -247,6 +251,7 @@ async def create_project(request: Request, body: ProjectCreateRequest):
             "notion_page_ids": body.notion_page_ids,
             "notion_parent_page_id": body.notion_parent_page_id,
             "sub_projects": body.sub_projects,
+            "member_ids": body.member_ids,
             "is_active": body.is_active,
             "created_at": now,
             "updated_at": now
@@ -273,6 +278,7 @@ async def create_project(request: Request, body: ProjectCreateRequest):
             notion_page_ids=project_doc.get("notion_page_ids", []),
             notion_parent_page_id=project_doc.get("notion_parent_page_id"),
             sub_projects=project_doc.get("sub_projects", []),
+            member_ids=project_doc.get("member_ids", []),
             is_active=project_doc.get("is_active", True),
             created_at=project_doc.get("created_at"),
             updated_at=project_doc.get("updated_at")
@@ -334,6 +340,8 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
             update_doc["notion_parent_page_id"] = body.notion_parent_page_id
         if body.sub_projects is not None:
             update_doc["sub_projects"] = body.sub_projects
+        if body.member_ids is not None:
+            update_doc["member_ids"] = body.member_ids
         if body.is_active is not None:
             update_doc["is_active"] = body.is_active
         
@@ -363,6 +371,7 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
             notion_page_ids=updated.get("notion_page_ids", []),
             notion_parent_page_id=updated.get("notion_parent_page_id"),
             sub_projects=updated.get("sub_projects", []),
+            member_ids=updated.get("member_ids", []),
             is_active=updated.get("is_active", True),
             created_at=updated.get("created_at", datetime.utcnow()),
             updated_at=updated.get("updated_at", datetime.utcnow())
