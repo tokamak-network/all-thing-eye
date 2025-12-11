@@ -419,6 +419,8 @@ class NotionPluginMongo(DataSourcePlugin):
         # Retry logic for fetching blocks
         last_error = None
         for attempt in range(1, max_retries + 1):
+            # Reset last_error at the start of each attempt
+            attempt_error = None
             try:
                 content_parts = []
                 has_more = True
@@ -442,7 +444,8 @@ class NotionPluginMongo(DataSourcePlugin):
                         # Check if it's a server error or rate limit that we should retry
                         status_code = getattr(e, 'status', None)
                         error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
-                        last_error = f"HTTP {status_code}: {error_msg}"
+                        attempt_error = f"HTTP {status_code}: {error_msg}"
+                        last_error = attempt_error  # Keep for final error message
                         
                         # Retry on 429 (Rate Limit), 502, 503, 504 errors
                         if status_code in [429, 502, 503, 504] and attempt < max_retries:
@@ -452,7 +455,7 @@ class NotionPluginMongo(DataSourcePlugin):
                             break
                         else:
                             # Final failure or non-retryable error
-                            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {last_error}")
+                            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {attempt_error}")
                             return ""
                     
                     # Process blocks
@@ -514,25 +517,25 @@ class NotionPluginMongo(DataSourcePlugin):
                     return full_content
                 else:
                     # If we broke out of while loop due to retry, continue outer retry loop
-                    # Only retry if we have an error (last_error is set)
-                    if last_error and attempt < max_retries:
+                    # Only retry if we have an error (attempt_error is set)
+                    if attempt_error and attempt < max_retries:
                         # Check if it's a rate limit error (429) - wait 1 hour
-                        if "HTTP 429" in last_error:
+                        if "HTTP 429" in attempt_error:
                             wait_time = 3600  # Wait 1 hour for rate limit reset
                             self.logger.warning(
                                 f"⚠️  Notion API rate limit (429) for page {page_id} "
-                                f"(attempt {attempt}/{max_retries}). Error: {last_error}. Waiting 1 hour (3600s) for rate limit reset..."
+                                f"(attempt {attempt}/{max_retries}). Error: {attempt_error}. Waiting 1 hour (3600s) for rate limit reset..."
                             )
                         else:
                             wait_time = min(2 ** (attempt - 1) * 2, 30)
                             self.logger.warning(
-                                f"⚠️  Retrying page {page_id} (attempt {attempt + 1}/{max_retries}) in {wait_time}s - Error: {last_error}..."
+                                f"⚠️  Retrying page {page_id} (attempt {attempt + 1}/{max_retries}) in {wait_time}s - Error: {attempt_error}..."
                             )
                         time.sleep(wait_time)
                         continue
-                    elif last_error:
+                    elif attempt_error:
                         # Max retries reached
-                        self.logger.warning(f"⚠️  Failed to fetch content for page {page_id} after {max_retries} attempts. Last error: {last_error}")
+                        self.logger.warning(f"⚠️  Failed to fetch content for page {page_id} after {max_retries} attempts. Last error: {attempt_error}")
                         return ""
                     else:
                         # No content and no error - this shouldn't happen, but handle gracefully
@@ -542,7 +545,8 @@ class NotionPluginMongo(DataSourcePlugin):
                 # Handle APIResponseError that wasn't caught in inner try block
                 status_code = getattr(e, 'status', None)
                 error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
-                last_error = f"HTTP {status_code}: {error_msg}"
+                attempt_error = f"HTTP {status_code}: {error_msg}"
+                last_error = attempt_error  # Keep for final error message
                 
                 # Retry on 429 (Rate Limit), 502, 503, 504 errors
                 if status_code in [429, 502, 503, 504] and attempt < max_retries:
@@ -551,18 +555,18 @@ class NotionPluginMongo(DataSourcePlugin):
                         wait_time = 3600  # Wait 1 hour for rate limit reset
                         self.logger.warning(
                             f"⚠️  Notion API rate limit (429) for page {page_id} "
-                            f"(attempt {attempt}/{max_retries}). Error: {error_msg}. Waiting 1 hour (3600s) for rate limit reset..."
+                            f"(attempt {attempt}/{max_retries}). Error: {attempt_error}. Waiting 1 hour (3600s) for rate limit reset..."
                         )
                     else:
                         wait_time = min(2 ** (attempt - 1) * 2, 30)
                         self.logger.warning(
                             f"⚠️  Notion API {status_code} error for page {page_id} "
-                            f"(attempt {attempt}/{max_retries}). Error: {error_msg}. Retrying in {wait_time}s..."
+                            f"(attempt {attempt}/{max_retries}). Error: {attempt_error}. Retrying in {wait_time}s..."
                         )
                     time.sleep(wait_time)
                     continue
                 else:
-                    self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {last_error}")
+                    self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {attempt_error}")
                     return ""
             except Exception as e:
                 # For other exceptions, only retry if it's a network/server issue
