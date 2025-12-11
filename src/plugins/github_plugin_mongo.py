@@ -980,7 +980,7 @@ class GitHubPluginMongo(DataSourcePlugin):
         query = '''
             query RepoCommits($owner: String!, $name: String!, $sinceDate: GitTimestamp!, $cursor: String) {
                 repository(owner: $owner, name: $name) {
-                    refs(refPrefix: "refs/heads/", first: 50, after: $cursor) {
+                    refs(refPrefix: "refs/heads/", first: 100, after: $cursor, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
                         nodes {
                             name
                             target {
@@ -1020,7 +1020,7 @@ class GitHubPluginMongo(DataSourcePlugin):
         has_next_page = True
         cursor = None
         branches_checked = 0
-        max_branches_to_check = 50
+        max_branches_to_check = 500  # Increased limit to collect more branches
         
         while has_next_page and branches_checked < max_branches_to_check:
             result = self._query_graphql(query, {
@@ -1053,8 +1053,12 @@ class GitHubPluginMongo(DataSourcePlugin):
                     branch_last_commit_date_str.replace('Z', '+00:00')
                 )
                 
-                if branch_last_commit_date < start_date:
-                    continue
+                # Don't skip branches based on last commit date - check all branches
+                # The history query already filters by sinceDate, so we don't need this check
+                # This ensures we don't miss branches that had recent activity but older last commit
+                # However, we can still use it as an optimization hint
+                # Only skip if the branch is clearly inactive (last commit is way before start_date)
+                # But allow branches that might have activity in the range
                 
                 if not target.get('history'):
                     continue
