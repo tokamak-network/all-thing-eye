@@ -252,7 +252,8 @@ class NotionPluginMongo(DataSourcePlugin):
                     page_content = self._fetch_page_content(page_id)
                     
                     # Rate limiting: respect Notion API limit (3 req/s)
-                    time.sleep(0.35)  # ~3 requests per second
+                    # Increase delay when collecting many pages to avoid rate limits
+                    time.sleep(0.5)  # ~2 requests per second (more conservative)
                     
                     page_data = {
                         'id': page_id,
@@ -416,6 +417,7 @@ class NotionPluginMongo(DataSourcePlugin):
             Full page content as plain text string
         """
         # Retry logic for fetching blocks
+        last_error = None
         for attempt in range(1, max_retries + 1):
             try:
                 content_parts = []
@@ -437,23 +439,32 @@ class NotionPluginMongo(DataSourcePlugin):
                                 page_size=100
                             )
                     except APIResponseError as e:
-                        # Check if it's a server error that we should retry
+                        # Check if it's a server error or rate limit that we should retry
                         status_code = getattr(e, 'status', None)
+                        error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+                        last_error = f"HTTP {status_code}: {error_msg}"
                         
-                        # Retry on 502, 503, 504 errors
-                        if status_code in [502, 503, 504] and attempt < max_retries:
-                            wait_time = min(2 ** (attempt - 1) * 2, 30)
-                            self.logger.warning(
-                                f"⚠️  Notion API {status_code} error for page {page_id} "
-                                f"(attempt {attempt}/{max_retries}). Retrying in {wait_time}s..."
-                            )
+                        # Retry on 429 (Rate Limit), 502, 503, 504 errors
+                        if status_code in [429, 502, 503, 504] and attempt < max_retries:
+                            # For rate limit (429), wait 1 hour
+                            if status_code == 429:
+                                wait_time = 3600  # Wait 1 hour for rate limit reset
+                                self.logger.warning(
+                                    f"⚠️  Notion API rate limit (429) for page {page_id} "
+                                    f"(attempt {attempt}/{max_retries}). Error: {error_msg}. Waiting 1 hour (3600s) for rate limit reset..."
+                                )
+                            else:
+                                wait_time = min(2 ** (attempt - 1) * 2, 30)
+                                self.logger.warning(
+                                    f"⚠️  Notion API {status_code} error for page {page_id} "
+                                    f"(attempt {attempt}/{max_retries}). Error: {error_msg}. Retrying in {wait_time}s..."
+                                )
                             time.sleep(wait_time)
                             # Break inner while loop, retry outer loop
                             break
                         else:
                             # Final failure or non-retryable error
-                            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
-                            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {error_msg}")
+                            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {last_error}")
                             return ""
                     
                     # Process blocks
@@ -517,29 +528,42 @@ class NotionPluginMongo(DataSourcePlugin):
                     # If we broke out of while loop due to retry, continue outer retry loop
                     if attempt < max_retries:
                         wait_time = min(2 ** (attempt - 1) * 2, 30)
+                        error_info = f" - Error: {last_error}" if last_error else ""
                         self.logger.warning(
-                            f"⚠️  Retrying page {page_id} (attempt {attempt + 1}/{max_retries}) in {wait_time}s..."
+                            f"⚠️  Retrying page {page_id} (attempt {attempt + 1}/{max_retries}) in {wait_time}s{error_info}..."
                         )
                         time.sleep(wait_time)
                         continue
                     else:
+                        if last_error:
+                            self.logger.warning(f"⚠️  Failed to fetch content for page {page_id} after {max_retries} attempts. Last error: {last_error}")
                         return ""
                 
             except APIResponseError as e:
                 # Handle APIResponseError that wasn't caught in inner try block
                 status_code = getattr(e, 'status', None)
+                error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+                last_error = f"HTTP {status_code}: {error_msg}"
                 
-                if status_code in [502, 503, 504] and attempt < max_retries:
-                    wait_time = min(2 ** (attempt - 1) * 2, 30)
-                    self.logger.warning(
-                        f"⚠️  Notion API {status_code} error for page {page_id} "
-                        f"(attempt {attempt}/{max_retries}). Retrying in {wait_time}s..."
-                    )
+                # Retry on 429 (Rate Limit), 502, 503, 504 errors
+                if status_code in [429, 502, 503, 504] and attempt < max_retries:
+                    # For rate limit (429), wait 1 hour
+                    if status_code == 429:
+                        wait_time = 3600  # Wait 1 hour for rate limit reset
+                        self.logger.warning(
+                            f"⚠️  Notion API rate limit (429) for page {page_id} "
+                            f"(attempt {attempt}/{max_retries}). Error: {error_msg}. Waiting 1 hour (3600s) for rate limit reset..."
+                        )
+                    else:
+                        wait_time = min(2 ** (attempt - 1) * 2, 30)
+                        self.logger.warning(
+                            f"⚠️  Notion API {status_code} error for page {page_id} "
+                            f"(attempt {attempt}/{max_retries}). Error: {error_msg}. Retrying in {wait_time}s..."
+                        )
                     time.sleep(wait_time)
                     continue
                 else:
-                    error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
-                    self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {error_msg}")
+                    self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {last_error}")
                     return ""
             except Exception as e:
                 # For other exceptions, only retry if it's a network/server issue
