@@ -365,91 +365,22 @@ export default function ActivitiesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">📋 Activities</h1>
-          <p className="mt-2 text-gray-600">
-            {data?.total?.toLocaleString() || 0} activities recorded across all
-            sources
+          <p className="mt-1 text-sm text-gray-500">
+            {data?.total?.toLocaleString() || 0} activities recorded across all sources
           </p>
         </div>
-        <div className="flex space-x-2">
-          <div className="flex space-x-1">
-            <input
-              type="text"
-              value={keywordFilter}
-              onChange={(e) => setKeywordFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setSearchKeyword(keywordFilter);
-                }
-              }}
-              placeholder="🔍 Search keywords..."
-              className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 border w-48"
-            />
-            <button
-              onClick={() => setSearchKeyword(keywordFilter)}
-              className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 text-sm font-medium"
-            >
-              Search
-            </button>
-          </div>
-          <select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-          >
-            <option value="">All Projects</option>
-            {projects.map((project) => (
-              <option key={project.key} value={project.key}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-          >
-            <option value="">All Sources</option>
-            <option value="github">🐙 GitHub</option>
-            <option value="slack">💬 Slack</option>
-            <option value="notion">📝 Notion</option>
-            <option value="drive">📁 Google Drive</option>
-            <option value="recordings">📹 Recordings</option>
-            <option value="recordings_daily">📊 Daily Analysis</option>
-          </select>
-          <select
-            value={memberFilter}
-            onChange={(e) => setMemberFilter(e.target.value)}
-            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-          >
-            <option value="">All Members</option>
-            {allMembers.map((member) => (
-              <option key={member} value={member}>
-                {member}
-              </option>
-            ))}
-          </select>
-          <select
-            value={itemsPerPage}
-            onChange={(e) => {
-              setItemsPerPage(Number(e.target.value));
-              setCurrentPage(1);
-            }}
-            className="block rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-          >
-            <option value="10">10 per page</option>
-            <option value="30">30 per page</option>
-            <option value="50">50 per page</option>
-          </select>
+        <div>
           <a
             href={apiClient.getExportActivitiesUrl("csv", {
               limit: 10000,
               source_type: sourceFilter || undefined,
             })}
             download
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
           >
             <svg
               className="mr-2 h-4 w-4"
@@ -466,6 +397,100 @@ export default function ActivitiesPage() {
             </svg>
             Export CSV
           </a>
+        </div>
+      </div>
+
+      {/* Control Panel */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Search Bar */}
+          <div className="relative flex-1 max-w-lg">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              value={keywordFilter}
+              onChange={(e) => setKeywordFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setSearchKeyword(keywordFilter);
+                }
+              }}
+              placeholder="Search by keyword, content, or metadata..."
+              className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg leading-5 bg-gray-50 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
+            />
+            {keywordFilter !== searchKeyword && (
+               <button
+                 onClick={() => setSearchKeyword(keywordFilter)}
+                 className="absolute inset-y-1 right-1 px-3 py-1 bg-white border border-gray-200 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-50 shadow-sm"
+               >
+                 Search
+               </button>
+            )}
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <select
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg"
+              >
+                <option value="">📂 All Projects</option>
+                {projects.map((project) => (
+                  <option key={project.key} value={project.key}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg"
+              >
+                <option value="">🌐 All Sources</option>
+                <option value="github">🐙 GitHub</option>
+                <option value="slack">💬 Slack</option>
+                <option value="notion">📝 Notion</option>
+                <option value="drive">📁 Drive</option>
+                <option value="recordings">📹 Recordings</option>
+                <option value="recordings_daily">📊 Analysis</option>
+              </select>
+
+              <select
+                value={memberFilter}
+                onChange={(e) => setMemberFilter(e.target.value)}
+                className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg"
+              >
+                <option value="">👤 All Members</option>
+                {allMembers.map((member) => (
+                  <option key={member} value={member}>
+                    {member}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="h-8 w-px bg-gray-300 hidden sm:block"></div>
+
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg bg-gray-50"
+            >
+              <option value="10">10 / page</option>
+              <option value="30">30 / page</option>
+              <option value="50">50 / page</option>
+            </select>
+          </div>
         </div>
       </div>
 
