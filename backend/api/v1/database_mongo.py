@@ -26,38 +26,61 @@ def get_mongo():
 @router.get("/last-collected")
 async def get_last_collected_times(request: Request, _admin: str = Depends(require_admin)):
     """
-    Get the last data collection time for each data source
+    Get the timestamp of the most recent data collected for each data source
+    Based on actual data timestamps, not script execution time
     
     Returns:
-        Dictionary with last collection times per source
+        Dictionary with last collection times per source (based on actual data timestamps)
     """
     try:
         mongo = get_mongo()
         db = mongo.async_db
         
+        # Define collections and their timestamp fields for each source
         sources = {
-            "github": ["github_commits", "github_pull_requests", "github_issues"],
-            "slack": ["slack_messages"],
-            "notion": ["notion_pages"],
-            "drive": ["drive_activities"]
+            "github": {
+                "github_commits": "date",
+                "github_pull_requests": "created_at",
+                "github_issues": "created_at"
+            },
+            "slack": {
+                "slack_messages": "posted_at"
+            },
+            "notion": {
+                "notion_pages": "last_edited_time"  # Use last_edited_time as it's more recent
+            },
+            "drive": {
+                "drive_activities": "timestamp"
+            }
         }
         
         last_collected = {}
         
         for source, collections in sources.items():
             latest_time = None
-            for coll_name in collections:
+            for coll_name, timestamp_field in collections.items():
                 try:
                     collection = db[coll_name]
-                    # Find the most recent collected_at
+                    # Find the most recent document based on actual data timestamp
                     result = await collection.find_one(
-                        {"collected_at": {"$exists": True}},
-                        sort=[("collected_at", -1)]
+                        {timestamp_field: {"$exists": True}},
+                        sort=[(timestamp_field, -1)]
                     )
-                    if result and "collected_at" in result:
-                        coll_time = result["collected_at"]
-                        if latest_time is None or coll_time > latest_time:
-                            latest_time = coll_time
+                    if result and timestamp_field in result:
+                        data_time = result[timestamp_field]
+                        # Ensure it's a datetime object
+                        if isinstance(data_time, datetime):
+                            if latest_time is None or data_time > latest_time:
+                                latest_time = data_time
+                        elif isinstance(data_time, str):
+                            # Try to parse if it's a string
+                            try:
+                                parsed_time = datetime.fromisoformat(data_time.replace('Z', '+00:00'))
+                                if latest_time is None or parsed_time > latest_time:
+                                    latest_time = parsed_time
+                            except:
+                                logger.warning(f"Could not parse timestamp {data_time} from {coll_name}")
+                                continue
                 except Exception as e:
                     logger.warning(f"Error checking {coll_name}: {e}")
                     continue
