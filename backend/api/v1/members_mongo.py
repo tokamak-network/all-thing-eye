@@ -295,6 +295,10 @@ async def create_member(
                     # If collection doesn't exist or query fails, just log and continue
                     logger.warning(f"Could not find Notion user_id for {notion_email}: {e}")
         
+        # Clear member mapping cache to ensure fresh data after creation
+        from backend.api.v1.activities_mongo import clear_member_mapping_cache
+        clear_member_mapping_cache()
+        
         logger.info(f"Created new member: {member_data.name} ({member_id})")
         
         return {
@@ -363,13 +367,38 @@ async def update_member(
         # Update identifiers
         now = datetime.utcnow().isoformat() + 'Z'
         
+        # If name was updated, update all existing identifiers' member_name field
+        if member_data.name is not None:
+            new_name = member_data.name
+            await db["member_identifiers"].update_many(
+                {"member_id": member_id},
+                {"$set": {"member_name": new_name, "updated_at": now}}
+            )
+        
         async def update_identifier(source: str, sub_type: str, identifier_value: Optional[str]):
             if identifier_value is not None:
-                # Check if identifier exists
+                # Check if identifier exists for this member
                 existing_identifier = await db["member_identifiers"].find_one({
                     "member_id": member_id,
-                    "source": source
+                    "source": source,
+                    "identifier_type": sub_type
                 })
+                
+                # Check if this identifier value already exists for another member
+                duplicate_identifier = await db["member_identifiers"].find_one({
+                    "source": source,
+                    "identifier_type": sub_type,
+                    "identifier_value": identifier_value,
+                    "member_id": {"$ne": member_id}
+                })
+                
+                if duplicate_identifier:
+                    # Identifier already exists for another member - skip to avoid duplicate key error
+                    logger.warning(
+                        f"Identifier {source}:{sub_type}:{identifier_value} already exists for member {duplicate_identifier.get('member_id')}. "
+                        f"Skipping update for member {member_id}."
+                    )
+                    return
                 
                 member_name = update_data.get("name", existing_member.get("name"))
                 
@@ -385,15 +414,25 @@ async def update_member(
                         }}
                     )
                 else:
-                    # Create new
-                    await db["member_identifiers"].insert_one({
-                        "member_id": member_id,
-                        "member_name": member_name,
-                        "source": source,
-                        "identifier_type": sub_type,
-                        "identifier_value": identifier_value,
-                        "created_at": now
-                    })
+                    # Create new - check again to avoid race condition
+                    try:
+                        await db["member_identifiers"].insert_one({
+                            "member_id": member_id,
+                            "member_name": member_name,
+                            "source": source,
+                            "identifier_type": sub_type,
+                            "identifier_value": identifier_value,
+                            "created_at": now
+                        })
+                    except Exception as e:
+                        # If duplicate key error, it means another process created it
+                        if "duplicate key" in str(e).lower() or "E11000" in str(e):
+                            logger.warning(
+                                f"Duplicate key error when inserting identifier {source}:{sub_type}:{identifier_value} "
+                                f"for member {member_id}. It may have been created by another process."
+                            )
+                        else:
+                            raise
         
         # Update GitHub identifier
         if member_data.github_id is not None:
@@ -424,16 +463,32 @@ async def update_member(
                             "identifier_type": "user_id"
                         })
                         if not existing_user_id:
-                            member_name = update_data.get("name", existing_member.get("name"))
-                            await db["member_identifiers"].insert_one({
-                                "member_id": member_id,
-                                "member_name": member_name,
+                            # Check if this user_id already exists for another member
+                            duplicate_user_id = await db["member_identifiers"].find_one({
                                 "source": "slack",
                                 "identifier_type": "user_id",
                                 "identifier_value": actual_user_id,
-                                "created_at": now
+                                "member_id": {"$ne": member_id}
                             })
-                            logger.info(f"Found Slack user_id {actual_user_id} for email {slack_email}")
+                            if not duplicate_user_id:
+                                member_name = update_data.get("name", existing_member.get("name"))
+                                try:
+                                    await db["member_identifiers"].insert_one({
+                                        "member_id": member_id,
+                                        "member_name": member_name,
+                                        "source": "slack",
+                                        "identifier_type": "user_id",
+                                        "identifier_value": actual_user_id,
+                                        "created_at": now
+                                    })
+                                    logger.info(f"Found Slack user_id {actual_user_id} for email {slack_email}")
+                                except Exception as e:
+                                    if "duplicate key" in str(e).lower() or "E11000" in str(e):
+                                        logger.warning(f"Duplicate key error when inserting Slack user_id {actual_user_id}: {e}")
+                                    else:
+                                        raise
+                            else:
+                                logger.warning(f"Slack user_id {actual_user_id} already exists for another member")
                 except Exception as e:
                     logger.warning(f"Could not find Slack user_id for {slack_email}: {e}")
         
@@ -472,22 +527,42 @@ async def update_member(
                                 "identifier_type": "user_id"
                             })
                             if not existing_user_id:
-                                member_name = update_data.get("name", existing_member.get("name"))
-                                await db["member_identifiers"].insert_one({
-                                    "member_id": member_id,
-                                    "member_name": member_name,
+                                # Check if this user_id already exists for another member
+                                duplicate_user_id = await db["member_identifiers"].find_one({
                                     "source": "notion",
                                     "identifier_type": "user_id",
                                     "identifier_value": notion_user_id,
-                                    "created_at": now
+                                    "member_id": {"$ne": member_id}
                                 })
-                                logger.info(f"Found Notion user_id {notion_user_id} for email {notion_email}")
+                                if not duplicate_user_id:
+                                    member_name = update_data.get("name", existing_member.get("name"))
+                                    try:
+                                        await db["member_identifiers"].insert_one({
+                                            "member_id": member_id,
+                                            "member_name": member_name,
+                                            "source": "notion",
+                                            "identifier_type": "user_id",
+                                            "identifier_value": notion_user_id,
+                                            "created_at": now
+                                        })
+                                        logger.info(f"Found Notion user_id {notion_user_id} for email {notion_email}")
+                                    except Exception as e:
+                                        if "duplicate key" in str(e).lower() or "E11000" in str(e):
+                                            logger.warning(f"Duplicate key error when inserting Notion user_id {notion_user_id}: {e}")
+                                        else:
+                                            raise
+                                else:
+                                    logger.warning(f"Notion user_id {notion_user_id} already exists for another member")
                 except Exception as e:
                     logger.warning(f"Could not find Notion user_id for {notion_email}: {e}")
         
         # Update email identifier (for Drive)
         if member_data.email is not None:
             await update_identifier("drive", "email", member_data.email)
+        
+        # Clear member mapping cache to ensure fresh data after update
+        from backend.api.v1.activities_mongo import clear_member_mapping_cache
+        clear_member_mapping_cache()
         
         # Get updated member
         updated_member = await db["members"].find_one({"_id": member_obj_id})
@@ -1503,6 +1578,10 @@ async def delete_member(
         
         # Delete member
         await db["members"].delete_one({"_id": member_obj_id})
+        
+        # Clear member mapping cache to ensure fresh data after deletion
+        from backend.api.v1.activities_mongo import clear_member_mapping_cache
+        clear_member_mapping_cache()
         
         logger.info(f"Deleted member: {member_name} ({member_id})")
         

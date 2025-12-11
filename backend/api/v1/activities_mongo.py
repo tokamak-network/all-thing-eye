@@ -25,6 +25,12 @@ router = APIRouter()
 # Cache for member mappings to avoid repeated DB queries
 _member_mapping_cache = {}
 
+def clear_member_mapping_cache():
+    """Clear the member mapping cache (call after member updates)"""
+    global _member_mapping_cache
+    _member_mapping_cache = {}
+    logger.info("Member mapping cache cleared")
+
 async def load_member_mappings(db) -> dict:
     """
     Load all member mappings into memory for fast lookup
