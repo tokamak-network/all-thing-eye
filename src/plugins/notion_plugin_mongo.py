@@ -258,6 +258,7 @@ class NotionPluginMongo(DataSourcePlugin):
                     page_data = {
                         'id': page_id,
                         'notion_id': page_id,
+                        'url': page.get('url'),
                         'title': self._extract_title(page.get('properties', {})),
                         'content': page_content,  # Add full content
                         'content_length': len(page_content),  # Add content length for reference
@@ -336,6 +337,7 @@ class NotionPluginMongo(DataSourcePlugin):
                     db_data = {
                         'id': db_id,
                         'notion_id': db_id,
+                        'url': db.get('url'),
                         'title': self._extract_title(db.get('properties', {})),
                         'created_time': datetime.fromisoformat(db.get('created_time', '').replace('Z', '+00:00')),
                         'last_edited_time': last_edited,

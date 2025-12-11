@@ -404,32 +404,32 @@ export default function ActivitiesPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Search Bar */}
-          <div className="relative flex-1 max-w-lg">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+          <div className="flex-1 max-w-lg flex gap-2">
+            <div className="relative flex-1">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                value={keywordFilter}
+                onChange={(e) => setKeywordFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setSearchKeyword(keywordFilter);
+                  }
+                }}
+                placeholder="Search by keyword..."
+                className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg leading-5 bg-gray-50 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
+              />
             </div>
-            <input
-              type="text"
-              value={keywordFilter}
-              onChange={(e) => setKeywordFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setSearchKeyword(keywordFilter);
-                }
-              }}
-              placeholder="Search by keyword, content, or metadata..."
-              className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg leading-5 bg-gray-50 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
-            />
-            {keywordFilter !== searchKeyword && (
-               <button
-                 onClick={() => setSearchKeyword(keywordFilter)}
-                 className="absolute inset-y-1 right-1 px-3 py-1 bg-white border border-gray-200 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-50 shadow-sm"
-               >
-                 Search
-               </button>
-            )}
+            <button
+              onClick={() => setSearchKeyword(keywordFilter)}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 text-sm font-medium shadow-sm transition-colors"
+            >
+              Search
+            </button>
           </div>
 
           {/* Filters */}
@@ -476,20 +476,6 @@ export default function ActivitiesPage() {
               </select>
             </div>
             
-            <div className="h-8 w-px bg-gray-300 hidden sm:block"></div>
-
-            <select
-              value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg bg-gray-50"
-            >
-              <option value="10">10 / page</option>
-              <option value="30">30 / page</option>
-              <option value="50">50 / page</option>
-            </select>
           </div>
         </div>
       </div>
@@ -525,7 +511,19 @@ export default function ActivitiesPage() {
                 of <span className="font-medium">{totalItems}</span> results
               </p>
             </div>
-            <div>
+            <div className="flex items-center gap-4">
+               <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="block pl-3 pr-8 py-1.5 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 rounded-md bg-gray-50"
+              >
+                <option value="10">10 / page</option>
+                <option value="30">30 / page</option>
+                <option value="50">50 / page</option>
+              </select>
               <nav
                 className="isolate inline-flex -space-x-px rounded-md shadow-sm"
                 aria-label="Pagination"
@@ -1171,7 +1169,7 @@ export default function ActivitiesPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center px-3 py-1.5 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                            className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded border border-gray-300 hover:bg-gray-200 transition-colors"
                           >
                             🔗 View on Notion →
                           </a>

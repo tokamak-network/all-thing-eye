@@ -550,7 +550,8 @@ async def get_activities(
                         timestamp=timestamp_str,
                         metadata={
                             'title': page.get('title'),
-                            'comments': page.get('comments_count', 0)
+                            'comments': page.get('comments_count', 0),
+                            'url': page.get('url')
                         }
                     ))
             
@@ -609,7 +610,9 @@ async def get_activities(
                         metadata={
                             'action': activity.get('action'),
                             'doc_title': activity.get('doc_title'),
-                            'doc_type': activity.get('doc_type')
+                            'doc_type': activity.get('doc_type'),
+                            'url': activity.get('link'),
+                            'file_id': activity.get('doc_id')
                         }
                     ))
             
