@@ -66,6 +66,9 @@ class Member(BaseModel):
     slack_id: Optional[str] = None
     notion_id: Optional[str] = None
     
+    # Ethereum address for All-Thing-Eye beta access
+    eoa_address: Optional[str] = None  # Ethereum address (EOA)
+    
     # Embedded identifiers (was separate member_identifiers table)
     identifiers: List[MemberIdentifier] = Field(default_factory=list)
     

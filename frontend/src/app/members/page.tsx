@@ -26,6 +26,7 @@ interface Member {
   email: string;
   role?: string;
   project?: string;
+  eoa_address?: string;
   identifiers: MemberIdentifiers;
   created_at?: string;
   updated_at?: string;
@@ -39,6 +40,7 @@ interface MemberFormData {
   notion_id?: string;
   role?: string;
   project?: string;
+  eoa_address?: string;
 }
 
 export default function MembersPage() {
@@ -62,6 +64,7 @@ export default function MembersPage() {
     notion_id: "",
     role: "",
     project: "",
+    eoa_address: "",
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -96,6 +99,7 @@ export default function MembersPage() {
       notion_id: "",
       role: "",
       project: "",
+      eoa_address: "",
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -137,6 +141,7 @@ export default function MembersPage() {
       notion_id: getIdentifier("notion"),
       role: member.role || "",
       project: member.project || "",
+      eoa_address: member.eoa_address || "",
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -266,6 +271,9 @@ export default function MembersPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Project
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  EOA Address
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -274,7 +282,7 @@ export default function MembersPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {members.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                     No members found. Click &quot;Add Member&quot; to create one.
                   </td>
                 </tr>
@@ -319,6 +327,15 @@ export default function MembersPage() {
                       <div className="text-sm text-gray-600">
                         {member.project || "-"}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {member.eoa_address ? (
+                        <div className="text-sm font-mono text-gray-800">
+                          {member.eoa_address}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
@@ -485,6 +502,25 @@ export default function MembersPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="e.g. project-ooo, project-eco"
                   />
+                </div>
+
+                {/* EOA Address */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    EOA Address
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.eoa_address}
+                    onChange={(e) =>
+                      setFormData({ ...formData, eoa_address: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    placeholder="e.g. 0x7f88539538ae808e45e23ff6c2b897d062616c4e"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Ethereum address for All-Thing-Eye beta access
+                  </p>
                 </div>
               </div>
 

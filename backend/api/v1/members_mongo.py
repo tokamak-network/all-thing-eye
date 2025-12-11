@@ -34,6 +34,7 @@ class MemberCreate(BaseModel):
     notion_id: Optional[str] = None
     role: Optional[str] = None
     project: Optional[str] = None
+    eoa_address: Optional[str] = None  # Ethereum address for All-Thing-Eye beta access
 
 
 class MemberUpdate(BaseModel):
@@ -45,6 +46,7 @@ class MemberUpdate(BaseModel):
     notion_id: Optional[str] = None
     role: Optional[str] = None
     project: Optional[str] = None
+    eoa_address: Optional[str] = None  # Ethereum address for All-Thing-Eye beta access
 
 
 @router.get("/members")
@@ -118,6 +120,7 @@ async def get_members(
                     "email": member.get("email"),
                     "role": member.get("role"),
                     "project": member.get("project"),
+                    "eoa_address": member.get("eoa_address"),
                     "identifiers": identifiers,
                     "created_at": member.get("created_at"),
                     "updated_at": member.get("updated_at")
@@ -163,6 +166,7 @@ async def create_member(
             "email": member_data.email,
             "role": member_data.role,
             "project": member_data.project,
+            "eoa_address": member_data.eoa_address,
             "created_at": now,
             "updated_at": now
         }
@@ -346,6 +350,8 @@ async def update_member(
             update_data["role"] = member_data.role
         if member_data.project is not None:
             update_data["project"] = member_data.project
+        if member_data.eoa_address is not None:
+            update_data["eoa_address"] = member_data.eoa_address
         
         if update_data:
             update_data["updated_at"] = datetime.utcnow().isoformat() + 'Z'
@@ -798,6 +804,7 @@ async def get_member_detail(
             "email": member.get("email"),
             "role": member.get("role"),
             "project": member.get("project"),
+            "eoa_address": member.get("eoa_address"),
             "identifiers": identifiers,
             "activity_stats": activity_stats,
             "created_at": member.get("created_at"),

@@ -73,6 +73,7 @@ class ApiClient {
     notion_id?: string;
     role?: string;
     project?: string;
+    eoa_address?: string;
   }) {
     const response = await this.client.post("/members", memberData);
     return response.data;
@@ -88,6 +89,7 @@ class ApiClient {
       notion_id?: string;
       role?: string;
       project?: string;
+      eoa_address?: string;
     }
   ) {
     const response = await this.client.patch(
