@@ -203,10 +203,24 @@ class NotionPluginMongo(DataSourcePlugin):
             start_date = start_date.replace(tzinfo=pytz.UTC)
         
         try:
+            # Use Notion API filter to get pages edited on or after start_date
+            # This ensures all pages are collected regardless of parent hierarchy
+            start_date_iso = start_date.isoformat()
+            
             query = {
                 "filter": {
-                    "value": "page",
-                    "property": "object"
+                    "and": [
+                        {
+                            "property": "object",
+                            "value": "page"
+                        },
+                        {
+                            "property": "last_edited_time",
+                            "last_edited_time": {
+                                "on_or_after": start_date_iso
+                            }
+                        }
+                    ]
                 },
                 "sort": {
                     "direction": "descending",
@@ -216,6 +230,8 @@ class NotionPluginMongo(DataSourcePlugin):
             
             has_more = True
             next_cursor = None
+            pages_collected = 0
+            pages_skipped = 0
             
             while has_more:
                 if next_cursor:
@@ -228,15 +244,18 @@ class NotionPluginMongo(DataSourcePlugin):
                     page_id = page.get('id')
                     if not page_id:
                         self.logger.warning(f"⚠️  Skipping page without id: {page}")
+                        pages_skipped += 1
                         continue
                     
                     last_edited = datetime.fromisoformat(
                         page['last_edited_time'].replace('Z', '+00:00')
                     )
                     
+                    # Safety check: skip if somehow older than start_date
+                    # (API filter should handle this, but double-check)
                     if last_edited < start_date:
-                        has_more = False
-                        break
+                        pages_skipped += 1
+                        continue  # Skip this page but continue processing others
                     
                     # Fetch page content (full text)
                     page_content = self._fetch_page_content(page_id)
@@ -261,9 +280,14 @@ class NotionPluginMongo(DataSourcePlugin):
                     }
                     
                     pages.append(page_data)
+                    pages_collected += 1
                 
                 has_more = response.get('has_more', False) and has_more
                 next_cursor = response.get('next_cursor')
+            
+            if pages_skipped > 0:
+                self.logger.info(f"   ⚠️  Skipped {pages_skipped} pages (older than start_date despite API filter)")
+            self.logger.info(f"   ✅ Collected {pages_collected} pages")
             
             return pages
             

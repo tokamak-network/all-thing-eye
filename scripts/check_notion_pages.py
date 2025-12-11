@@ -20,6 +20,11 @@ def check_notion_pages():
     try:
         from backend.main import mongo_manager
         
+        if mongo_manager is None:
+            print("❌ mongo_manager is None. Backend may not be initialized.")
+            print("   This script should be run inside the backend container.")
+            sys.exit(1)
+        
         # Connect to MongoDB
         mongo_manager.connect_sync()
         db = mongo_manager.db
