@@ -1093,8 +1093,13 @@ async def export_collection(
         else:  # CSV
             output_stream = io.StringIO()
             if rows:
-                fieldnames = sorted(list(rows[0].keys()))
-                writer = csv.DictWriter(output_stream, fieldnames=fieldnames)
+                # Collect all possible fieldnames from all rows
+                all_fieldnames = set()
+                for row in rows:
+                    all_fieldnames.update(row.keys())
+                fieldnames = sorted(list(all_fieldnames))
+                
+                writer = csv.DictWriter(output_stream, fieldnames=fieldnames, extrasaction='ignore')
                 writer.writeheader()
                 writer.writerows(rows)
             output = output_stream.getvalue()
@@ -1266,8 +1271,13 @@ async def export_collections_bulk(
                     else:  # CSV
                         output_stream = io.StringIO()
                         if rows:
-                            fieldnames = sorted(list(rows[0].keys()))
-                            writer = csv.DictWriter(output_stream, fieldnames=fieldnames)
+                            # Collect all possible fieldnames from all rows
+                            all_fieldnames = set()
+                            for row in rows:
+                                all_fieldnames.update(row.keys())
+                            fieldnames = sorted(list(all_fieldnames))
+                            
+                            writer = csv.DictWriter(output_stream, fieldnames=fieldnames, extrasaction='ignore')
                             writer.writeheader()
                             writer.writerows(rows)
                         file_content = output_stream.getvalue()
