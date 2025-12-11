@@ -48,7 +48,9 @@ export default function ActivitiesPage() {
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [keywordFilter, setKeywordFilter] = useState<string>(""); // Input field value
   const [searchKeyword, setSearchKeyword] = useState<string>(""); // Actual search keyword used in API
-  const [projects, setProjects] = useState<Array<{key: string; name: string}>>([]);
+  const [projects, setProjects] = useState<
+    Array<{ key: string; name: string }>
+  >([]);
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [recordingDetail, setRecordingDetail] = useState<any>(null);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -136,7 +138,9 @@ export default function ActivitiesPage() {
     async function fetchProjects() {
       try {
         const response = await apiClient.getProjectsManagement(true); // Active only
-        setProjects(response.projects.map((p: any) => ({ key: p.key, name: p.name })));
+        setProjects(
+          response.projects.map((p: any) => ({ key: p.key, name: p.name }))
+        );
       } catch (err: any) {
         console.error("Error fetching projects:", err);
         // Don't show error, just continue without project filter
@@ -234,9 +238,13 @@ export default function ActivitiesPage() {
 
     // Also set the main translating state for backward compatibility
     setTranslating(activityId);
-    
+
     try {
-      const result = await apiClient.translateText(text, targetLang, sourceLang);
+      const result = await apiClient.translateText(
+        text,
+        targetLang,
+        sourceLang
+      );
       setTranslations((prev) => ({
         ...prev,
         [activityId]: { text: result.translated_text, lang: targetLang },
@@ -372,7 +380,7 @@ export default function ActivitiesPage() {
               value={keywordFilter}
               onChange={(e) => setKeywordFilter(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === "Enter") {
                   setSearchKeyword(keywordFilter);
                 }
               }}
@@ -666,9 +674,9 @@ export default function ActivitiesPage() {
                         {activity.source_type === "recordings_daily"
                           ? activity.metadata?.target_date || "Daily Analysis"
                           : resolveMemberName(
-                          activity.member_name,
-                          activity.source_type
-                        )}
+                              activity.member_name,
+                              activity.source_type
+                            )}
                       </p>
                     </div>
                     <div className="mt-2 text-sm text-gray-600">
@@ -1129,6 +1137,21 @@ export default function ActivitiesPage() {
                           </span>
                         </div>
                       )}
+
+                      {/* Link Button */}
+                      {activity.metadata?.url && (
+                        <div className="mt-3">
+                          <a
+                            href={activity.metadata.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center px-3 py-1.5 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                          >
+                            🔗 View on Notion →
+                          </a>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1235,6 +1258,48 @@ export default function ActivitiesPage() {
                           </p>
                         </div>
                       )}
+
+                      {/* Link Button */}
+                      {(() => {
+                        const getDriveUrl = () => {
+                          // First, try to use target.url if available
+                          if (activity.metadata?.target?.url) {
+                            return activity.metadata.target.url;
+                          }
+                          // Otherwise, construct URL from file_id and activity_type
+                          if (activity.metadata?.file_id) {
+                            const fileId = activity.metadata.file_id;
+                            const activityType =
+                              activity.metadata?.activity_type ||
+                              activity.metadata?.target?.type;
+                            if (activityType === "document") {
+                              return `https://docs.google.com/document/d/${fileId}`;
+                            } else if (activityType === "spreadsheet") {
+                              return `https://docs.google.com/spreadsheets/d/${fileId}`;
+                            } else if (activityType === "presentation") {
+                              return `https://docs.google.com/presentation/d/${fileId}`;
+                            } else {
+                              return `https://drive.google.com/file/d/${fileId}/view`;
+                            }
+                          }
+                          return null;
+                        };
+
+                        const driveUrl = getDriveUrl();
+                        return driveUrl ? (
+                          <div className="mt-3">
+                            <a
+                              href={driveUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center px-3 py-1.5 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                            >
+                              🔗 View on Google Drive →
+                            </a>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   )}
 
@@ -1298,7 +1363,8 @@ export default function ActivitiesPage() {
                                 ))}
                               {activity.metadata.meeting_titles.length > 3 && (
                                 <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                                  +{activity.metadata.meeting_titles.length - 3} more
+                                  +{activity.metadata.meeting_titles.length - 3}{" "}
+                                  more
                                 </span>
                               )}
                             </div>
@@ -1315,11 +1381,17 @@ export default function ActivitiesPage() {
                             try {
                               const targetDate = activity.metadata?.target_date;
                               if (targetDate) {
-                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                const response =
+                                  await apiClient.getRecordingsDailyByDate(
+                                    targetDate
+                                  );
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
-                              console.error("Failed to load daily analysis details:", err);
+                              console.error(
+                                "Failed to load daily analysis details:",
+                                err
+                              );
                               alert("Failed to load daily analysis details");
                             } finally {
                               setDailyAnalysisLoading(false);
@@ -1338,11 +1410,17 @@ export default function ActivitiesPage() {
                             try {
                               const targetDate = activity.metadata?.target_date;
                               if (targetDate) {
-                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                const response =
+                                  await apiClient.getRecordingsDailyByDate(
+                                    targetDate
+                                  );
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
-                              console.error("Failed to load daily analysis details:", err);
+                              console.error(
+                                "Failed to load daily analysis details:",
+                                err
+                              );
                               alert("Failed to load daily analysis details");
                             } finally {
                               setDailyAnalysisLoading(false);
@@ -1361,11 +1439,17 @@ export default function ActivitiesPage() {
                             try {
                               const targetDate = activity.metadata?.target_date;
                               if (targetDate) {
-                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                const response =
+                                  await apiClient.getRecordingsDailyByDate(
+                                    targetDate
+                                  );
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
-                              console.error("Failed to load daily analysis details:", err);
+                              console.error(
+                                "Failed to load daily analysis details:",
+                                err
+                              );
                               alert("Failed to load daily analysis details");
                             } finally {
                               setDailyAnalysisLoading(false);
@@ -1384,11 +1468,17 @@ export default function ActivitiesPage() {
                             try {
                               const targetDate = activity.metadata?.target_date;
                               if (targetDate) {
-                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                const response =
+                                  await apiClient.getRecordingsDailyByDate(
+                                    targetDate
+                                  );
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
-                              console.error("Failed to load daily analysis details:", err);
+                              console.error(
+                                "Failed to load daily analysis details:",
+                                err
+                              );
                               alert("Failed to load daily analysis details");
                             } finally {
                               setDailyAnalysisLoading(false);
@@ -1407,11 +1497,17 @@ export default function ActivitiesPage() {
                             try {
                               const targetDate = activity.metadata?.target_date;
                               if (targetDate) {
-                                const response = await apiClient.getRecordingsDailyByDate(targetDate);
+                                const response =
+                                  await apiClient.getRecordingsDailyByDate(
+                                    targetDate
+                                  );
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
-                              console.error("Failed to load daily analysis details:", err);
+                              console.error(
+                                "Failed to load daily analysis details:",
+                                err
+                              );
                               alert("Failed to load daily analysis details");
                             } finally {
                               setDailyAnalysisLoading(false);
@@ -1631,28 +1727,52 @@ export default function ActivitiesPage() {
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-bold text-gray-900">
                     📹{" "}
-                    {translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`]?.text ||
+                    {translations[
+                      `recording_name_${
+                        recordingDetail?.id || meetingAnalysis?.id
+                      }`
+                    ]?.text ||
                       recordingDetail?.name ||
                       meetingAnalysis?.meeting_title ||
                       "Loading..."}
                   </h2>
-                  {(recordingDetail?.name || meetingAnalysis?.meeting_title) && (
+                  {(recordingDetail?.name ||
+                    meetingAnalysis?.meeting_title) && (
                     <div className="flex gap-1">
                       <button
                         onClick={() => {
-                          const recordingId = recordingDetail?.id || meetingAnalysis?.id;
-                          const name = recordingDetail?.name || meetingAnalysis?.meeting_title;
+                          const recordingId =
+                            recordingDetail?.id || meetingAnalysis?.id;
+                          const name =
+                            recordingDetail?.name ||
+                            meetingAnalysis?.meeting_title;
                           if (recordingId && name) {
-                            handleTranslate(`recording_name_${recordingId}`, name, "en");
+                            handleTranslate(
+                              `recording_name_${recordingId}`,
+                              name,
+                              "en"
+                            );
                           }
                         }}
-                        disabled={translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`}
+                        disabled={
+                          translating ===
+                          `recording_name_${
+                            recordingDetail?.id || meetingAnalysis?.id
+                          }`
+                        }
                         className={`text-xs px-2 py-1 rounded transition-colors ${
-                          translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "en"
+                          translations[
+                            `recording_name_${
+                              recordingDetail?.id || meetingAnalysis?.id
+                            }`
+                          ]?.lang === "en"
                             ? "bg-blue-600 text-white"
                             : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                         } ${
-                          translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`
+                          translating ===
+                          `recording_name_${
+                            recordingDetail?.id || meetingAnalysis?.id
+                          }`
                             ? "opacity-50 cursor-wait"
                             : ""
                         }`}
@@ -1661,19 +1781,38 @@ export default function ActivitiesPage() {
                       </button>
                       <button
                         onClick={() => {
-                          const recordingId = recordingDetail?.id || meetingAnalysis?.id;
-                          const name = recordingDetail?.name || meetingAnalysis?.meeting_title;
+                          const recordingId =
+                            recordingDetail?.id || meetingAnalysis?.id;
+                          const name =
+                            recordingDetail?.name ||
+                            meetingAnalysis?.meeting_title;
                           if (recordingId && name) {
-                            handleTranslate(`recording_name_${recordingId}`, name, "ko");
+                            handleTranslate(
+                              `recording_name_${recordingId}`,
+                              name,
+                              "ko"
+                            );
                           }
                         }}
-                        disabled={translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`}
+                        disabled={
+                          translating ===
+                          `recording_name_${
+                            recordingDetail?.id || meetingAnalysis?.id
+                          }`
+                        }
                         className={`text-xs px-2 py-1 rounded transition-colors ${
-                          translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "ko"
+                          translations[
+                            `recording_name_${
+                              recordingDetail?.id || meetingAnalysis?.id
+                            }`
+                          ]?.lang === "ko"
                             ? "bg-blue-600 text-white"
                             : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                         } ${
-                          translating === `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`
+                          translating ===
+                          `recording_name_${
+                            recordingDetail?.id || meetingAnalysis?.id
+                          }`
                             ? "opacity-50 cursor-wait"
                             : ""
                         }`}
@@ -1683,10 +1822,16 @@ export default function ActivitiesPage() {
                     </div>
                   )}
                 </div>
-                {translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`] && (
+                {translations[
+                  `recording_name_${recordingDetail?.id || meetingAnalysis?.id}`
+                ] && (
                   <p className="text-xs text-gray-400 mt-1">
                     🌐 Translated to{" "}
-                    {translations[`recording_name_${recordingDetail?.id || meetingAnalysis?.id}`].lang === "ko"
+                    {translations[
+                      `recording_name_${
+                        recordingDetail?.id || meetingAnalysis?.id
+                      }`
+                    ].lang === "ko"
                       ? "Korean"
                       : "English"}
                   </p>
@@ -1784,24 +1929,45 @@ export default function ActivitiesPage() {
                 // Show transcript only when explicitly selected
                 <div className="prose max-w-none">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-700">Transcript</h3>
+                    <h3 className="text-sm font-medium text-gray-700">
+                      Transcript
+                    </h3>
                     {(meetingAnalysis?.content || recordingDetail?.content) && (
                       <div className="flex gap-1">
                         <button
                           onClick={() => {
-                            const recordingId = recordingDetail?.id || meetingAnalysis?.id;
-                            const content = meetingAnalysis?.content || recordingDetail?.content;
+                            const recordingId =
+                              recordingDetail?.id || meetingAnalysis?.id;
+                            const content =
+                              meetingAnalysis?.content ||
+                              recordingDetail?.content;
                             if (recordingId && content) {
-                              handleTranslate(`recording_transcript_${recordingId}`, content, "en");
+                              handleTranslate(
+                                `recording_transcript_${recordingId}`,
+                                content,
+                                "en"
+                              );
                             }
                           }}
-                          disabled={translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`}
+                          disabled={
+                            translating ===
+                            `recording_transcript_${
+                              recordingDetail?.id || meetingAnalysis?.id
+                            }`
+                          }
                           className={`text-xs px-2 py-1 rounded transition-colors ${
-                            translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "en"
+                            translations[
+                              `recording_transcript_${
+                                recordingDetail?.id || meetingAnalysis?.id
+                              }`
+                            ]?.lang === "en"
                               ? "bg-blue-600 text-white"
                               : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                           } ${
-                            translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`
+                            translating ===
+                            `recording_transcript_${
+                              recordingDetail?.id || meetingAnalysis?.id
+                            }`
                               ? "opacity-50 cursor-wait"
                               : ""
                           }`}
@@ -1810,19 +1976,38 @@ export default function ActivitiesPage() {
                         </button>
                         <button
                           onClick={() => {
-                            const recordingId = recordingDetail?.id || meetingAnalysis?.id;
-                            const content = meetingAnalysis?.content || recordingDetail?.content;
+                            const recordingId =
+                              recordingDetail?.id || meetingAnalysis?.id;
+                            const content =
+                              meetingAnalysis?.content ||
+                              recordingDetail?.content;
                             if (recordingId && content) {
-                              handleTranslate(`recording_transcript_${recordingId}`, content, "ko");
+                              handleTranslate(
+                                `recording_transcript_${recordingId}`,
+                                content,
+                                "ko"
+                              );
                             }
                           }}
-                          disabled={translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`}
+                          disabled={
+                            translating ===
+                            `recording_transcript_${
+                              recordingDetail?.id || meetingAnalysis?.id
+                            }`
+                          }
                           className={`text-xs px-2 py-1 rounded transition-colors ${
-                            translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`]?.lang === "ko"
+                            translations[
+                              `recording_transcript_${
+                                recordingDetail?.id || meetingAnalysis?.id
+                              }`
+                            ]?.lang === "ko"
                               ? "bg-blue-600 text-white"
                               : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                           } ${
-                            translating === `recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`
+                            translating ===
+                            `recording_transcript_${
+                              recordingDetail?.id || meetingAnalysis?.id
+                            }`
                               ? "opacity-50 cursor-wait"
                               : ""
                           }`}
@@ -1832,16 +2017,28 @@ export default function ActivitiesPage() {
                       </div>
                     )}
                   </div>
-                  {translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`] && (
+                  {translations[
+                    `recording_transcript_${
+                      recordingDetail?.id || meetingAnalysis?.id
+                    }`
+                  ] && (
                     <p className="text-xs text-gray-400 mb-2">
                       🌐 Translated to{" "}
-                      {translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`].lang === "ko"
+                      {translations[
+                        `recording_transcript_${
+                          recordingDetail?.id || meetingAnalysis?.id
+                        }`
+                      ].lang === "ko"
                         ? "Korean"
                         : "English"}
                     </p>
                   )}
                   <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans bg-gray-50 p-4 rounded">
-                    {translations[`recording_transcript_${recordingDetail?.id || meetingAnalysis?.id}`]?.text ||
+                    {translations[
+                      `recording_transcript_${
+                        recordingDetail?.id || meetingAnalysis?.id
+                      }`
+                    ]?.text ||
                       meetingAnalysis?.content ||
                       recordingDetail?.content ||
                       "No transcript available"}
@@ -1948,10 +2145,12 @@ export default function ActivitiesPage() {
                         {selectedTemplate === "default" && "📊 Analysis"}
                         {selectedTemplate === "team_collaboration" &&
                           "🤝 Team Collaboration Analysis"}
-                        {selectedTemplate === "action_items" && "✅ Action Items"}
+                        {selectedTemplate === "action_items" &&
+                          "✅ Action Items"}
                         {selectedTemplate === "knowledge_base" &&
                           "📚 Knowledge Base Entry"}
-                        {selectedTemplate === "decision_log" && "📋 Decision Log"}
+                        {selectedTemplate === "decision_log" &&
+                          "📋 Decision Log"}
                         {selectedTemplate === "quick_recap" && "⚡ Quick Recap"}
                         {selectedTemplate === "meeting_context" &&
                           "🎯 Meeting Context"}
@@ -1960,8 +2159,11 @@ export default function ActivitiesPage() {
                         <div className="flex gap-1">
                           <button
                             onClick={() => {
-                              const recordingId = recordingDetail?.id || meetingAnalysis?.id;
-                              const analysisText = meetingAnalysis.analyses[selectedTemplate].analysis;
+                              const recordingId =
+                                recordingDetail?.id || meetingAnalysis?.id;
+                              const analysisText =
+                                meetingAnalysis.analyses[selectedTemplate]
+                                  .analysis;
                               if (recordingId && analysisText) {
                                 handleTranslate(
                                   `recording_analysis_${recordingId}_${selectedTemplate}`,
@@ -1972,17 +2174,23 @@ export default function ActivitiesPage() {
                             }}
                             disabled={
                               translating ===
-                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                              `recording_analysis_${
+                                recordingDetail?.id || meetingAnalysis?.id
+                              }_${selectedTemplate}`
                             }
                             className={`text-xs px-2 py-1 rounded transition-colors ${
                               translations[
-                                `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                                `recording_analysis_${
+                                  recordingDetail?.id || meetingAnalysis?.id
+                                }_${selectedTemplate}`
                               ]?.lang === "en"
                                 ? "bg-blue-600 text-white"
                                 : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                             } ${
                               translating ===
-                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                              `recording_analysis_${
+                                recordingDetail?.id || meetingAnalysis?.id
+                              }_${selectedTemplate}`
                                 ? "opacity-50 cursor-wait"
                                 : ""
                             }`}
@@ -1991,8 +2199,11 @@ export default function ActivitiesPage() {
                           </button>
                           <button
                             onClick={() => {
-                              const recordingId = recordingDetail?.id || meetingAnalysis?.id;
-                              const analysisText = meetingAnalysis.analyses[selectedTemplate].analysis;
+                              const recordingId =
+                                recordingDetail?.id || meetingAnalysis?.id;
+                              const analysisText =
+                                meetingAnalysis.analyses[selectedTemplate]
+                                  .analysis;
                               if (recordingId && analysisText) {
                                 handleTranslate(
                                   `recording_analysis_${recordingId}_${selectedTemplate}`,
@@ -2003,17 +2214,23 @@ export default function ActivitiesPage() {
                             }}
                             disabled={
                               translating ===
-                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                              `recording_analysis_${
+                                recordingDetail?.id || meetingAnalysis?.id
+                              }_${selectedTemplate}`
                             }
                             className={`text-xs px-2 py-1 rounded transition-colors ${
                               translations[
-                                `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                                `recording_analysis_${
+                                  recordingDetail?.id || meetingAnalysis?.id
+                                }_${selectedTemplate}`
                               ]?.lang === "ko"
                                 ? "bg-blue-600 text-white"
                                 : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                             } ${
                               translating ===
-                              `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                              `recording_analysis_${
+                                recordingDetail?.id || meetingAnalysis?.id
+                              }_${selectedTemplate}`
                                 ? "opacity-50 cursor-wait"
                                 : ""
                             }`}
@@ -2024,12 +2241,16 @@ export default function ActivitiesPage() {
                       )}
                     </div>
                     {translations[
-                      `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                      `recording_analysis_${
+                        recordingDetail?.id || meetingAnalysis?.id
+                      }_${selectedTemplate}`
                     ] && (
                       <p className="text-xs text-gray-400 mb-2">
                         🌐 Translated to{" "}
                         {translations[
-                          `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                          `recording_analysis_${
+                            recordingDetail?.id || meetingAnalysis?.id
+                          }_${selectedTemplate}`
                         ].lang === "ko"
                           ? "Korean"
                           : "English"}
@@ -2038,7 +2259,9 @@ export default function ActivitiesPage() {
                     <div className="prose max-w-none">
                       <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
                         {translations[
-                          `recording_analysis_${recordingDetail?.id || meetingAnalysis?.id}_${selectedTemplate}`
+                          `recording_analysis_${
+                            recordingDetail?.id || meetingAnalysis?.id
+                          }_${selectedTemplate}`
                         ]?.text ||
                           meetingAnalysis.analyses[selectedTemplate].analysis ||
                           "No analysis available"}
@@ -2093,7 +2316,8 @@ export default function ActivitiesPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-bold text-gray-900">
-                    Daily Analysis - {selectedDailyAnalysis?.target_date || "Loading..."}
+                    Daily Analysis -{" "}
+                    {selectedDailyAnalysis?.target_date || "Loading..."}
                   </h2>
                   {selectedDailyAnalysis?.target_date && (
                     <div className="flex gap-1">
@@ -2102,16 +2326,26 @@ export default function ActivitiesPage() {
                           const dateId = selectedDailyAnalysis.target_date;
                           const title = `Daily Analysis - ${selectedDailyAnalysis.target_date}`;
                           if (dateId && title) {
-                            handleTranslate(`daily_analysis_title_${dateId}`, title, "en");
+                            handleTranslate(
+                              `daily_analysis_title_${dateId}`,
+                              title,
+                              "en"
+                            );
                           }
                         }}
-                        disabled={translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`}
+                        disabled={
+                          translating ===
+                          `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                        }
                         className={`text-xs px-2 py-1 rounded transition-colors ${
-                          translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                          translations[
+                            `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                          ]?.lang === "en"
                             ? "bg-blue-600 text-white"
                             : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                         } ${
-                          translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                          translating ===
+                          `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
                             ? "opacity-50 cursor-wait"
                             : ""
                         }`}
@@ -2123,29 +2357,43 @@ export default function ActivitiesPage() {
                           const dateId = selectedDailyAnalysis.target_date;
                           const title = `Daily Analysis - ${selectedDailyAnalysis.target_date}`;
                           if (dateId && title) {
-                            handleTranslate(`daily_analysis_title_${dateId}`, title, "ko");
+                            handleTranslate(
+                              `daily_analysis_title_${dateId}`,
+                              title,
+                              "ko"
+                            );
                           }
                         }}
-                        disabled={translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`}
+                        disabled={
+                          translating ===
+                          `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                        }
                         className={`text-xs px-2 py-1 rounded transition-colors ${
-                          translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                          translations[
+                            `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                          ]?.lang === "ko"
                             ? "bg-blue-600 text-white"
                             : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                         } ${
-                          translating === `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                          translating ===
+                          `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
                             ? "opacity-50 cursor-wait"
                             : ""
                         }`}
                       >
                         KR
                       </button>
-    </div>
+                    </div>
                   )}
                 </div>
-                {translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`] && (
+                {translations[
+                  `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                ] && (
                   <p className="text-xs text-gray-400 mt-1">
                     🌐 Translated to{" "}
-                    {translations[`daily_analysis_title_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                    {translations[
+                      `daily_analysis_title_${selectedDailyAnalysis?.target_date}`
+                    ].lang === "ko"
                       ? "Korean"
                       : "English"}
                   </p>
@@ -2153,7 +2401,8 @@ export default function ActivitiesPage() {
                 {selectedDailyAnalysis && (
                   <p className="text-sm text-gray-500 mt-1">
                     {selectedDailyAnalysis.meeting_count} meetings •{" "}
-                    {selectedDailyAnalysis.total_meeting_time} • {selectedDailyAnalysis.model_used}
+                    {selectedDailyAnalysis.total_meeting_time} •{" "}
+                    {selectedDailyAnalysis.model_used}
                   </p>
                 )}
               </div>
@@ -2196,7 +2445,8 @@ export default function ActivitiesPage() {
                     📊 Overview
                   </button>
                   {selectedDailyAnalysis.analysis?.summary?.topics &&
-                    selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
+                    selectedDailyAnalysis.analysis.summary.topics.length >
+                      0 && (
                       <button
                         onClick={() => setDailyAnalysisTab("topics")}
                         className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
@@ -2209,7 +2459,8 @@ export default function ActivitiesPage() {
                       </button>
                     )}
                   {selectedDailyAnalysis.analysis?.summary?.key_decisions &&
-                    selectedDailyAnalysis.analysis.summary.key_decisions.length > 0 && (
+                    selectedDailyAnalysis.analysis.summary.key_decisions
+                      .length > 0 && (
                       <button
                         onClick={() => setDailyAnalysisTab("decisions")}
                         className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
@@ -2221,8 +2472,10 @@ export default function ActivitiesPage() {
                         📋 Decisions
                       </button>
                     )}
-                  {selectedDailyAnalysis.analysis?.summary?.major_achievements &&
-                    selectedDailyAnalysis.analysis.summary.major_achievements.length > 0 && (
+                  {selectedDailyAnalysis.analysis?.summary
+                    ?.major_achievements &&
+                    selectedDailyAnalysis.analysis.summary.major_achievements
+                      .length > 0 && (
                       <button
                         onClick={() => setDailyAnalysisTab("achievements")}
                         className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
@@ -2235,7 +2488,8 @@ export default function ActivitiesPage() {
                       </button>
                     )}
                   {selectedDailyAnalysis.analysis?.summary?.common_issues &&
-                    selectedDailyAnalysis.analysis.summary.common_issues.length > 0 && (
+                    selectedDailyAnalysis.analysis.summary.common_issues
+                      .length > 0 && (
                       <button
                         onClick={() => setDailyAnalysisTab("issues")}
                         className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
@@ -2287,193 +2541,276 @@ export default function ActivitiesPage() {
                   {/* Overview Tab */}
                   {dailyAnalysisTab === "overview" &&
                     selectedDailyAnalysis.analysis?.summary?.overview && (
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          Overview
-                        </h3>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => {
-                              const dateId = selectedDailyAnalysis.target_date;
-                              const overviewText = JSON.stringify(selectedDailyAnalysis.analysis.summary.overview);
-                              if (dateId && overviewText) {
-                                handleTranslate(`daily_analysis_overview_${dateId}`, overviewText, "en");
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Overview
+                          </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const overviewText = JSON.stringify(
+                                  selectedDailyAnalysis.analysis.summary
+                                    .overview
+                                );
+                                if (dateId && overviewText) {
+                                  handleTranslate(
+                                    `daily_analysis_overview_${dateId}`,
+                                    overviewText,
+                                    "en"
+                                  );
+                                }
+                              }}
+                              disabled={
+                                translating ===
+                                `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
                               }
-                            }}
-                            disabled={translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`}
-                            className={`text-xs px-2 py-1 rounded transition-colors ${
-                              translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                            } ${
-                              translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
-                                ? "opacity-50 cursor-wait"
-                                : ""
-                            }`}
-                          >
-                            EN
-                          </button>
-                          <button
-                            onClick={() => {
-                              const dateId = selectedDailyAnalysis.target_date;
-                              const overviewText = JSON.stringify(selectedDailyAnalysis.analysis.summary.overview);
-                              if (dateId && overviewText) {
-                                handleTranslate(`daily_analysis_overview_${dateId}`, overviewText, "ko");
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[
+                                  `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "en"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating ===
+                                `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const overviewText = JSON.stringify(
+                                  selectedDailyAnalysis.analysis.summary
+                                    .overview
+                                );
+                                if (dateId && overviewText) {
+                                  handleTranslate(
+                                    `daily_analysis_overview_${dateId}`,
+                                    overviewText,
+                                    "ko"
+                                  );
+                                }
+                              }}
+                              disabled={
+                                translating ===
+                                `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
                               }
-                            }}
-                            disabled={translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`}
-                            className={`text-xs px-2 py-1 rounded transition-colors ${
-                              translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                            } ${
-                              translating === `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
-                                ? "opacity-50 cursor-wait"
-                                : ""
-                            }`}
-                          >
-                            KR
-                          </button>
-                        </div>
-                      </div>
-                      {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`] && (
-                        <p className="text-xs text-gray-400 mb-2">
-                          🌐 Translated to{" "}
-                          {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`].lang === "ko"
-                            ? "Korean"
-                            : "English"}
-                        </p>
-                      )}
-                      
-                      {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.text ? (
-                        <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700 font-sans">
-                          {translations[`daily_analysis_overview_${selectedDailyAnalysis?.target_date}`]?.text}
-                        </div>
-                      ) : (
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <div className="grid grid-cols-3 gap-4 mb-4">
-                            <div>
-                              <div className="text-sm text-gray-500">Meetings</div>
-                              <div className="text-xl font-bold text-gray-900">
-                                {selectedDailyAnalysis.analysis.summary.overview.meeting_count}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-gray-500">Total Time</div>
-                              <div className="text-xl font-bold text-gray-900">
-                                {selectedDailyAnalysis.analysis.summary.overview.total_time}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-gray-500">Main Topics</div>
-                              <div className="text-xl font-bold text-gray-900">
-                                {selectedDailyAnalysis.analysis.summary.topics?.length || 0}
-                              </div>
-                            </div>
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[
+                                  `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "ko"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating ===
+                                `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              KR
+                            </button>
                           </div>
-                        {/* Meeting Titles */}
-                        {selectedDailyAnalysis.meeting_titles &&
-                          selectedDailyAnalysis.meeting_titles.length > 0 && (
-                            <div className="mb-4">
-                              <div className="text-sm text-gray-500 mb-2">
-                                Meeting Titles:
+                        </div>
+                        {translations[
+                          `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                        ] && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            🌐 Translated to{" "}
+                            {translations[
+                              `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                            ].lang === "ko"
+                              ? "Korean"
+                              : "English"}
+                          </p>
+                        )}
+
+                        {translations[
+                          `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                        ]?.text ? (
+                          <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                            {
+                              translations[
+                                `daily_analysis_overview_${selectedDailyAnalysis?.target_date}`
+                              ]?.text
+                            }
+                          </div>
+                        ) : (
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <div className="grid grid-cols-3 gap-4 mb-4">
+                              <div>
+                                <div className="text-sm text-gray-500">
+                                  Meetings
+                                </div>
+                                <div className="text-xl font-bold text-gray-900">
+                                  {
+                                    selectedDailyAnalysis.analysis.summary
+                                      .overview.meeting_count
+                                  }
+                                </div>
                               </div>
-                              <div className="flex flex-wrap gap-2">
-                                {selectedDailyAnalysis.meeting_titles.map(
-                                  (title: string, idx: number) => (
-                                    <span
-                                      key={idx}
-                                      className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded"
-                                    >
-                                      {title}
-                                    </span>
-                                  )
-                                )}
+                              <div>
+                                <div className="text-sm text-gray-500">
+                                  Total Time
+                                </div>
+                                <div className="text-xl font-bold text-gray-900">
+                                  {
+                                    selectedDailyAnalysis.analysis.summary
+                                      .overview.total_time
+                                  }
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-sm text-gray-500">
+                                  Main Topics
+                                </div>
+                                <div className="text-xl font-bold text-gray-900">
+                                  {selectedDailyAnalysis.analysis.summary.topics
+                                    ?.length || 0}
+                                </div>
                               </div>
                             </div>
-                          )}
-                        {/* Main Topics - Use topics from Topics tab */}
-                        {selectedDailyAnalysis.analysis.summary.topics &&
-                          selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
-                            <div className="mb-4">
-                              <div className="text-sm text-gray-500 mb-2">
-                                Main Topics:
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {selectedDailyAnalysis.analysis.summary.topics.map(
-                                  (topic: any, idx: number) => (
-                                    <button
-                                      key={idx}
-                                      onClick={() => {
-                                        // Switch to topics tab
-                                        setDailyAnalysisTab("topics");
-                                        // Scroll to the specific topic after a short delay
-                                        setTimeout(() => {
-                                          const topicElement = document.getElementById(`topic-${idx}`);
-                                          if (topicElement) {
-                                            topicElement.scrollIntoView({ behavior: "smooth", block: "start" });
-                                            // Highlight the topic briefly
-                                            topicElement.classList.add("ring-2", "ring-blue-500");
+                            {/* Meeting Titles */}
+                            {selectedDailyAnalysis.meeting_titles &&
+                              selectedDailyAnalysis.meeting_titles.length >
+                                0 && (
+                                <div className="mb-4">
+                                  <div className="text-sm text-gray-500 mb-2">
+                                    Meeting Titles:
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {selectedDailyAnalysis.meeting_titles.map(
+                                      (title: string, idx: number) => (
+                                        <span
+                                          key={idx}
+                                          className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded"
+                                        >
+                                          {title}
+                                        </span>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            {/* Main Topics - Use topics from Topics tab */}
+                            {selectedDailyAnalysis.analysis.summary.topics &&
+                              selectedDailyAnalysis.analysis.summary.topics
+                                .length > 0 && (
+                                <div className="mb-4">
+                                  <div className="text-sm text-gray-500 mb-2">
+                                    Main Topics:
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {selectedDailyAnalysis.analysis.summary.topics.map(
+                                      (topic: any, idx: number) => (
+                                        <button
+                                          key={idx}
+                                          onClick={() => {
+                                            // Switch to topics tab
+                                            setDailyAnalysisTab("topics");
+                                            // Scroll to the specific topic after a short delay
                                             setTimeout(() => {
-                                              topicElement.classList.remove("ring-2", "ring-blue-500");
-                                            }, 2000);
-                                          }
-                                        }, 100);
-                                      }}
-                                      className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded hover:bg-blue-200 transition-colors cursor-pointer"
-                                    >
-                                      {topic.topic}
-                                    </button>
-                                  )
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        {/* Participants Summary */}
-                        {selectedDailyAnalysis.analysis.participants &&
-                          selectedDailyAnalysis.analysis.participants.length > 0 && (
-                            <div>
-                              <div className="text-sm text-gray-500 mb-2">
-                                Participants ({selectedDailyAnalysis.analysis.participants.length}):
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {(() => {
-                                  // Sort participants alphabetically by name
-                                  const sorted = [...selectedDailyAnalysis.analysis.participants].sort((a: any, b: any) => {
-                                    const nameA = (a.name || "").toLowerCase();
-                                    const nameB = (b.name || "").toLowerCase();
-                                    return nameA.localeCompare(nameB);
-                                  });
-                                  
-                                  return sorted;
-                                })().map(
-                                  (participant: any, idx: number) => (
-                                    <div
-                                      key={idx}
-                                      className="bg-white rounded-lg p-2 border border-gray-200"
-                                    >
-                                      <div className="font-medium text-sm text-gray-900">
-                                        {participant.name}
-                                      </div>
-                                      <div className="text-xs text-gray-500">
-                                        {participant.speaking_time} ({participant.speaking_percentage?.toFixed(1) || 0}%)
-                                      </div>
-                                    </div>
-                                  )
-                                )}
-                              </div>
-                            </div>
-                          )}
+                                              const topicElement =
+                                                document.getElementById(
+                                                  `topic-${idx}`
+                                                );
+                                              if (topicElement) {
+                                                topicElement.scrollIntoView({
+                                                  behavior: "smooth",
+                                                  block: "start",
+                                                });
+                                                // Highlight the topic briefly
+                                                topicElement.classList.add(
+                                                  "ring-2",
+                                                  "ring-blue-500"
+                                                );
+                                                setTimeout(() => {
+                                                  topicElement.classList.remove(
+                                                    "ring-2",
+                                                    "ring-blue-500"
+                                                  );
+                                                }, 2000);
+                                              }
+                                            }, 100);
+                                          }}
+                                          className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded hover:bg-blue-200 transition-colors cursor-pointer"
+                                        >
+                                          {topic.topic}
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            {/* Participants Summary */}
+                            {selectedDailyAnalysis.analysis.participants &&
+                              selectedDailyAnalysis.analysis.participants
+                                .length > 0 && (
+                                <div>
+                                  <div className="text-sm text-gray-500 mb-2">
+                                    Participants (
+                                    {
+                                      selectedDailyAnalysis.analysis
+                                        .participants.length
+                                    }
+                                    ):
+                                  </div>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                    {(() => {
+                                      // Sort participants alphabetically by name
+                                      const sorted = [
+                                        ...selectedDailyAnalysis.analysis
+                                          .participants,
+                                      ].sort((a: any, b: any) => {
+                                        const nameA = (
+                                          a.name || ""
+                                        ).toLowerCase();
+                                        const nameB = (
+                                          b.name || ""
+                                        ).toLowerCase();
+                                        return nameA.localeCompare(nameB);
+                                      });
+
+                                      return sorted;
+                                    })().map(
+                                      (participant: any, idx: number) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-white rounded-lg p-2 border border-gray-200"
+                                        >
+                                          <div className="font-medium text-sm text-gray-900">
+                                            {participant.name}
+                                          </div>
+                                          <div className="text-xs text-gray-500">
+                                            {participant.speaking_time} (
+                                            {participant.speaking_percentage?.toFixed(
+                                              1
+                                            ) || 0}
+                                            %)
+                                          </div>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
-                )}
 
                   {/* Topics Tab */}
                   {dailyAnalysisTab === "topics" &&
                     selectedDailyAnalysis.analysis?.summary?.topics &&
-                    selectedDailyAnalysis.analysis.summary.topics.length > 0 && (
+                    selectedDailyAnalysis.analysis.summary.topics.length >
+                      0 && (
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <h3 className="text-lg font-semibold text-gray-900">
@@ -2482,82 +2819,130 @@ export default function ActivitiesPage() {
                           <div className="flex gap-1">
                             <button
                               onClick={async () => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const topics = selectedDailyAnalysis.analysis.summary.topics;
-                                
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const topics =
+                                  selectedDailyAnalysis.analysis.summary.topics;
+
                                 // Collect all translation promises for parallel execution
                                 const translationPromises: Promise<void>[] = [];
-                                
+
                                 topics.forEach((topic: any, idx: number) => {
                                   const topicKey = `daily_analysis_topic_${dateId}_${idx}`;
-                                  
+
                                   if (topic.key_discussions?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "en", "ko")
+                                      handleTranslate(
+                                        `${topicKey}_key_discussions`,
+                                        topic.key_discussions.join("\n"),
+                                        "en",
+                                        "ko"
+                                      )
                                     );
                                   }
                                   if (topic.key_decisions?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "en", "ko")
+                                      handleTranslate(
+                                        `${topicKey}_key_decisions`,
+                                        topic.key_decisions.join("\n"),
+                                        "en",
+                                        "ko"
+                                      )
                                     );
                                   }
                                   if (topic.progress?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "en", "ko")
+                                      handleTranslate(
+                                        `${topicKey}_progress`,
+                                        topic.progress.join("\n"),
+                                        "en",
+                                        "ko"
+                                      )
                                     );
                                   }
                                   if (topic.issues?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "en", "ko")
+                                      handleTranslate(
+                                        `${topicKey}_issues`,
+                                        topic.issues.join("\n"),
+                                        "en",
+                                        "ko"
+                                      )
                                     );
                                   }
                                 });
-                                
+
                                 // Execute all translations in parallel
                                 await Promise.all(translationPromises);
                               }}
-                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_topic_"))}
+                              disabled={Array.from(translatingSet).some((key) =>
+                                key.startsWith("daily_analysis_topic_")
+                              )}
                               className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
                             >
                               EN
                             </button>
                             <button
                               onClick={async () => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const topics = selectedDailyAnalysis.analysis.summary.topics;
-                                
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const topics =
+                                  selectedDailyAnalysis.analysis.summary.topics;
+
                                 // Collect all translation promises for parallel execution
                                 const translationPromises: Promise<void>[] = [];
-                                
+
                                 topics.forEach((topic: any, idx: number) => {
                                   const topicKey = `daily_analysis_topic_${dateId}_${idx}`;
-                                  
+
                                   if (topic.key_discussions?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_key_discussions`, topic.key_discussions.join("\n"), "ko", "en")
+                                      handleTranslate(
+                                        `${topicKey}_key_discussions`,
+                                        topic.key_discussions.join("\n"),
+                                        "ko",
+                                        "en"
+                                      )
                                     );
                                   }
                                   if (topic.key_decisions?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_key_decisions`, topic.key_decisions.join("\n"), "ko", "en")
+                                      handleTranslate(
+                                        `${topicKey}_key_decisions`,
+                                        topic.key_decisions.join("\n"),
+                                        "ko",
+                                        "en"
+                                      )
                                     );
                                   }
                                   if (topic.progress?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_progress`, topic.progress.join("\n"), "ko", "en")
+                                      handleTranslate(
+                                        `${topicKey}_progress`,
+                                        topic.progress.join("\n"),
+                                        "ko",
+                                        "en"
+                                      )
                                     );
                                   }
                                   if (topic.issues?.length > 0) {
                                     translationPromises.push(
-                                      handleTranslate(`${topicKey}_issues`, topic.issues.join("\n"), "ko", "en")
+                                      handleTranslate(
+                                        `${topicKey}_issues`,
+                                        topic.issues.join("\n"),
+                                        "ko",
+                                        "en"
+                                      )
                                     );
                                   }
                                 });
-                                
+
                                 // Execute all translations in parallel
                                 await Promise.all(translationPromises);
                               }}
-                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_topic_"))}
+                              disabled={Array.from(translatingSet).some((key) =>
+                                key.startsWith("daily_analysis_topic_")
+                              )}
                               className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
                             >
                               KR
@@ -2569,21 +2954,27 @@ export default function ActivitiesPage() {
                             (topic: any, idx: number) => {
                               const dateId = selectedDailyAnalysis.target_date;
                               const topicKey = `daily_analysis_topic_${dateId}_${idx}`;
-                              
+
                               // Helper function to get translated text for a field
-                              const getTranslatedField = (fieldName: string, originalArray: string[]) => {
+                              const getTranslatedField = (
+                                fieldName: string,
+                                originalArray: string[]
+                              ) => {
                                 const translationKey = `${topicKey}_${fieldName}`;
-                                const translatedText = translations[translationKey]?.text;
-                                
+                                const translatedText =
+                                  translations[translationKey]?.text;
+
                                 if (translatedText && translatedText.trim()) {
-                                  const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                                  const translatedItems = translatedText
+                                    .split("\n")
+                                    .filter((item: string) => item.trim());
                                   if (translatedItems.length > 0) {
                                     return translatedItems;
                                   }
                                 }
                                 return originalArray;
                               };
-                              
+
                               return (
                                 <div
                                   key={idx}
@@ -2600,7 +2991,10 @@ export default function ActivitiesPage() {
                                           Key Discussions:
                                         </div>
                                         <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {getTranslatedField("key_discussions", topic.key_discussions).map((disc: string, i: number) => (
+                                          {getTranslatedField(
+                                            "key_discussions",
+                                            topic.key_discussions
+                                          ).map((disc: string, i: number) => (
                                             <li key={i}>{disc}</li>
                                           ))}
                                         </ul>
@@ -2613,7 +3007,10 @@ export default function ActivitiesPage() {
                                           Key Decisions:
                                         </div>
                                         <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {getTranslatedField("key_decisions", topic.key_decisions).map((dec: string, i: number) => (
+                                          {getTranslatedField(
+                                            "key_decisions",
+                                            topic.key_decisions
+                                          ).map((dec: string, i: number) => (
                                             <li key={i}>{dec}</li>
                                           ))}
                                         </ul>
@@ -2626,25 +3023,30 @@ export default function ActivitiesPage() {
                                           Progress:
                                         </div>
                                         <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {getTranslatedField("progress", topic.progress).map((prog: string, i: number) => (
+                                          {getTranslatedField(
+                                            "progress",
+                                            topic.progress
+                                          ).map((prog: string, i: number) => (
                                             <li key={i}>{prog}</li>
                                           ))}
                                         </ul>
                                       </div>
                                     )}
-                                  {topic.issues &&
-                                    topic.issues.length > 0 && (
-                                      <div className="mb-2">
-                                        <div className="text-sm text-gray-500 mb-1">
-                                          Issues:
-                                        </div>
-                                        <ul className="list-disc list-inside text-sm text-gray-700">
-                                          {getTranslatedField("issues", topic.issues).map((issue: string, i: number) => (
-                                            <li key={i}>{issue}</li>
-                                          ))}
-                                        </ul>
+                                  {topic.issues && topic.issues.length > 0 && (
+                                    <div className="mb-2">
+                                      <div className="text-sm text-gray-500 mb-1">
+                                        Issues:
                                       </div>
-                                    )}
+                                      <ul className="list-disc list-inside text-sm text-gray-700">
+                                        {getTranslatedField(
+                                          "issues",
+                                          topic.issues
+                                        ).map((issue: string, i: number) => (
+                                          <li key={i}>{issue}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             }
@@ -2656,7 +3058,8 @@ export default function ActivitiesPage() {
                   {/* Decisions Tab */}
                   {dailyAnalysisTab === "decisions" &&
                     selectedDailyAnalysis.analysis?.summary?.key_decisions &&
-                    selectedDailyAnalysis.analysis.summary.key_decisions.length > 0 && (
+                    selectedDailyAnalysis.analysis.summary.key_decisions
+                      .length > 0 && (
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <h3 className="text-lg font-semibold text-gray-900">
@@ -2665,19 +3068,33 @@ export default function ActivitiesPage() {
                           <div className="flex gap-1">
                             <button
                               onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const decisionsText = selectedDailyAnalysis.analysis.summary.key_decisions.join("\n");
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const decisionsText =
+                                  selectedDailyAnalysis.analysis.summary.key_decisions.join(
+                                    "\n"
+                                  );
                                 if (dateId && decisionsText) {
-                                  handleTranslate(`daily_analysis_decisions_${dateId}`, decisionsText, "en");
+                                  handleTranslate(
+                                    `daily_analysis_decisions_${dateId}`,
+                                    decisionsText,
+                                    "en"
+                                  );
                                 }
                               }}
-                              disabled={translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`}
+                              disabled={
+                                translating ===
+                                `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                              }
                               className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                translations[
+                                  `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "en"
                                   ? "bg-blue-600 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                               } ${
-                                translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                                translating ===
+                                `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
                                   ? "opacity-50 cursor-wait"
                                   : ""
                               }`}
@@ -2686,19 +3103,33 @@ export default function ActivitiesPage() {
                             </button>
                             <button
                               onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const decisionsText = selectedDailyAnalysis.analysis.summary.key_decisions.join("\n");
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const decisionsText =
+                                  selectedDailyAnalysis.analysis.summary.key_decisions.join(
+                                    "\n"
+                                  );
                                 if (dateId && decisionsText) {
-                                  handleTranslate(`daily_analysis_decisions_${dateId}`, decisionsText, "ko");
+                                  handleTranslate(
+                                    `daily_analysis_decisions_${dateId}`,
+                                    decisionsText,
+                                    "ko"
+                                  );
                                 }
                               }}
-                              disabled={translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`}
+                              disabled={
+                                translating ===
+                                `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                              }
                               className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                translations[
+                                  `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "ko"
                                   ? "bg-blue-600 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                               } ${
-                                translating === `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                                translating ===
+                                `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
                                   ? "opacity-50 cursor-wait"
                                   : ""
                               }`}
@@ -2707,10 +3138,14 @@ export default function ActivitiesPage() {
                             </button>
                           </div>
                         </div>
-                        {translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`] && (
+                        {translations[
+                          `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                        ] && (
                           <p className="text-xs text-gray-400 mb-2">
                             🌐 Translated to{" "}
-                            {translations[`daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                            {translations[
+                              `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`
+                            ].lang === "ko"
                               ? "Korean"
                               : "English"}
                           </p>
@@ -2718,18 +3153,23 @@ export default function ActivitiesPage() {
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
                           {(() => {
                             const translationKey = `daily_analysis_decisions_${selectedDailyAnalysis?.target_date}`;
-                            const translatedText = translations[translationKey]?.text;
-                            
+                            const translatedText =
+                              translations[translationKey]?.text;
+
                             if (translatedText && translatedText.trim()) {
                               // Split by newline and filter out empty lines
-                              const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                              const translatedItems = translatedText
+                                .split("\n")
+                                .filter((item: string) => item.trim());
                               if (translatedItems.length > 0) {
-                                return translatedItems.map((decision: string, idx: number) => (
-                                  <li key={idx}>{decision.trim()}</li>
-                                ));
+                                return translatedItems.map(
+                                  (decision: string, idx: number) => (
+                                    <li key={idx}>{decision.trim()}</li>
+                                  )
+                                );
                               }
                             }
-                            
+
                             // Fall back to original
                             return selectedDailyAnalysis.analysis.summary.key_decisions.map(
                               (decision: string, idx: number) => (
@@ -2743,8 +3183,10 @@ export default function ActivitiesPage() {
 
                   {/* Achievements Tab */}
                   {dailyAnalysisTab === "achievements" &&
-                    selectedDailyAnalysis.analysis?.summary?.major_achievements &&
-                    selectedDailyAnalysis.analysis.summary.major_achievements.length > 0 && (
+                    selectedDailyAnalysis.analysis?.summary
+                      ?.major_achievements &&
+                    selectedDailyAnalysis.analysis.summary.major_achievements
+                      .length > 0 && (
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <h3 className="text-lg font-semibold text-gray-900">
@@ -2753,19 +3195,33 @@ export default function ActivitiesPage() {
                           <div className="flex gap-1">
                             <button
                               onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const achievementsText = selectedDailyAnalysis.analysis.summary.major_achievements.join("\n");
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const achievementsText =
+                                  selectedDailyAnalysis.analysis.summary.major_achievements.join(
+                                    "\n"
+                                  );
                                 if (dateId && achievementsText) {
-                                  handleTranslate(`daily_analysis_achievements_${dateId}`, achievementsText, "en");
+                                  handleTranslate(
+                                    `daily_analysis_achievements_${dateId}`,
+                                    achievementsText,
+                                    "en"
+                                  );
                                 }
                               }}
-                              disabled={translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`}
+                              disabled={
+                                translating ===
+                                `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                              }
                               className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                translations[
+                                  `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "en"
                                   ? "bg-blue-600 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                               } ${
-                                translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                                translating ===
+                                `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
                                   ? "opacity-50 cursor-wait"
                                   : ""
                               }`}
@@ -2774,19 +3230,33 @@ export default function ActivitiesPage() {
                             </button>
                             <button
                               onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const achievementsText = selectedDailyAnalysis.analysis.summary.major_achievements.join("\n");
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const achievementsText =
+                                  selectedDailyAnalysis.analysis.summary.major_achievements.join(
+                                    "\n"
+                                  );
                                 if (dateId && achievementsText) {
-                                  handleTranslate(`daily_analysis_achievements_${dateId}`, achievementsText, "ko");
+                                  handleTranslate(
+                                    `daily_analysis_achievements_${dateId}`,
+                                    achievementsText,
+                                    "ko"
+                                  );
                                 }
                               }}
-                              disabled={translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`}
+                              disabled={
+                                translating ===
+                                `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                              }
                               className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                translations[
+                                  `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "ko"
                                   ? "bg-blue-600 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                               } ${
-                                translating === `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                                translating ===
+                                `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
                                   ? "opacity-50 cursor-wait"
                                   : ""
                               }`}
@@ -2795,10 +3265,14 @@ export default function ActivitiesPage() {
                             </button>
                           </div>
                         </div>
-                        {translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`] && (
+                        {translations[
+                          `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                        ] && (
                           <p className="text-xs text-gray-400 mb-2">
                             🌐 Translated to{" "}
-                            {translations[`daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                            {translations[
+                              `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`
+                            ].lang === "ko"
                               ? "Korean"
                               : "English"}
                           </p>
@@ -2806,18 +3280,23 @@ export default function ActivitiesPage() {
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
                           {(() => {
                             const translationKey = `daily_analysis_achievements_${selectedDailyAnalysis?.target_date}`;
-                            const translatedText = translations[translationKey]?.text;
-                            
+                            const translatedText =
+                              translations[translationKey]?.text;
+
                             if (translatedText && translatedText.trim()) {
                               // Split by newline and filter out empty lines
-                              const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                              const translatedItems = translatedText
+                                .split("\n")
+                                .filter((item: string) => item.trim());
                               if (translatedItems.length > 0) {
-                                return translatedItems.map((achievement: string, idx: number) => (
-                                  <li key={idx}>{achievement.trim()}</li>
-                                ));
+                                return translatedItems.map(
+                                  (achievement: string, idx: number) => (
+                                    <li key={idx}>{achievement.trim()}</li>
+                                  )
+                                );
                               }
                             }
-                            
+
                             // Fall back to original
                             return selectedDailyAnalysis.analysis.summary.major_achievements.map(
                               (achievement: string, idx: number) => (
@@ -2832,7 +3311,8 @@ export default function ActivitiesPage() {
                   {/* Issues Tab */}
                   {dailyAnalysisTab === "issues" &&
                     selectedDailyAnalysis.analysis?.summary?.common_issues &&
-                    selectedDailyAnalysis.analysis.summary.common_issues.length > 0 && (
+                    selectedDailyAnalysis.analysis.summary.common_issues
+                      .length > 0 && (
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <h3 className="text-lg font-semibold text-gray-900">
@@ -2841,19 +3321,33 @@ export default function ActivitiesPage() {
                           <div className="flex gap-1">
                             <button
                               onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const issuesText = selectedDailyAnalysis.analysis.summary.common_issues.join("\n");
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const issuesText =
+                                  selectedDailyAnalysis.analysis.summary.common_issues.join(
+                                    "\n"
+                                  );
                                 if (dateId && issuesText) {
-                                  handleTranslate(`daily_analysis_issues_${dateId}`, issuesText, "en");
+                                  handleTranslate(
+                                    `daily_analysis_issues_${dateId}`,
+                                    issuesText,
+                                    "en"
+                                  );
                                 }
                               }}
-                              disabled={translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`}
+                              disabled={
+                                translating ===
+                                `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                              }
                               className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
+                                translations[
+                                  `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "en"
                                   ? "bg-blue-600 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                               } ${
-                                translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                                translating ===
+                                `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
                                   ? "opacity-50 cursor-wait"
                                   : ""
                               }`}
@@ -2862,19 +3356,33 @@ export default function ActivitiesPage() {
                             </button>
                             <button
                               onClick={() => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const issuesText = selectedDailyAnalysis.analysis.summary.common_issues.join("\n");
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const issuesText =
+                                  selectedDailyAnalysis.analysis.summary.common_issues.join(
+                                    "\n"
+                                  );
                                 if (dateId && issuesText) {
-                                  handleTranslate(`daily_analysis_issues_${dateId}`, issuesText, "ko");
+                                  handleTranslate(
+                                    `daily_analysis_issues_${dateId}`,
+                                    issuesText,
+                                    "ko"
+                                  );
                                 }
                               }}
-                              disabled={translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`}
+                              disabled={
+                                translating ===
+                                `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                              }
                               className={`text-xs px-2 py-1 rounded transition-colors ${
-                                translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
+                                translations[
+                                  `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "ko"
                                   ? "bg-blue-600 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
                               } ${
-                                translating === `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                                translating ===
+                                `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
                                   ? "opacity-50 cursor-wait"
                                   : ""
                               }`}
@@ -2883,10 +3391,14 @@ export default function ActivitiesPage() {
                             </button>
                           </div>
                         </div>
-                        {translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`] && (
+                        {translations[
+                          `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                        ] && (
                           <p className="text-xs text-gray-400 mb-2">
                             🌐 Translated to{" "}
-                            {translations[`daily_analysis_issues_${selectedDailyAnalysis?.target_date}`].lang === "ko"
+                            {translations[
+                              `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`
+                            ].lang === "ko"
                               ? "Korean"
                               : "English"}
                           </p>
@@ -2894,18 +3406,23 @@ export default function ActivitiesPage() {
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
                           {(() => {
                             const translationKey = `daily_analysis_issues_${selectedDailyAnalysis?.target_date}`;
-                            const translatedText = translations[translationKey]?.text;
-                            
+                            const translatedText =
+                              translations[translationKey]?.text;
+
                             if (translatedText && translatedText.trim()) {
                               // Split by newline and filter out empty lines
-                              const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                              const translatedItems = translatedText
+                                .split("\n")
+                                .filter((item: string) => item.trim());
                               if (translatedItems.length > 0) {
-                                return translatedItems.map((issue: string, idx: number) => (
-                                  <li key={idx}>{issue.trim()}</li>
-                                ));
+                                return translatedItems.map(
+                                  (issue: string, idx: number) => (
+                                    <li key={idx}>{issue.trim()}</li>
+                                  )
+                                );
                               }
                             }
-                            
+
                             // Fall back to original
                             return selectedDailyAnalysis.analysis.summary.common_issues.map(
                               (issue: string, idx: number) => (
@@ -2929,47 +3446,80 @@ export default function ActivitiesPage() {
                           <div className="flex gap-1">
                             <button
                               onClick={async () => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const participants = selectedDailyAnalysis.analysis.participants;
-                                
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const participants =
+                                  selectedDailyAnalysis.analysis.participants;
+
                                 // Collect all translation promises for parallel execution
                                 const translationPromises: Promise<void>[] = [];
-                                
-                                participants.forEach((participant: any, idx: number) => {
-                                  const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
-                                  
-                                  if (participant.key_activities?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "en", "ko")
-                                    );
+
+                                participants.forEach(
+                                  (participant: any, idx: number) => {
+                                    const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
+
+                                    if (
+                                      participant.key_activities?.length > 0
+                                    ) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_key_activities`,
+                                          participant.key_activities.join("\n"),
+                                          "en",
+                                          "ko"
+                                        )
+                                      );
+                                    }
+                                    if (participant.action_items?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_action_items`,
+                                          participant.action_items.join("\n"),
+                                          "en",
+                                          "ko"
+                                        )
+                                      );
+                                    }
+                                    if (participant.progress?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_progress`,
+                                          participant.progress.join("\n"),
+                                          "en",
+                                          "ko"
+                                        )
+                                      );
+                                    }
+                                    if (participant.issues?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_issues`,
+                                          participant.issues.join("\n"),
+                                          "en",
+                                          "ko"
+                                        )
+                                      );
+                                    }
+                                    if (participant.collaboration?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_collaboration`,
+                                          participant.collaboration.join("\n"),
+                                          "en",
+                                          "ko"
+                                        )
+                                      );
+                                    }
                                   }
-                                  if (participant.action_items?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "en", "ko")
-                                    );
-                                  }
-                                  if (participant.progress?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "en", "ko")
-                                    );
-                                  }
-                                  if (participant.issues?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "en", "ko")
-                                    );
-                                  }
-                                  if (participant.collaboration?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "en", "ko")
-                                    );
-                                  }
-                                });
-                                
+                                );
+
                                 // Execute all translations in parallel
                                 try {
                                   await Promise.all(translationPromises);
                                   // Small delay to ensure all translations are saved to state
-                                  await new Promise(resolve => setTimeout(resolve, 100));
+                                  await new Promise((resolve) =>
+                                    setTimeout(resolve, 100)
+                                  );
                                   // Force re-render by creating a new object reference
                                   setTranslations((prev) => {
                                     const updated = { ...prev };
@@ -2977,59 +3527,97 @@ export default function ActivitiesPage() {
                                     return { ...updated };
                                   });
                                 } catch (error) {
-                                  console.error("Batch translation error:", error);
+                                  console.error(
+                                    "Batch translation error:",
+                                    error
+                                  );
                                   // Even on error, try to refresh translations
                                   setTranslations((prev) => ({ ...prev }));
                                 }
                               }}
-                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
+                              disabled={Array.from(translatingSet).some((key) =>
+                                key.startsWith("daily_analysis_participant_")
+                              )}
                               className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
                             >
                               EN
                             </button>
                             <button
                               onClick={async () => {
-                                const dateId = selectedDailyAnalysis.target_date;
-                                const participants = selectedDailyAnalysis.analysis.participants;
-                                
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const participants =
+                                  selectedDailyAnalysis.analysis.participants;
+
                                 // Collect all translation promises for parallel execution
                                 const translationPromises: Promise<void>[] = [];
-                                
-                                participants.forEach((participant: any, idx: number) => {
-                                  const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
-                                  
-                                  if (participant.key_activities?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_key_activities`, participant.key_activities.join("\n"), "ko", "en")
-                                    );
+
+                                participants.forEach(
+                                  (participant: any, idx: number) => {
+                                    const participantKey = `daily_analysis_participant_${dateId}_${idx}`;
+
+                                    if (
+                                      participant.key_activities?.length > 0
+                                    ) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_key_activities`,
+                                          participant.key_activities.join("\n"),
+                                          "ko",
+                                          "en"
+                                        )
+                                      );
+                                    }
+                                    if (participant.action_items?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_action_items`,
+                                          participant.action_items.join("\n"),
+                                          "ko",
+                                          "en"
+                                        )
+                                      );
+                                    }
+                                    if (participant.progress?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_progress`,
+                                          participant.progress.join("\n"),
+                                          "ko",
+                                          "en"
+                                        )
+                                      );
+                                    }
+                                    if (participant.issues?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_issues`,
+                                          participant.issues.join("\n"),
+                                          "ko",
+                                          "en"
+                                        )
+                                      );
+                                    }
+                                    if (participant.collaboration?.length > 0) {
+                                      translationPromises.push(
+                                        handleTranslate(
+                                          `${participantKey}_collaboration`,
+                                          participant.collaboration.join("\n"),
+                                          "ko",
+                                          "en"
+                                        )
+                                      );
+                                    }
                                   }
-                                  if (participant.action_items?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_action_items`, participant.action_items.join("\n"), "ko", "en")
-                                    );
-                                  }
-                                  if (participant.progress?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_progress`, participant.progress.join("\n"), "ko", "en")
-                                    );
-                                  }
-                                  if (participant.issues?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_issues`, participant.issues.join("\n"), "ko", "en")
-                                    );
-                                  }
-                                  if (participant.collaboration?.length > 0) {
-                                    translationPromises.push(
-                                      handleTranslate(`${participantKey}_collaboration`, participant.collaboration.join("\n"), "ko", "en")
-                                    );
-                                  }
-                                });
-                                
+                                );
+
                                 // Execute all translations in parallel
                                 try {
                                   await Promise.all(translationPromises);
                                   // Small delay to ensure all translations are saved to state
-                                  await new Promise(resolve => setTimeout(resolve, 100));
+                                  await new Promise((resolve) =>
+                                    setTimeout(resolve, 100)
+                                  );
                                   // Force re-render by creating a new object reference
                                   setTranslations((prev) => {
                                     const updated = { ...prev };
@@ -3037,12 +3625,17 @@ export default function ActivitiesPage() {
                                     return { ...updated };
                                   });
                                 } catch (error) {
-                                  console.error("Batch translation error:", error);
+                                  console.error(
+                                    "Batch translation error:",
+                                    error
+                                  );
                                   // Even on error, try to refresh translations
                                   setTranslations((prev) => ({ ...prev }));
                                 }
                               }}
-                              disabled={Array.from(translatingSet).some(key => key.startsWith("daily_analysis_participant_"))}
+                              disabled={Array.from(translatingSet).some((key) =>
+                                key.startsWith("daily_analysis_participant_")
+                              )}
                               className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
                             >
                               KR
@@ -3052,42 +3645,55 @@ export default function ActivitiesPage() {
                         <div className="space-y-4">
                           {(() => {
                             const dateId = selectedDailyAnalysis.target_date;
-                            const allParticipants = selectedDailyAnalysis.analysis.participants;
-                            
+                            const allParticipants =
+                              selectedDailyAnalysis.analysis.participants;
+
                             // Create a map of participant names to original indices for reliable key lookup
-                            const participantIndexMap = new Map<string, number>();
+                            const participantIndexMap = new Map<
+                              string,
+                              number
+                            >();
                             allParticipants.forEach((p: any, idx: number) => {
                               participantIndexMap.set(p.name, idx);
                             });
-                            
+
                             // Sort alphabetically by name (show all participants, backend already filtered the daily analysis)
-                            const sorted = [...allParticipants].sort((a: any, b: any) => {
-                              const nameA = (a.name || "").toLowerCase();
-                              const nameB = (b.name || "").toLowerCase();
-                              return nameA.localeCompare(nameB);
-                            });
-                            
+                            const sorted = [...allParticipants].sort(
+                              (a: any, b: any) => {
+                                const nameA = (a.name || "").toLowerCase();
+                                const nameB = (b.name || "").toLowerCase();
+                                return nameA.localeCompare(nameB);
+                              }
+                            );
+
                             return sorted.map(
                               (participant: any, displayIdx: number) => {
                                 // Use the original index from the map to ensure consistency
-                                const originalIdx = participantIndexMap.get(participant.name) ?? displayIdx;
+                                const originalIdx =
+                                  participantIndexMap.get(participant.name) ??
+                                  displayIdx;
                                 const participantKey = `daily_analysis_participant_${dateId}_${originalIdx}`;
-                                
+
                                 // Helper function to get translated text for a field
-                                const getTranslatedField = (fieldName: string, originalArray: string[]) => {
+                                const getTranslatedField = (
+                                  fieldName: string,
+                                  originalArray: string[]
+                                ) => {
                                   const translationKey = `${participantKey}_${fieldName}`;
-                                  const translatedText = translations[translationKey]?.text;
-                                  
+                                  const translatedText =
+                                    translations[translationKey]?.text;
+
                                   if (translatedText && translatedText.trim()) {
-                                    const translatedItems = translatedText.split("\n").filter((item: string) => item.trim());
+                                    const translatedItems = translatedText
+                                      .split("\n")
+                                      .filter((item: string) => item.trim());
                                     if (translatedItems.length > 0) {
                                       return translatedItems;
                                     }
                                   }
                                   return originalArray;
                                 };
-                                
-                                
+
                                 return (
                                   <div
                                     key={displayIdx}
@@ -3099,24 +3705,33 @@ export default function ActivitiesPage() {
                                       </h4>
                                       <div className="text-sm text-gray-500">
                                         {participant.speaking_time} (
-                                        {participant.speaking_percentage?.toFixed(1) || 0}%)
+                                        {participant.speaking_percentage?.toFixed(
+                                          1
+                                        ) || 0}
+                                        %)
                                       </div>
                                     </div>
                                     <div className="grid grid-cols-3 gap-4 text-sm mb-3">
                                       <div>
-                                        <span className="text-gray-500">Speaks:</span>{" "}
+                                        <span className="text-gray-500">
+                                          Speaks:
+                                        </span>{" "}
                                         <span className="font-medium">
                                           {participant.speak_count || 0}
                                         </span>
                                       </div>
                                       <div>
-                                        <span className="text-gray-500">Words:</span>{" "}
+                                        <span className="text-gray-500">
+                                          Words:
+                                        </span>{" "}
                                         <span className="font-medium">
                                           {participant.word_count || 0}
                                         </span>
                                       </div>
                                       <div>
-                                        <span className="text-gray-500">Time:</span>{" "}
+                                        <span className="text-gray-500">
+                                          Time:
+                                        </span>{" "}
                                         <span className="font-medium">
                                           {participant.speaking_time || "N/A"}
                                         </span>
@@ -3129,7 +3744,10 @@ export default function ActivitiesPage() {
                                             Key Activities:
                                           </div>
                                           <ul className="list-disc list-inside text-sm text-gray-700">
-                                            {getTranslatedField("key_activities", participant.key_activities).map((item: string, i: number) => (
+                                            {getTranslatedField(
+                                              "key_activities",
+                                              participant.key_activities
+                                            ).map((item: string, i: number) => (
                                               <li key={i}>{item}</li>
                                             ))}
                                           </ul>
@@ -3142,7 +3760,10 @@ export default function ActivitiesPage() {
                                             Action Items:
                                           </div>
                                           <ul className="list-disc list-inside text-sm text-gray-700">
-                                            {getTranslatedField("action_items", participant.action_items).map((item: string, i: number) => (
+                                            {getTranslatedField(
+                                              "action_items",
+                                              participant.action_items
+                                            ).map((item: string, i: number) => (
                                               <li key={i}>{item}</li>
                                             ))}
                                           </ul>
@@ -3155,7 +3776,10 @@ export default function ActivitiesPage() {
                                             Progress:
                                           </div>
                                           <ul className="list-disc list-inside text-sm text-gray-700">
-                                            {getTranslatedField("progress", participant.progress).map((prog: string, i: number) => (
+                                            {getTranslatedField(
+                                              "progress",
+                                              participant.progress
+                                            ).map((prog: string, i: number) => (
                                               <li key={i}>{prog}</li>
                                             ))}
                                           </ul>
@@ -3168,9 +3792,14 @@ export default function ActivitiesPage() {
                                             Issues:
                                           </div>
                                           <ul className="list-disc list-inside text-sm text-gray-700">
-                                            {getTranslatedField("issues", participant.issues).map((issue: string, i: number) => (
-                                              <li key={i}>{issue}</li>
-                                            ))}
+                                            {getTranslatedField(
+                                              "issues",
+                                              participant.issues
+                                            ).map(
+                                              (issue: string, i: number) => (
+                                                <li key={i}>{issue}</li>
+                                              )
+                                            )}
                                           </ul>
                                         </div>
                                       )}
@@ -3181,9 +3810,14 @@ export default function ActivitiesPage() {
                                             Collaboration:
                                           </div>
                                           <ul className="list-disc list-inside text-sm text-gray-700">
-                                            {getTranslatedField("collaboration", participant.collaboration).map((collab: string, i: number) => (
-                                              <li key={i}>{collab}</li>
-                                            ))}
+                                            {getTranslatedField(
+                                              "collaboration",
+                                              participant.collaboration
+                                            ).map(
+                                              (collab: string, i: number) => (
+                                                <li key={i}>{collab}</li>
+                                              )
+                                            )}
                                           </ul>
                                         </div>
                                       )}
@@ -3199,72 +3833,104 @@ export default function ActivitiesPage() {
                   {/* Full Analysis Tab */}
                   {dailyAnalysisTab === "full" &&
                     selectedDailyAnalysis.analysis?.full_analysis_text && (
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          Full Analysis
-                        </h3>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => {
-                              const dateId = selectedDailyAnalysis.target_date;
-                              const analysisText = selectedDailyAnalysis.analysis.full_analysis_text;
-                              if (dateId && analysisText) {
-                                handleTranslate(`daily_analysis_full_${dateId}`, analysisText, "en");
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            Full Analysis
+                          </h3>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const analysisText =
+                                  selectedDailyAnalysis.analysis
+                                    .full_analysis_text;
+                                if (dateId && analysisText) {
+                                  handleTranslate(
+                                    `daily_analysis_full_${dateId}`,
+                                    analysisText,
+                                    "en"
+                                  );
+                                }
+                              }}
+                              disabled={
+                                translating ===
+                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
                               }
-                            }}
-                            disabled={translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`}
-                            className={`text-xs px-2 py-1 rounded transition-colors ${
-                              translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`]?.lang === "en"
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                            } ${
-                              translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
-                                ? "opacity-50 cursor-wait"
-                                : ""
-                            }`}
-                          >
-                            EN
-                          </button>
-                          <button
-                            onClick={() => {
-                              const dateId = selectedDailyAnalysis.target_date;
-                              const analysisText = selectedDailyAnalysis.analysis.full_analysis_text;
-                              if (dateId && analysisText) {
-                                handleTranslate(`daily_analysis_full_${dateId}`, analysisText, "ko");
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[
+                                  `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "en"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating ===
+                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dateId =
+                                  selectedDailyAnalysis.target_date;
+                                const analysisText =
+                                  selectedDailyAnalysis.analysis
+                                    .full_analysis_text;
+                                if (dateId && analysisText) {
+                                  handleTranslate(
+                                    `daily_analysis_full_${dateId}`,
+                                    analysisText,
+                                    "ko"
+                                  );
+                                }
+                              }}
+                              disabled={
+                                translating ===
+                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
                               }
-                            }}
-                            disabled={translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`}
-                            className={`text-xs px-2 py-1 rounded transition-colors ${
-                              translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`]?.lang === "ko"
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                            } ${
-                              translating === `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
-                                ? "opacity-50 cursor-wait"
-                                : ""
-                            }`}
-                          >
-                            KR
-                          </button>
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                translations[
+                                  `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                                ]?.lang === "ko"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                              } ${
+                                translating ===
+                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                                  ? "opacity-50 cursor-wait"
+                                  : ""
+                              }`}
+                            >
+                              KR
+                            </button>
+                          </div>
+                        </div>
+                        {translations[
+                          `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                        ] && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            🌐 Translated to{" "}
+                            {translations[
+                              `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                            ].lang === "ko"
+                              ? "Korean"
+                              : "English"}
+                          </p>
+                        )}
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                            {translations[
+                              `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                            ]?.text ||
+                              selectedDailyAnalysis.analysis.full_analysis_text}
+                          </pre>
                         </div>
                       </div>
-                      {translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`] && (
-                        <p className="text-xs text-gray-400 mb-2">
-                          🌐 Translated to{" "}
-                          {translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`].lang === "ko"
-                            ? "Korean"
-                            : "English"}
-                        </p>
-                      )}
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
-                          {translations[`daily_analysis_full_${selectedDailyAnalysis?.target_date}`]?.text ||
-                            selectedDailyAnalysis.analysis.full_analysis_text}
-                        </pre>
-                      </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               ) : (
                 <p className="text-gray-500 text-center">
@@ -3278,19 +3944,25 @@ export default function ActivitiesPage() {
                   !selectedDailyAnalysis.analysis?.summary?.overview) ||
                   (dailyAnalysisTab === "topics" &&
                     (!selectedDailyAnalysis.analysis?.summary?.topics ||
-                      selectedDailyAnalysis.analysis.summary.topics.length === 0)) ||
+                      selectedDailyAnalysis.analysis.summary.topics.length ===
+                        0)) ||
                   (dailyAnalysisTab === "decisions" &&
                     (!selectedDailyAnalysis.analysis?.summary?.key_decisions ||
-                      selectedDailyAnalysis.analysis.summary.key_decisions.length === 0)) ||
+                      selectedDailyAnalysis.analysis.summary.key_decisions
+                        .length === 0)) ||
                   (dailyAnalysisTab === "achievements" &&
-                    (!selectedDailyAnalysis.analysis?.summary?.major_achievements ||
-                      selectedDailyAnalysis.analysis.summary.major_achievements.length === 0)) ||
+                    (!selectedDailyAnalysis.analysis?.summary
+                      ?.major_achievements ||
+                      selectedDailyAnalysis.analysis.summary.major_achievements
+                        .length === 0)) ||
                   (dailyAnalysisTab === "issues" &&
                     (!selectedDailyAnalysis.analysis?.summary?.common_issues ||
-                      selectedDailyAnalysis.analysis.summary.common_issues.length === 0)) ||
+                      selectedDailyAnalysis.analysis.summary.common_issues
+                        .length === 0)) ||
                   (dailyAnalysisTab === "participants" &&
                     (!selectedDailyAnalysis.analysis?.participants ||
-                      selectedDailyAnalysis.analysis.participants.length === 0)) ||
+                      selectedDailyAnalysis.analysis.participants.length ===
+                        0)) ||
                   (dailyAnalysisTab === "full" &&
                     !selectedDailyAnalysis.analysis?.full_analysis_text)) && (
                   <div className="text-center py-12">

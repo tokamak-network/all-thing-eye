@@ -97,7 +97,7 @@ export default function MemberDetailPage() {
   const params = useParams();
   const router = useRouter();
   const memberId = params.id as string;
-  
+
   const [member, setMember] = useState<MemberDetail | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [selectedSource, setSelectedSource] = useState<string>("");
@@ -110,14 +110,14 @@ export default function MemberDetailPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
-  
+
   // Translation states
   const [summaryTranslation, setSummaryTranslation] = useState<{
     text: string;
     lang: string;
   } | null>(null);
   const [translatingSummary, setTranslatingSummary] = useState(false);
-  
+
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -130,7 +130,11 @@ export default function MemberDetailPage() {
       setMember(data);
     } catch (err: any) {
       console.error("Error loading member detail:", err);
-      setError(err.response?.data?.detail || err.message || "Failed to load member details");
+      setError(
+        err.response?.data?.detail ||
+          err.message ||
+          "Failed to load member details"
+      );
     } finally {
       setLoading(false);
     }
@@ -144,10 +148,10 @@ export default function MemberDetailPage() {
       if (selectedSource === "drive") {
         backendSourceType = "google_drive";
       }
-      
+
       // Load enough data for pagination
       const loadLimit = Math.max(itemsPerPage * 10, 500);
-      
+
       const data = await apiClient.getMemberActivities(memberId, {
         source_type: backendSourceType,
         limit: loadLimit,
@@ -242,7 +246,8 @@ export default function MemberDetailPage() {
   // Filter activities by source
   const filteredActivities = selectedSource
     ? activities.filter((a) => {
-        const source = a.source_type === "google_drive" ? "drive" : a.source_type;
+        const source =
+          a.source_type === "google_drive" ? "drive" : a.source_type;
         return source === selectedSource;
       })
     : activities;
@@ -256,7 +261,11 @@ export default function MemberDetailPage() {
 
   // Get all available sources from activities
   const availableSources = Array.from(
-    new Set(activities.map((a) => a.source_type === "google_drive" ? "drive" : a.source_type))
+    new Set(
+      activities.map((a) =>
+        a.source_type === "google_drive" ? "drive" : a.source_type
+      )
+    )
   ).sort();
 
   if (loading) {
@@ -311,7 +320,9 @@ export default function MemberDetailPage() {
 
         {/* Member Info Card */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Profile Information</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">
+            Profile Information
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center gap-3">
               <EnvelopeIcon className="h-5 w-5 text-gray-400" />
@@ -404,11 +415,7 @@ export default function MemberDetailPage() {
                         summaryTranslation?.lang === "en"
                           ? "bg-blue-600 text-white"
                           : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                      } ${
-                        translatingSummary
-                          ? "opacity-50 cursor-wait"
-                          : ""
-                      }`}
+                      } ${translatingSummary ? "opacity-50 cursor-wait" : ""}`}
                     >
                       EN
                     </button>
@@ -419,11 +426,7 @@ export default function MemberDetailPage() {
                         summaryTranslation?.lang === "ko"
                           ? "bg-blue-600 text-white"
                           : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                      } ${
-                        translatingSummary
-                          ? "opacity-50 cursor-wait"
-                          : ""
-                      }`}
+                      } ${translatingSummary ? "opacity-50 cursor-wait" : ""}`}
                     >
                       KR
                     </button>
@@ -441,14 +444,15 @@ export default function MemberDetailPage() {
                   {summaryTranslation && (
                     <p className="text-xs text-gray-400 mt-2">
                       🌐 Translated to{" "}
-                      {summaryTranslation.lang === "ko"
-                        ? "Korean"
-                        : "English"}
+                      {summaryTranslation.lang === "ko" ? "Korean" : "English"}
                     </p>
                   )}
                 </div>
               ) : (
-                <p className="text-gray-500">Click &quot;Generate Summary&quot; to analyze activities with AI.</p>
+                <p className="text-gray-500">
+                  Click &quot;Generate Summary&quot; to analyze activities with
+                  AI.
+                </p>
               )}
             </div>
           )}
@@ -458,24 +462,29 @@ export default function MemberDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Stacked Area Chart - Activity Trends */}
           <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
-             <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                 <ChartBarIcon className="h-5 w-5 text-indigo-500" />
                 Activity Trends (Last 90 Days)
               </h2>
             </div>
-                    <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3">
+            <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3">
               <span className="text-xl">⚠️</span>
               <div>
-                <h3 className="text-sm font-medium text-yellow-800">Drive Data Temporarily Disabled</h3>
+                <h3 className="text-sm font-medium text-yellow-800">
+                  Drive Data Temporarily Disabled
+                </h3>
                 <p className="text-sm text-yellow-700 mt-1">
-                  Google Drive activity data is currently excluded from visualizations due to high volume noise causing skewness. We are optimizing the filtering logic.
+                  Google Drive activity data is currently excluded from
+                  visualizations due to high volume noise causing skewness. We
+                  are optimizing the filtering logic.
                 </p>
               </div>
             </div>
-            
+
             <div className="h-[300px] w-full">
-              {member.activity_stats.daily_trends && member.activity_stats.daily_trends.length > 0 ? (
+              {member.activity_stats.daily_trends &&
+              member.activity_stats.daily_trends.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={member.activity_stats.daily_trends}
@@ -487,16 +496,24 @@ export default function MemberDetailPage() {
                     }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis 
-                      dataKey="date" 
-                      tick={{ fontSize: 12 }} 
-                      tickFormatter={(value) => format(new Date(value), 'MM/dd')}
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) =>
+                        format(new Date(value), "MM/dd")
+                      }
                       interval="preserveStartEnd"
                     />
                     <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      labelFormatter={(value) => format(new Date(value), 'MMM dd, yyyy')}
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: "8px",
+                        border: "none",
+                        boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                      }}
+                      labelFormatter={(value) =>
+                        format(new Date(value), "MMM dd, yyyy")
+                      }
                     />
                     <Legend />
                     <Area
@@ -542,19 +559,34 @@ export default function MemberDetailPage() {
             </h2>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart 
-                  cx="50%" 
-                  cy="50%" 
-                  outerRadius="80%" 
+                <RadarChart
+                  cx="50%"
+                  cy="50%"
+                  outerRadius="80%"
                   data={[
-                    { subject: 'GitHub', A: member.activity_stats.by_source.github?.total || 0, fullMark: 100 },
-                    { subject: 'Slack', A: member.activity_stats.by_source.slack?.total || 0, fullMark: 100 },
-                    { subject: 'Notion', A: member.activity_stats.by_source.notion?.total || 0, fullMark: 100 },
+                    {
+                      subject: "GitHub",
+                      A: member.activity_stats.by_source.github?.total || 0,
+                      fullMark: 100,
+                    },
+                    {
+                      subject: "Slack",
+                      A: member.activity_stats.by_source.slack?.total || 0,
+                      fullMark: 100,
+                    },
+                    {
+                      subject: "Notion",
+                      A: member.activity_stats.by_source.notion?.total || 0,
+                      fullMark: 100,
+                    },
                     // Drive excluded due to noise
                   ]}
                 >
                   <PolarGrid />
-                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#4B5563', fontSize: 12 }} />
+                  <PolarAngleAxis
+                    dataKey="subject"
+                    tick={{ fill: "#4B5563", fontSize: 12 }}
+                  />
 
                   <Radar
                     name="Activities"
@@ -595,8 +627,10 @@ export default function MemberDetailPage() {
                     {member.activity_stats.by_source.github.total}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {member.activity_stats.by_source.github.commits || 0} commits,{" "}
-                    {member.activity_stats.by_source.github.pull_requests || 0} PRs
+                    {member.activity_stats.by_source.github.commits || 0}{" "}
+                    commits,{" "}
+                    {member.activity_stats.by_source.github.pull_requests || 0}{" "}
+                    PRs
                   </p>
                 </div>
                 <span className="text-4xl">🐙</span>
@@ -614,7 +648,8 @@ export default function MemberDetailPage() {
                     {member.activity_stats.by_source.slack.total}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {member.activity_stats.by_source.slack.messages || 0} messages
+                    {member.activity_stats.by_source.slack.messages || 0}{" "}
+                    messages
                   </p>
                 </div>
                 <span className="text-4xl">💬</span>
@@ -623,14 +658,15 @@ export default function MemberDetailPage() {
           )}
 
           {/* Other Sources */}
-          {(member.activity_stats.by_source.notion || member.activity_stats.by_source.drive) && (
+          {(member.activity_stats.by_source.notion ||
+            member.activity_stats.by_source.drive) && (
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Other Sources</p>
                   <p className="text-3xl font-bold text-gray-900 mt-1">
-                    {(member.activity_stats.by_source.notion?.total || 0) + 
-                     (member.activity_stats.by_source.drive?.total || 0)}
+                    {(member.activity_stats.by_source.notion?.total || 0) +
+                      (member.activity_stats.by_source.drive?.total || 0)}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">Notion, Drive</p>
                 </div>
@@ -656,7 +692,9 @@ export default function MemberDetailPage() {
         <div className="bg-white rounded-lg shadow p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-gray-700">Filter by source:</span>
+              <span className="text-sm font-medium text-gray-700">
+                Filter by source:
+              </span>
               <select
                 value={selectedSource}
                 onChange={(e) => {
@@ -704,11 +742,16 @@ export default function MemberDetailPage() {
               <ul className="divide-y divide-gray-200">
                 {paginatedActivities.length === 0 ? (
                   <li className="px-4 py-12 text-center">
-                    <p className="text-gray-500">No activities found for this member.</p>
+                    <p className="text-gray-500">
+                      No activities found for this member.
+                    </p>
                   </li>
                 ) : (
                   paginatedActivities.map((activity) => {
-                    const displaySource = activity.source_type === "google_drive" ? "drive" : activity.source_type;
+                    const displaySource =
+                      activity.source_type === "google_drive"
+                        ? "drive"
+                        : activity.source_type;
                     return (
                       <li key={activity.id} className="hover:bg-gray-50">
                         {/* Activity Header */}
@@ -717,7 +760,7 @@ export default function MemberDetailPage() {
                           onClick={() => toggleActivity(activity.id)}
                         >
                           <div className="flex items-center justify-between">
-                      <div className="flex-1">
+                            <div className="flex-1">
                               <div className="flex items-center space-x-3">
                                 <span className="text-2xl">
                                   {getSourceIcon(displaySource)}
@@ -738,15 +781,16 @@ export default function MemberDetailPage() {
                                         💾 commit
                                       </span>
                                     )}
-                                    {activity.activity_type === "pull_request" && (
+                                    {activity.activity_type ===
+                                      "pull_request" && (
                                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                         🔀 pull request
-                          </span>
+                                      </span>
                                     )}
                                     {activity.activity_type === "issue" && (
                                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                         ⚠️ issue
-                          </span>
+                                      </span>
                                     )}
                                   </>
                                 )}
@@ -762,11 +806,11 @@ export default function MemberDetailPage() {
                                     {activity.metadata?.channel && (
                                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                                         #{activity.metadata.channel}
-                              </span>
+                                      </span>
                                     )}
-                            </>
-                          )}
-                        </div>
+                                  </>
+                                )}
+                              </div>
                               <div className="mt-2 text-sm text-gray-600">
                                 {activity.metadata?.title && (
                                   <p className="line-clamp-1 font-medium">
@@ -779,27 +823,37 @@ export default function MemberDetailPage() {
                                   </p>
                                 )}
                                 {activity.metadata?.text && (
-                                  <p className="line-clamp-1">{activity.metadata.text}</p>
+                                  <p className="line-clamp-1">
+                                    {activity.metadata.text}
+                                  </p>
                                 )}
                                 {activity.metadata?.target_name && (
-                                  <p className="line-clamp-1">{activity.metadata.target_name}</p>
+                                  <p className="line-clamp-1">
+                                    {activity.metadata.target_name}
+                                  </p>
                                 )}
                                 {activity.metadata?.repository && (
                                   <p className="line-clamp-1 font-mono text-xs">
                                     {activity.metadata.repository}
                                   </p>
                                 )}
-                      </div>
-                    </div>
+                              </div>
+                            </div>
                             <div className="flex items-center space-x-4">
                               <div className="text-right min-w-[160px]">
                                 <p className="text-sm font-medium text-gray-900">
-                                  {formatTimestamp(activity.timestamp, "MMM dd, yyyy")}
+                                  {formatTimestamp(
+                                    activity.timestamp,
+                                    "MMM dd, yyyy"
+                                  )}
                                 </p>
                                 <p className="text-xs text-gray-600">
-                                  {formatTimestamp(activity.timestamp, "HH:mm:ss")}
-                      </p>
-                    </div>
+                                  {formatTimestamp(
+                                    activity.timestamp,
+                                    "HH:mm:ss"
+                                  )}
+                                </p>
+                              </div>
                               <svg
                                 className={`h-5 w-5 text-gray-400 transition-transform ${
                                   expandedActivity === activity.id
@@ -817,9 +871,9 @@ export default function MemberDetailPage() {
                                   d="M19 9l-7 7-7-7"
                                 />
                               </svg>
-                  </div>
-                </div>
-            </div>
+                            </div>
+                          </div>
+                        </div>
 
                         {/* Expanded Details */}
                         {expandedActivity === activity.id && (
@@ -833,7 +887,8 @@ export default function MemberDetailPage() {
                                       💾 Commit
                                     </span>
                                   )}
-                                  {activity.activity_type === "pull_request" && (
+                                  {activity.activity_type ===
+                                    "pull_request" && (
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                       🔀 Pull Request
                                     </span>
@@ -853,28 +908,38 @@ export default function MemberDetailPage() {
                                     >
                                       {activity.metadata.state}
                                     </span>
-          )}
-        </div>
+                                  )}
+                                </div>
 
                                 <div>
-                                  <span className="text-xs font-medium text-gray-500">Time:</span>
+                                  <span className="text-xs font-medium text-gray-500">
+                                    Time:
+                                  </span>
                                   <p className="text-sm text-gray-900">
-                                    {formatTimestamp(activity.timestamp, "yyyy-MM-dd HH:mm:ss")}
+                                    {formatTimestamp(
+                                      activity.timestamp,
+                                      "yyyy-MM-dd HH:mm:ss"
+                                    )}
                                   </p>
                                 </div>
 
                                 {activity.metadata?.repository && (
                                   <div>
-                                    <span className="text-xs font-medium text-gray-500">Repository:</span>
+                                    <span className="text-xs font-medium text-gray-500">
+                                      Repository:
+                                    </span>
                                     <p className="text-sm text-gray-900">
-                                      tokamak-network/{activity.metadata.repository}
+                                      tokamak-network/
+                                      {activity.metadata.repository}
                                     </p>
                                   </div>
                                 )}
 
                                 {activity.metadata?.sha && (
                                   <div>
-                                    <span className="text-xs font-medium text-gray-500">Commit SHA:</span>
+                                    <span className="text-xs font-medium text-gray-500">
+                                      Commit SHA:
+                                    </span>
                                     <p className="text-sm font-mono text-gray-900">
                                       {activity.metadata.sha.substring(0, 7)}
                                     </p>
@@ -895,16 +960,19 @@ export default function MemberDetailPage() {
                                 )}
 
                                 {(activity.metadata?.additions !== undefined ||
-                                  activity.metadata?.deletions !== undefined) && (
+                                  activity.metadata?.deletions !==
+                                    undefined) && (
                                   <div className="flex items-center space-x-4">
                                     <div className="flex items-center space-x-1">
-                                      <span className="text-xs font-medium text-gray-500">Changes:</span>
+                                      <span className="text-xs font-medium text-gray-500">
+                                        Changes:
+                                      </span>
                                       <span className="text-xs font-medium text-green-600">
                                         +{activity.metadata.additions || 0}
                                       </span>
                                       <span className="text-xs font-medium text-red-600">
                                         -{activity.metadata.deletions || 0}
-                    </span>
+                                      </span>
                                     </div>
                                   </div>
                                 )}
@@ -932,20 +1000,27 @@ export default function MemberDetailPage() {
                                   {activity.activity_type === "message" && (
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                       💬 Message
-                    </span>
+                                    </span>
                                   )}
                                 </div>
 
                                 <div>
-                                  <span className="text-xs font-medium text-gray-500">Time:</span>
+                                  <span className="text-xs font-medium text-gray-500">
+                                    Time:
+                                  </span>
                                   <p className="text-sm text-gray-900">
-                                    {formatTimestamp(activity.timestamp, "yyyy-MM-dd HH:mm:ss")}
+                                    {formatTimestamp(
+                                      activity.timestamp,
+                                      "yyyy-MM-dd HH:mm:ss"
+                                    )}
                                   </p>
                                 </div>
 
                                 {activity.metadata?.channel && (
                                   <div>
-                                    <span className="text-xs font-medium text-gray-500">Channel:</span>
+                                    <span className="text-xs font-medium text-gray-500">
+                                      Channel:
+                                    </span>
                                     <p className="text-sm text-gray-900">
                                       #{activity.metadata.channel}
                                     </p>
@@ -954,7 +1029,9 @@ export default function MemberDetailPage() {
 
                                 {activity.metadata?.text && (
                                   <div>
-                                    <span className="text-xs font-medium text-gray-500">Message:</span>
+                                    <span className="text-xs font-medium text-gray-500">
+                                      Message:
+                                    </span>
                                     <p className="text-sm text-gray-700 whitespace-pre-wrap bg-white p-3 rounded border border-gray-200 mt-1">
                                       {activity.metadata.text}
                                     </p>
@@ -981,16 +1058,25 @@ export default function MemberDetailPage() {
                             {activity.source_type === "notion" && (
                               <div className="space-y-3">
                                 <div>
-                                  <span className="text-xs font-medium text-gray-500">Time:</span>
+                                  <span className="text-xs font-medium text-gray-500">
+                                    Time:
+                                  </span>
                                   <p className="text-sm text-gray-900">
-                                    {formatTimestamp(activity.timestamp, "yyyy-MM-dd HH:mm:ss")}
+                                    {formatTimestamp(
+                                      activity.timestamp,
+                                      "yyyy-MM-dd HH:mm:ss"
+                                    )}
                                   </p>
                                 </div>
 
                                 {activity.metadata?.title && (
                                   <div>
-                                    <span className="text-xs font-medium text-gray-500">Title:</span>
-                                    <p className="text-sm text-gray-900">{activity.metadata.title}</p>
+                                    <span className="text-xs font-medium text-gray-500">
+                                      Title:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                      {activity.metadata.title}
+                                    </p>
                                   </div>
                                 )}
 
@@ -1011,28 +1097,88 @@ export default function MemberDetailPage() {
                             )}
 
                             {/* Google Drive Details */}
-                            {(activity.source_type === "google_drive" || activity.source_type === "drive") && (
+                            {(activity.source_type === "google_drive" ||
+                              activity.source_type === "drive") && (
                               <div className="space-y-3">
                                 <div>
-                                  <span className="text-xs font-medium text-gray-500">Time:</span>
+                                  <span className="text-xs font-medium text-gray-500">
+                                    Time:
+                                  </span>
                                   <p className="text-sm text-gray-900">
-                                    {formatTimestamp(activity.timestamp, "yyyy-MM-dd HH:mm:ss")}
+                                    {formatTimestamp(
+                                      activity.timestamp,
+                                      "yyyy-MM-dd HH:mm:ss"
+                                    )}
                                   </p>
                                 </div>
 
                                 {activity.metadata?.primary_action && (
                                   <div>
-                                    <span className="text-xs font-medium text-gray-500">Action:</span>
-                                    <p className="text-sm text-gray-900">{activity.metadata.primary_action}</p>
+                                    <span className="text-xs font-medium text-gray-500">
+                                      Action:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                      {activity.metadata.primary_action}
+                                    </p>
                                   </div>
                                 )}
 
                                 {activity.metadata?.target_name && (
                                   <div>
-                                    <span className="text-xs font-medium text-gray-500">File:</span>
-                                    <p className="text-sm text-gray-900">{activity.metadata.target_name}</p>
+                                    <span className="text-xs font-medium text-gray-500">
+                                      File:
+                                    </span>
+                                    <p className="text-sm text-gray-900">
+                                      {activity.metadata.target_name}
+                                    </p>
                                   </div>
                                 )}
+
+                                {/* Link Button */}
+                                {(() => {
+                                  const getDriveUrl = () => {
+                                    // First, try to use target.url if available
+                                    if (activity.metadata?.target?.url) {
+                                      return activity.metadata.target.url;
+                                    }
+                                    // Otherwise, construct URL from file_id and activity_type
+                                    if (activity.metadata?.file_id) {
+                                      const fileId = activity.metadata.file_id;
+                                      const activityType =
+                                        activity.metadata?.activity_type ||
+                                        activity.metadata?.target?.type;
+                                      if (activityType === "document") {
+                                        return `https://docs.google.com/document/d/${fileId}`;
+                                      } else if (
+                                        activityType === "spreadsheet"
+                                      ) {
+                                        return `https://docs.google.com/spreadsheets/d/${fileId}`;
+                                      } else if (
+                                        activityType === "presentation"
+                                      ) {
+                                        return `https://docs.google.com/presentation/d/${fileId}`;
+                                      } else {
+                                        return `https://drive.google.com/file/d/${fileId}/view`;
+                                      }
+                                    }
+                                    return null;
+                                  };
+
+                                  const driveUrl = getDriveUrl();
+                                  return driveUrl ? (
+                                    <div className="mt-3">
+                                      <a
+                                        href={driveUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="inline-flex items-center px-3 py-1.5 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                                      >
+                                        🔗 View on Google Drive →
+                                      </a>
+                                    </div>
+                                  ) : null;
+                                })()}
                               </div>
                             )}
                           </div>
@@ -1056,7 +1202,9 @@ export default function MemberDetailPage() {
                     Previous
                   </button>
                   <button
-                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    onClick={() =>
+                      setCurrentPage(Math.min(totalPages, currentPage + 1))
+                    }
                     disabled={currentPage === totalPages}
                     className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1066,9 +1214,13 @@ export default function MemberDetailPage() {
                 <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm text-gray-700">
-                      Showing <span className="font-medium">{startIndex + 1}</span> to{" "}
-                      <span className="font-medium">{Math.min(endIndex, totalItems)}</span> of{" "}
-                      <span className="font-medium">{totalItems}</span> results
+                      Showing{" "}
+                      <span className="font-medium">{startIndex + 1}</span> to{" "}
+                      <span className="font-medium">
+                        {Math.min(endIndex, totalItems)}
+                      </span>{" "}
+                      of <span className="font-medium">{totalItems}</span>{" "}
+                      results
                     </p>
                   </div>
                   <div>
@@ -1077,7 +1229,9 @@ export default function MemberDetailPage() {
                       aria-label="Pagination"
                     >
                       <button
-                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        onClick={() =>
+                          setCurrentPage(Math.max(1, currentPage - 1))
+                        }
                         disabled={currentPage === 1}
                         className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -1128,7 +1282,9 @@ export default function MemberDetailPage() {
                           );
                         })}
                       <button
-                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                        onClick={() =>
+                          setCurrentPage(Math.min(totalPages, currentPage + 1))
+                        }
                         disabled={currentPage === totalPages}
                         className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -1149,7 +1305,7 @@ export default function MemberDetailPage() {
                     </nav>
                   </div>
                 </div>
-          </div>
+              </div>
             )}
           </>
         )}
