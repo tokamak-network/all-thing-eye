@@ -573,6 +573,42 @@ async def fetch_gemini_data(db, members: List[str], date_filter: dict, member_in
                 else:
                     timestamp_str = str(timestamp) if timestamp else daily.get("target_date", "")
                 
+                # Get analysis data, handle _raw field if present
+                analysis = daily.get("analysis", {})
+                
+                # If _raw exists and summary doesn't, try to parse it
+                if analysis and "_raw" in analysis and not analysis.get("summary"):
+                    try:
+                        import json
+                        import re
+                        
+                        raw_content = analysis.get("_raw", "")
+                        # Try to extract JSON from markdown code blocks
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_content, re.DOTALL)
+                        if json_match:
+                            raw_content = json_match.group(1)
+                        else:
+                            # Try to find JSON object directly
+                            json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+                            if json_match:
+                                raw_content = json_match.group(0)
+                        
+                        # Parse JSON
+                        parsed_analysis = json.loads(raw_content)
+                        if isinstance(parsed_analysis, dict):
+                            # Merge parsed data into analysis
+                            for key, value in parsed_analysis.items():
+                                if key != "_raw":
+                                    analysis[key] = value
+                    except (json.JSONDecodeError, Exception) as e:
+                        logger.warning(f"Failed to parse _raw field for recordings_daily: {e}")
+                
+                # Safely get nested values with defaults
+                summary = analysis.get("summary", {}) if analysis else {}
+                topics = summary.get("topics", []) if summary else []
+                key_decisions = summary.get("key_decisions", []) if summary else []
+                participants = analysis.get("participants", []) if analysis else []
+                
                 results.append({
                     "source": "gemini",
                     "type": "daily_analysis",
@@ -584,14 +620,16 @@ async def fetch_gemini_data(db, members: List[str], date_filter: dict, member_in
                     "total_meeting_time": daily.get("total_meeting_time"),
                     "total_meeting_time_seconds": daily.get("total_meeting_time_seconds", 0),
                     "meeting_titles": daily.get("meeting_titles", []),
-                    "topics_count": len(daily.get("analysis", {}).get("summary", {}).get("topics", [])),
-                    "decisions_count": len(daily.get("analysis", {}).get("summary", {}).get("key_decisions", [])),
-                    "participants_count": len(daily.get("analysis", {}).get("participants", [])),
+                    "topics_count": len(topics) if isinstance(topics, list) else 0,
+                    "decisions_count": len(key_decisions) if isinstance(key_decisions, list) else 0,
+                    "participants_count": len(participants) if isinstance(participants, list) else 0,
                     "status": daily.get("status"),
                     "model_used": daily.get("model_used"),
                 })
             except Exception as e:
                 logger.warning(f"Error processing recordings_daily document: {e}")
+                import traceback
+                logger.warning(traceback.format_exc())
                 continue
     except Exception as e:
         logger.error(f"Error fetching gemini data: {e}")

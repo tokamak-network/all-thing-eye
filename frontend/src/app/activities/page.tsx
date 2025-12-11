@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { api as apiClient } from "@/lib/api";
 import type { ActivityListResponse } from "@/types";
+import ReactMarkdown from "react-markdown";
 
 // Helper function to safely format timestamps (converts to browser's local timezone)
 function formatTimestamp(timestamp: string, formatStr: string): string {
@@ -370,7 +371,8 @@ export default function ActivitiesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">📋 Activities</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {data?.total?.toLocaleString() || 0} activities recorded across all sources
+            {data?.total?.toLocaleString() || 0} activities recorded across all
+            sources
           </p>
         </div>
         <div>
@@ -407,8 +409,18 @@ export default function ActivitiesPage() {
           <div className="flex-1 max-w-lg flex gap-2">
             <div className="relative flex-1">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <svg
+                  className="h-5 w-5 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
                 </svg>
               </div>
               <input
@@ -475,7 +487,6 @@ export default function ActivitiesPage() {
                 ))}
               </select>
             </div>
-            
           </div>
         </div>
       </div>
@@ -512,7 +523,7 @@ export default function ActivitiesPage() {
               </p>
             </div>
             <div className="flex items-center gap-4">
-               <select
+              <select
                 value={itemsPerPage}
                 onChange={(e) => {
                   setItemsPerPage(Number(e.target.value));
@@ -3944,13 +3955,90 @@ export default function ActivitiesPage() {
                               : "English"}
                           </p>
                         )}
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
-                            {translations[
-                              `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
-                            ]?.text ||
-                              selectedDailyAnalysis.analysis.full_analysis_text}
-                          </pre>
+                        <div className="bg-gray-50 rounded-lg p-4 prose prose-sm max-w-none">
+                          <div className="text-sm text-gray-700">
+                            <ReactMarkdown
+                              components={{
+                                h1: ({ children }) => (
+                                  <h1 className="text-2xl font-bold mb-4 mt-6 text-gray-900">
+                                    {children}
+                                  </h1>
+                                ),
+                                h2: ({ children }) => (
+                                  <h2 className="text-xl font-bold mb-3 mt-5 text-gray-900">
+                                    {children}
+                                  </h2>
+                                ),
+                                h3: ({ children }) => (
+                                  <h3 className="text-lg font-semibold mb-2 mt-4 text-gray-900">
+                                    {children}
+                                  </h3>
+                                ),
+                                p: ({ children }) => (
+                                  <p className="mb-3 text-gray-700">
+                                    {children}
+                                  </p>
+                                ),
+                                ul: ({ children }) => (
+                                  <ul className="list-disc list-inside mb-3 space-y-1 text-gray-700">
+                                    {children}
+                                  </ul>
+                                ),
+                                ol: ({ children }) => (
+                                  <ol className="list-decimal list-inside mb-3 space-y-1 text-gray-700">
+                                    {children}
+                                  </ol>
+                                ),
+                                li: ({ children }) => (
+                                  <li className="ml-4 text-gray-700">
+                                    {children}
+                                  </li>
+                                ),
+                                strong: ({ children }) => (
+                                  <strong className="font-semibold text-gray-900">
+                                    {children}
+                                  </strong>
+                                ),
+                                code: ({ children, className, ...props }) => {
+                                  const isInline = !className;
+                                  return isInline ? (
+                                    <code
+                                      className="bg-gray-200 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </code>
+                                  ) : (
+                                    <code
+                                      className="block bg-gray-200 p-3 rounded text-sm font-mono text-gray-800 overflow-x-auto"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </code>
+                                  );
+                                },
+                                pre: ({ children }) => (
+                                  <pre className="bg-gray-200 p-3 rounded text-sm font-mono text-gray-800 overflow-x-auto mb-3">
+                                    {children}
+                                  </pre>
+                                ),
+                                blockquote: ({ children }) => (
+                                  <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 mb-3">
+                                    {children}
+                                  </blockquote>
+                                ),
+                                hr: () => (
+                                  <hr className="my-4 border-gray-300" />
+                                ),
+                              }}
+                            >
+                              {translations[
+                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                              ]?.text ||
+                                selectedDailyAnalysis.analysis
+                                  .full_analysis_text}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       </div>
                     )}
