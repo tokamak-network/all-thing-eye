@@ -404,102 +404,160 @@ class NotionPluginMongo(DataSourcePlugin):
         """Extract plain text from rich text array"""
         return ''.join([rt.get('plain_text', '') for rt in rich_text])
     
-    def _fetch_page_content(self, page_id: str) -> str:
+    def _fetch_page_content(self, page_id: str, max_retries: int = 5) -> str:
         """
-        Fetch full content of a Notion page by retrieving all blocks
+        Fetch full content of a Notion page by retrieving all blocks with retry logic
         
         Args:
             page_id: Notion page ID
+            max_retries: Maximum number of retry attempts for server errors
             
         Returns:
             Full page content as plain text string
         """
-        try:
-            content_parts = []
-            
-            # Fetch all blocks from the page with pagination
-            has_more = True
-            next_cursor = None
-            
-            while has_more:
-                # Request with pagination
-                if next_cursor:
-                    response = self.client.blocks.children.list(
-                        block_id=page_id,
-                        start_cursor=next_cursor,
-                        page_size=100  # Max allowed by Notion API
-                    )
+        # Retry logic for fetching blocks
+        for attempt in range(1, max_retries + 1):
+            try:
+                content_parts = []
+                has_more = True
+                next_cursor = None
+                
+                while has_more:
+                    # Request with pagination
+                    try:
+                        if next_cursor:
+                            response = self.client.blocks.children.list(
+                                block_id=page_id,
+                                start_cursor=next_cursor,
+                                page_size=100  # Max allowed by Notion API
+                            )
+                        else:
+                            response = self.client.blocks.children.list(
+                                block_id=page_id,
+                                page_size=100
+                            )
+                    except APIResponseError as e:
+                        # Check if it's a server error that we should retry
+                        status_code = getattr(e, 'status', None)
+                        
+                        # Retry on 502, 503, 504 errors
+                        if status_code in [502, 503, 504] and attempt < max_retries:
+                            wait_time = min(2 ** (attempt - 1) * 2, 30)
+                            self.logger.warning(
+                                f"⚠️  Notion API {status_code} error for page {page_id} "
+                                f"(attempt {attempt}/{max_retries}). Retrying in {wait_time}s..."
+                            )
+                            time.sleep(wait_time)
+                            # Break inner while loop, retry outer loop
+                            break
+                        else:
+                            # Final failure or non-retryable error
+                            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+                            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {error_msg}")
+                            return ""
+                    
+                    # Process blocks
+                    for block in response.get('results', []):
+                        block_type = block.get('type')
+                        
+                        # Extract text from different block types
+                        if block_type == 'paragraph':
+                            text = self._extract_rich_text(block['paragraph'].get('rich_text', []))
+                            if text:
+                                content_parts.append(text)
+                        
+                        elif block_type in ['heading_1', 'heading_2', 'heading_3']:
+                            heading = block[block_type]
+                            text = self._extract_rich_text(heading.get('rich_text', []))
+                            if text:
+                                # Add markdown-style heading
+                                prefix = '#' * int(block_type[-1])
+                                content_parts.append(f"{prefix} {text}")
+                        
+                        elif block_type == 'bulleted_list_item':
+                            text = self._extract_rich_text(block['bulleted_list_item'].get('rich_text', []))
+                            if text:
+                                content_parts.append(f"• {text}")
+                        
+                        elif block_type == 'numbered_list_item':
+                            text = self._extract_rich_text(block['numbered_list_item'].get('rich_text', []))
+                            if text:
+                                content_parts.append(f"- {text}")
+                        
+                        elif block_type == 'quote':
+                            text = self._extract_rich_text(block['quote'].get('rich_text', []))
+                            if text:
+                                content_parts.append(f"> {text}")
+                        
+                        elif block_type == 'code':
+                            text = self._extract_rich_text(block['code'].get('rich_text', []))
+                            language = block['code'].get('language', '')
+                            if text:
+                                content_parts.append(f"```{language}\n{text}\n```")
+                        
+                        elif block_type == 'toggle':
+                            text = self._extract_rich_text(block['toggle'].get('rich_text', []))
+                            if text:
+                                content_parts.append(text)
+                        
+                        elif block_type == 'callout':
+                            text = self._extract_rich_text(block['callout'].get('rich_text', []))
+                            if text:
+                                content_parts.append(f"💡 {text}")
+                    
+                    # Check for more pages
+                    has_more = response.get('has_more', False)
+                    next_cursor = response.get('next_cursor')
+                
+                # Successfully fetched all content
+                if content_parts:
+                    full_content = '\n\n'.join(content_parts)
+                    return full_content
                 else:
-                    response = self.client.blocks.children.list(
-                        block_id=page_id,
-                        page_size=100
+                    # If we broke out of while loop due to retry, continue outer retry loop
+                    if attempt < max_retries:
+                        wait_time = min(2 ** (attempt - 1) * 2, 30)
+                        self.logger.warning(
+                            f"⚠️  Retrying page {page_id} (attempt {attempt + 1}/{max_retries}) in {wait_time}s..."
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        return ""
+                
+            except APIResponseError as e:
+                # Handle APIResponseError that wasn't caught in inner try block
+                status_code = getattr(e, 'status', None)
+                
+                if status_code in [502, 503, 504] and attempt < max_retries:
+                    wait_time = min(2 ** (attempt - 1) * 2, 30)
+                    self.logger.warning(
+                        f"⚠️  Notion API {status_code} error for page {page_id} "
+                        f"(attempt {attempt}/{max_retries}). Retrying in {wait_time}s..."
                     )
-                
-                # Process blocks
-                for block in response.get('results', []):
-                    block_type = block.get('type')
-                    
-                    # Extract text from different block types
-                    if block_type == 'paragraph':
-                        text = self._extract_rich_text(block['paragraph'].get('rich_text', []))
-                        if text:
-                            content_parts.append(text)
-                    
-                    elif block_type in ['heading_1', 'heading_2', 'heading_3']:
-                        heading = block[block_type]
-                        text = self._extract_rich_text(heading.get('rich_text', []))
-                        if text:
-                            # Add markdown-style heading
-                            prefix = '#' * int(block_type[-1])
-                            content_parts.append(f"{prefix} {text}")
-                    
-                    elif block_type == 'bulleted_list_item':
-                        text = self._extract_rich_text(block['bulleted_list_item'].get('rich_text', []))
-                        if text:
-                            content_parts.append(f"• {text}")
-                    
-                    elif block_type == 'numbered_list_item':
-                        text = self._extract_rich_text(block['numbered_list_item'].get('rich_text', []))
-                        if text:
-                            content_parts.append(f"- {text}")
-                    
-                    elif block_type == 'quote':
-                        text = self._extract_rich_text(block['quote'].get('rich_text', []))
-                        if text:
-                            content_parts.append(f"> {text}")
-                    
-                    elif block_type == 'code':
-                        text = self._extract_rich_text(block['code'].get('rich_text', []))
-                        language = block['code'].get('language', '')
-                        if text:
-                            content_parts.append(f"```{language}\n{text}\n```")
-                    
-                    elif block_type == 'toggle':
-                        text = self._extract_rich_text(block['toggle'].get('rich_text', []))
-                        if text:
-                            content_parts.append(text)
-                    
-                    elif block_type == 'callout':
-                        text = self._extract_rich_text(block['callout'].get('rich_text', []))
-                        if text:
-                            content_parts.append(f"💡 {text}")
-                
-                # Check for more pages
-                has_more = response.get('has_more', False)
-                next_cursor = response.get('next_cursor')
-            
-            # Join all content with double newlines
-            full_content = '\n\n'.join(content_parts)
-            
-            return full_content
-            
-        except APIResponseError as e:
-            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
-            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {error_msg}")
-            return ""
-        except Exception as e:
-            self.logger.warning(f"⚠️  Unexpected error fetching content for page {page_id}: {str(e)}")
-            return ""
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+                    self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {error_msg}")
+                    return ""
+            except Exception as e:
+                # For other exceptions, only retry if it's a network/server issue
+                if attempt < max_retries:
+                    wait_time = min(2 ** (attempt - 1) * 2, 30)
+                    self.logger.warning(
+                        f"⚠️  Unexpected error fetching content for page {page_id} "
+                        f"(attempt {attempt}/{max_retries}): {str(e)}. Retrying in {wait_time}s..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    self.logger.warning(f"⚠️  Unexpected error fetching content for page {page_id}: {str(e)}")
+                    return ""
+        
+        # If all retries exhausted
+        self.logger.warning(f"⚠️  Failed to fetch content for page {page_id} after {max_retries} attempts")
+        return ""
     
     async def save_data(self, collected_data: Dict[str, Any]):
         """Save collected Notion data to MongoDB"""
