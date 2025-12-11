@@ -666,30 +666,73 @@ async def get_member_detail(
             "recent_activities": []
         }
         
-        # GitHub statistics - use member_mappings for accurate filtering
+        # GitHub statistics - use both member_mappings and direct identifiers
         github_identifiers = get_identifiers_for_member(member_mappings, 'github', member_name)
-        github_query = {}
-        if github_identifiers:
-            github_query['author_name'] = {'$in': github_identifiers}
-        else:
-            github_query['author_name'] = member_name
         
+        # Also get identifiers directly from member_identifiers collection
+        github_identifier_docs = await db["member_identifiers"].find({
+            "$or": [
+                {"member_id": member_id},
+                {"member_id": member_obj_id}
+            ],
+            "source": "github"
+        }).to_list(None)
+        
+        # Collect all GitHub identifiers
+        all_github_identifiers = set(github_identifiers) if github_identifiers else set()
+        for doc in github_identifier_docs:
+            identifier_value = doc.get("identifier_value")
+            if identifier_value:
+                all_github_identifiers.add(identifier_value)
+                # Also add lowercase version for case-insensitive matching
+                all_github_identifiers.add(identifier_value.lower())
+        
+        github_query = {}
+        
+        # Build query with identifiers and fallback to member_name
+        or_conditions = []
+        if all_github_identifiers:
+            or_conditions.append({'author_name': {'$in': list(all_github_identifiers)}})
+        or_conditions.append({'author_name': member_name})
+        # Case-insensitive fallback
+        or_conditions.append({'author_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
+        
+        if len(or_conditions) > 1:
+            github_query['$or'] = or_conditions
+        else:
+            github_query.update(or_conditions[0])
+        
+        logger.debug(f"GitHub commits query for {member_name}: {github_query}, all_identifiers: {all_github_identifiers}")
         github_commits = await db["github_commits"].count_documents(github_query)
         
-        # PRs - use author field
+        # PRs - use author field with all identifiers
         pr_query = {}
-        if github_identifiers:
-            pr_query['author'] = {'$in': github_identifiers}
+        pr_or_conditions = []
+        if all_github_identifiers:
+            pr_or_conditions.append({'author': {'$in': list(all_github_identifiers)}})
+        pr_or_conditions.append({'author': member_name})
+        pr_or_conditions.append({'author': {'$regex': f'^{member_name}$', '$options': 'i'}})
+        
+        if len(pr_or_conditions) > 1:
+            pr_query['$or'] = pr_or_conditions
         else:
-            pr_query['author'] = member_name
+            pr_query.update(pr_or_conditions[0])
+        
         github_prs = await db["github_pull_requests"].count_documents(pr_query)
         
-        # Issues
+        # Issues - use author field with all identifiers
         issue_query = {}
-        if github_identifiers:
-            issue_query['author'] = {'$in': github_identifiers}
+        issue_or_conditions = []
+        if all_github_identifiers:
+            issue_or_conditions.append({'author': {'$in': list(all_github_identifiers)}})
+        issue_or_conditions.append({'author': member_name})
+        issue_or_conditions.append({'author': {'$regex': f'^{member_name}$', '$options': 'i'}})
+        
+        if len(issue_or_conditions) > 1:
+            issue_query['$or'] = issue_or_conditions
         else:
-            issue_query['author'] = member_name
+            issue_query.update(issue_or_conditions[0])
+        
         github_issues = await db["github_issues"].count_documents(issue_query)
         
         if github_commits + github_prs + github_issues > 0:
@@ -701,22 +744,52 @@ async def get_member_detail(
             }
             activity_stats["total_activities"] += github_commits + github_prs + github_issues
         
-        # Slack statistics - use member_mappings for accurate filtering
+        # Slack statistics - use both member_mappings and direct identifiers
         slack_identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
         slack_email = identifiers.get("slack") or identifiers.get("email")
         
-        slack_query = {}
-        if slack_identifiers:
-            or_conditions = []
-            or_conditions.append({'user_id': {'$in': slack_identifiers}})
-            or_conditions.append({'user_email': {'$in': slack_identifiers}})
-            or_conditions.append({'user_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
-            slack_query['$or'] = or_conditions
-        elif slack_email:
-            slack_query['user_email'] = slack_email
-        else:
-            slack_query['user_name'] = {'$regex': f'^{member_name}$', '$options': 'i'}
+        # Also get identifiers directly from member_identifiers collection
+        slack_identifier_docs = await db["member_identifiers"].find({
+            "$or": [
+                {"member_id": member_id},
+                {"member_id": member_obj_id}
+            ],
+            "source": "slack"
+        }).to_list(None)
         
+        # Collect all Slack identifiers
+        all_slack_identifiers = set(slack_identifiers) if slack_identifiers else set()
+        for doc in slack_identifier_docs:
+            identifier_value = doc.get("identifier_value")
+            if identifier_value:
+                all_slack_identifiers.add(identifier_value)
+        
+        slack_query = {}
+        or_conditions = []
+        
+        # Always include user_name as fallback (case-insensitive)
+        or_conditions.append({'user_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
+        # Also try without case sensitivity for common name variations
+        if member_name:
+            or_conditions.append({'user_name': {'$regex': member_name, '$options': 'i'}})
+        
+        # Add identifier-based conditions
+        if all_slack_identifiers:
+            or_conditions.append({'user_id': {'$in': list(all_slack_identifiers)}})
+            or_conditions.append({'user_email': {'$in': list(all_slack_identifiers)}})
+        
+        # Add email-based condition if available
+        if slack_email:
+            or_conditions.append({'user_email': slack_email})
+            or_conditions.append({'user_email': slack_email.lower()})
+        
+        # Use $or if we have multiple conditions, otherwise use single condition
+        if len(or_conditions) > 1:
+            slack_query['$or'] = or_conditions
+        elif len(or_conditions) == 1:
+            slack_query.update(or_conditions[0])
+        
+        logger.debug(f"Slack query for {member_name}: {slack_query}, all_identifiers: {all_slack_identifiers}, email: {slack_email}")
         slack_messages = await db["slack_messages"].count_documents(slack_query)
         if slack_messages > 0:
             activity_stats["by_source"]["slack"] = {
@@ -811,18 +884,22 @@ async def get_member_detail(
                     coll = db[collection_name]
                     # Clone query and add date filter
                     trend_query = query.copy()
-                    trend_query[date_field] = {"$gte": start_date}
+                    trend_query[date_field] = {"$gte": start_date, "$lte": end_date}
+                    
+                    # Build dateToString expression properly for MongoDB
+                    # Use dictionary construction to properly reference the field
+                    date_expr = {
+                        "$dateToString": {
+                            "format": "%Y-%m-%d",
+                            "date": f"${date_field}"  # This will be evaluated as "$date", "$posted_at", etc.
+                        }
+                    }
                     
                     pipeline = [
                         {"$match": trend_query},
                         {
                             "$group": {
-                                "_id": {
-                                    "$dateToString": {
-                                        "format": "%Y-%m-%d", 
-                                        "date": f"${date_field}"
-                                    }
-                                },
+                                "_id": date_expr,
                                 "count": {"$sum": 1}
                             }
                         },
@@ -831,7 +908,9 @@ async def get_member_detail(
                     result = await coll.aggregate(pipeline).to_list(None)
                     return {doc["_id"]: doc["count"] for doc in result if doc["_id"] is not None}
                 except Exception as e:
-                    logger.warning(f"Trend aggregation failed for {collection_name}: {e}")
+                    logger.warning(f"Trend aggregation failed for {collection_name} with query {query} and date_field {date_field}: {e}")
+                    import traceback
+                    logger.warning(traceback.format_exc())
                     return {}
 
             # Execute aggregations
