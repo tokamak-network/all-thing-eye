@@ -91,7 +91,8 @@ class NotionPluginMongo(DataSourcePlugin):
             return True
             
         except APIResponseError as e:
-            self.logger.error(f"❌ Notion authentication failed: {e.message}")
+            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+            self.logger.error(f"❌ Notion authentication failed: {error_msg}")
             return False
         except Exception as e:
             self.logger.error(f"❌ Unexpected error during authentication: {str(e)}")
@@ -190,7 +191,8 @@ class NotionPluginMongo(DataSourcePlugin):
             return users
             
         except APIResponseError as e:
-            self.logger.warning(f"⚠️  Error fetching users: {e.message}")
+            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+            self.logger.warning(f"⚠️  Error fetching users: {error_msg}")
             return []
     
     def _search_pages(self, start_date: datetime) -> List[Dict[str, Any]]:
@@ -203,24 +205,13 @@ class NotionPluginMongo(DataSourcePlugin):
             start_date = start_date.replace(tzinfo=pytz.UTC)
         
         try:
-            # Use Notion API filter to get pages edited on or after start_date
+            # Note: Notion API search doesn't support filtering by last_edited_time directly
+            # We'll collect all pages and filter by last_edited_time in the loop
             # This ensures all pages are collected regardless of parent hierarchy
-            start_date_iso = start_date.isoformat()
-            
             query = {
                 "filter": {
-                    "and": [
-                        {
-                            "property": "object",
-                            "value": "page"
-                        },
-                        {
-                            "property": "last_edited_time",
-                            "last_edited_time": {
-                                "on_or_after": start_date_iso
-                            }
-                        }
-                    ]
+                    "value": "page",
+                    "property": "object"
                 },
                 "sort": {
                     "direction": "descending",
@@ -292,7 +283,8 @@ class NotionPluginMongo(DataSourcePlugin):
             return pages
             
         except APIResponseError as e:
-            self.logger.warning(f"⚠️  Error searching pages: {e.message}")
+            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+            self.logger.warning(f"⚠️  Error searching pages: {error_msg}")
             return []
     
     def _fetch_databases(self, start_date: datetime) -> List[Dict[str, Any]]:
@@ -359,7 +351,8 @@ class NotionPluginMongo(DataSourcePlugin):
             return databases
             
         except APIResponseError as e:
-            self.logger.warning(f"⚠️  Error fetching databases: {e.message}")
+            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+            self.logger.warning(f"⚠️  Error fetching databases: {error_msg}")
             return []
     
     def _fetch_comments_for_pages(self, pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -501,7 +494,8 @@ class NotionPluginMongo(DataSourcePlugin):
             return full_content
             
         except APIResponseError as e:
-            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {e.message}")
+            error_msg = str(e) if hasattr(e, '__str__') else getattr(e, 'message', 'Unknown error')
+            self.logger.warning(f"⚠️  Could not fetch content for page {page_id}: {error_msg}")
             return ""
         except Exception as e:
             self.logger.warning(f"⚠️  Unexpected error fetching content for page {page_id}: {str(e)}")
