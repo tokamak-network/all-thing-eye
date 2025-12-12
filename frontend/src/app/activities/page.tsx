@@ -39,6 +39,579 @@ function isNotionPrefix(str: string): boolean {
   return str.startsWith("Notion-");
 }
 
+// Helper to parse _raw field in daily analysis data
+function parseRawAnalysis(analysisData: any): any {
+  if (!analysisData) {
+    return analysisData;
+  }
+
+  // Check if summary exists and has overview (fully parsed)
+  const hasValidSummary = analysisData.summary && analysisData.summary.overview;
+
+  // If _raw exists and summary is missing or incomplete, parse it
+  if (analysisData._raw && !hasValidSummary) {
+    const rawContent = analysisData._raw;
+    try {
+      console.log("Parsing _raw field, content length:", rawContent?.length);
+      console.log(
+        "Raw content preview (first 200 chars):",
+        rawContent?.substring(0, 200)
+      );
+
+      let jsonContent: string | null = null;
+
+      // First, try to extract JSON from markdown code blocks
+      // Look for ```json ... ``` pattern
+      const codeBlockStart = rawContent.indexOf("```json");
+      console.log("Code block start index:", codeBlockStart);
+
+      if (codeBlockStart !== -1) {
+        const afterStart = rawContent.substring(codeBlockStart + 7); // Skip "```json"
+        // Look for closing ```, but also handle cases where it might be at the end
+        let codeBlockEnd = afterStart.indexOf("```");
+        if (codeBlockEnd === -1) {
+          // If no closing ```, use the rest of the content
+          codeBlockEnd = afterStart.length;
+        }
+
+        const extracted = afterStart.substring(0, codeBlockEnd).trim();
+        console.log("Extracted from code block, length:", extracted.length);
+        console.log(
+          "Extracted preview (first 200 chars):",
+          extracted.substring(0, 200)
+        );
+
+        // Try to find the complete JSON object within the extracted content
+        let braceCount = 0;
+        let startIndex = extracted.indexOf("{");
+        let endIndex = startIndex;
+        let inString = false;
+        let escapeNext = false;
+
+        if (startIndex !== -1) {
+          for (let i = startIndex; i < extracted.length; i++) {
+            const char = extracted[i];
+
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+
+            if (char === "\\") {
+              escapeNext = true;
+              continue;
+            }
+
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+
+            if (!inString) {
+              if (char === "{") {
+                braceCount++;
+              } else if (char === "}") {
+                braceCount--;
+                if (braceCount === 0) {
+                  endIndex = i;
+                  break;
+                }
+              }
+            }
+          }
+
+          console.log(
+            "Brace matching result - start:",
+            startIndex,
+            "end:",
+            endIndex,
+            "braceCount:",
+            braceCount,
+            "extracted.length:",
+            extracted.length
+          );
+
+          if (braceCount === 0 && endIndex > startIndex) {
+            jsonContent = extracted.substring(startIndex, endIndex + 1);
+            console.log(
+              "Extracted JSON from markdown code block, length:",
+              jsonContent?.length || 0
+            );
+          } else if (braceCount > 0 && endIndex === startIndex) {
+            // JSON이 불완전한 경우, 복구 시도
+            console.warn("JSON appears incomplete, attempting to fix");
+            let fixedJson = extracted.substring(startIndex);
+
+            // 마지막에 열려있는 문자열 상태 확인
+            let inString = false;
+            let escapeNext = false;
+            for (let i = 0; i < fixedJson.length; i++) {
+              const char = fixedJson[i];
+              if (escapeNext) {
+                escapeNext = false;
+                continue;
+              }
+              if (char === "\\") {
+                escapeNext = true;
+                continue;
+              }
+              if (char === '"' && !escapeNext) {
+                inString = !inString;
+              }
+            }
+
+            // Find the last complete string value
+            // Look for the last ", pattern (complete string with comma)
+            const lines = fixedJson.split("\n");
+            let foundCompleteLine = false;
+
+            // Find the last line that looks complete (ends with ",)
+            for (let i = lines.length - 1; i >= 0; i--) {
+              const line = lines[i].trim();
+              // If line ends with ", it's a complete string value
+              if (line.endsWith('",')) {
+                // Keep up to this line, but remove the comma since we'll add closing brackets
+                const fixedLines = lines.slice(0, i + 1);
+                let lastLine = fixedLines[fixedLines.length - 1];
+                // Remove trailing comma - this is the last complete item
+                const lastLineCleaned = lastLine.trim();
+                if (lastLineCleaned.endsWith(",")) {
+                  // Remove comma but preserve indentation
+                  const indent = lastLine.length - lastLine.trimStart().length;
+                  fixedLines[fixedLines.length - 1] =
+                    " ".repeat(indent) + lastLineCleaned.slice(0, -1);
+                }
+                fixedJson = fixedLines.join("\n");
+                // Also remove any trailing comma at the end of the entire string
+                fixedJson = fixedJson.trim();
+                fixedJson = fixedJson.replace(/,\s*$/, "");
+                foundCompleteLine = true;
+                break;
+              }
+              // If line ends with ], or }, it might be complete
+              else if (line.endsWith("],") || line.endsWith("},")) {
+                // Keep up to this line
+                fixedJson = lines.slice(0, i + 1).join("\n");
+                // Remove trailing comma if it's the last item
+                fixedJson = fixedJson.replace(/,\s*$/, "");
+                foundCompleteLine = true;
+                break;
+              }
+            }
+
+            // If we can't find a complete line, try to find the last complete string
+            if (!foundCompleteLine) {
+              // Look for the pattern: "text", (with comma or closing bracket)
+              // Find last occurrence of ", or "]
+              const lastCommaQuote = fixedJson.lastIndexOf('",');
+              const lastBracketQuote = fixedJson.lastIndexOf('"]');
+
+              if (lastCommaQuote > lastBracketQuote) {
+                // Cut at the quote (before the comma)
+                // This removes the incomplete next item
+                fixedJson = fixedJson.substring(0, lastCommaQuote + 1); // Keep the quote, remove comma and everything after
+              } else if (lastBracketQuote !== -1) {
+                // Cut at the bracket after the quote
+                fixedJson = fixedJson.substring(0, lastBracketQuote + 2);
+              } else if (inString) {
+                // Just cut at the last quote
+                let lastQuoteIndex = -1;
+                for (let i = fixedJson.length - 1; i >= 0; i--) {
+                  if (
+                    fixedJson[i] === '"' &&
+                    (i === 0 || fixedJson[i - 1] !== "\\")
+                  ) {
+                    lastQuoteIndex = i;
+                    break;
+                  }
+                }
+                if (lastQuoteIndex !== -1) {
+                  fixedJson = fixedJson.substring(0, lastQuoteIndex + 1);
+                }
+              } else {
+                // Remove trailing commas, colons, etc.
+                fixedJson = fixedJson.trim();
+                fixedJson = fixedJson.replace(/,\s*$/, "");
+                fixedJson = fixedJson.replace(/:\s*$/, "");
+              }
+            }
+
+            // Remove any trailing comma
+            fixedJson = fixedJson.trim();
+            fixedJson = fixedJson.replace(/,\s*$/, "");
+
+            // Count unclosed braces and brackets
+            let brace_count = 0;
+            let bracket_count = 0;
+            let in_string = false;
+            let escape_next = false;
+
+            for (const char of fixedJson) {
+              if (escape_next) {
+                escape_next = false;
+                continue;
+              }
+              if (char === "\\") {
+                escape_next = true;
+                continue;
+              }
+              if (char === '"' && !escape_next) {
+                in_string = !in_string;
+                continue;
+              }
+              if (!in_string) {
+                if (char === "{") {
+                  brace_count++;
+                } else if (char === "}") {
+                  brace_count--;
+                } else if (char === "[") {
+                  bracket_count++;
+                } else if (char === "]") {
+                  bracket_count--;
+                }
+              }
+            }
+
+            console.log(
+              `Unclosed: ${bracket_count} brackets, ${brace_count} braces`
+            );
+
+            // Before adding closing brackets/braces, remove any comma
+            fixedJson = fixedJson.replace(/",(\s*)([\]}]+)/g, '"$1$2');
+
+            // Close in correct order: alternate between brackets and braces
+            let closing_chars = "";
+            let remaining_brackets = bracket_count;
+            let remaining_braces = brace_count;
+
+            // Alternate closing: bracket, brace, bracket, brace...
+            while (remaining_brackets > 0 || remaining_braces > 0) {
+              if (remaining_brackets > 0) {
+                closing_chars += "]";
+                remaining_brackets--;
+              }
+              if (remaining_braces > 0) {
+                closing_chars += "}";
+                remaining_braces--;
+              }
+            }
+
+            fixedJson += closing_chars;
+            console.log(
+              `Added closing sequence: ${JSON.stringify(closing_chars)}`
+            );
+
+            // Final cleanup: remove any trailing comma before closing brackets/braces
+            fixedJson = fixedJson.replace(/",(\s*)([\]}]+)/g, '"$1$2');
+
+            jsonContent = fixedJson;
+            console.log(
+              "Fixed incomplete JSON, length:",
+              jsonContent?.length || 0
+            );
+          } else {
+            console.warn("Brace count mismatch or invalid range:", {
+              startIndex,
+              endIndex,
+              braceCount,
+            });
+          }
+        } else {
+          console.warn("No opening brace found in extracted content");
+        }
+      }
+
+      // If code block extraction failed, try to find complete JSON object by matching braces
+      if (!jsonContent) {
+        console.log("Trying direct brace matching on raw content");
+        let braceCount = 0;
+        let startIndex = rawContent.indexOf("{");
+        if (startIndex !== -1) {
+          let endIndex = startIndex;
+          let inString = false;
+          let escapeNext = false;
+
+          for (let i = startIndex; i < rawContent.length; i++) {
+            const char = rawContent[i];
+
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+
+            if (char === "\\") {
+              escapeNext = true;
+              continue;
+            }
+
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+
+            if (!inString) {
+              if (char === "{") {
+                braceCount++;
+              } else if (char === "}") {
+                braceCount--;
+                if (braceCount === 0) {
+                  endIndex = i;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (braceCount === 0 && endIndex > startIndex) {
+            jsonContent = rawContent.substring(startIndex, endIndex + 1);
+            console.log(
+              "Extracted JSON directly by matching braces, length:",
+              jsonContent?.length || 0
+            );
+          } else if (braceCount > 0 && endIndex === startIndex) {
+            // JSON이 불완전한 경우, 복구 시도
+            console.warn(
+              "JSON appears incomplete in raw content, attempting to fix"
+            );
+            let fixedJson = rawContent.substring(startIndex);
+
+            // 마지막에 열려있는 문자열 상태 확인
+            let inString = false;
+            let escapeNext = false;
+            for (let i = 0; i < fixedJson.length; i++) {
+              const char = fixedJson[i];
+              if (escapeNext) {
+                escapeNext = false;
+                continue;
+              }
+              if (char === "\\") {
+                escapeNext = true;
+                continue;
+              }
+              if (char === '"' && !escapeNext) {
+                inString = !inString;
+              }
+            }
+
+            // Find the last complete string value
+            // Look for the last ", pattern (complete string with comma)
+            const lines = fixedJson.split("\n");
+            let foundCompleteLine = false;
+
+            // Find the last line that looks complete (ends with ",)
+            for (let i = lines.length - 1; i >= 0; i--) {
+              const line = lines[i].trim();
+              // If line ends with ", it's a complete string value
+              if (line.endsWith('",')) {
+                // Keep up to this line, but remove the comma since we'll add closing brackets
+                const fixedLines = lines.slice(0, i + 1);
+                let lastLine = fixedLines[fixedLines.length - 1];
+                // Remove trailing comma - this is the last complete item
+                const lastLineCleaned = lastLine.trim();
+                if (lastLineCleaned.endsWith(",")) {
+                  // Remove comma but preserve indentation
+                  const indent = lastLine.length - lastLine.trimStart().length;
+                  fixedLines[fixedLines.length - 1] =
+                    " ".repeat(indent) + lastLineCleaned.slice(0, -1);
+                }
+                fixedJson = fixedLines.join("\n");
+                // Also remove any trailing comma at the end of the entire string
+                fixedJson = fixedJson.trim();
+                fixedJson = fixedJson.replace(/,\s*$/, "");
+                foundCompleteLine = true;
+                break;
+              }
+              // If line ends with ], or }, it might be complete
+              else if (line.endsWith("],") || line.endsWith("},")) {
+                // Keep up to this line
+                fixedJson = lines.slice(0, i + 1).join("\n");
+                // Remove trailing comma if it's the last item
+                fixedJson = fixedJson.replace(/,\s*$/, "");
+                foundCompleteLine = true;
+                break;
+              }
+            }
+
+            // If we can't find a complete line, try to find the last complete string
+            if (!foundCompleteLine) {
+              // Look for the pattern: "text", (with comma or closing bracket)
+              // Find last occurrence of ", or "]
+              const lastCommaQuote = fixedJson.lastIndexOf('",');
+              const lastBracketQuote = fixedJson.lastIndexOf('"]');
+
+              if (lastCommaQuote > lastBracketQuote) {
+                // Cut at the quote (before the comma)
+                // This removes the incomplete next item
+                fixedJson = fixedJson.substring(0, lastCommaQuote + 1); // Keep the quote, remove comma and everything after
+              } else if (lastBracketQuote !== -1) {
+                // Cut at the bracket after the quote
+                fixedJson = fixedJson.substring(0, lastBracketQuote + 2);
+              } else if (inString) {
+                // Just cut at the last quote
+                let lastQuoteIndex = -1;
+                for (let i = fixedJson.length - 1; i >= 0; i--) {
+                  if (
+                    fixedJson[i] === '"' &&
+                    (i === 0 || fixedJson[i - 1] !== "\\")
+                  ) {
+                    lastQuoteIndex = i;
+                    break;
+                  }
+                }
+                if (lastQuoteIndex !== -1) {
+                  fixedJson = fixedJson.substring(0, lastQuoteIndex + 1);
+                }
+              } else {
+                // Remove trailing commas, colons, etc.
+                fixedJson = fixedJson.trim();
+                fixedJson = fixedJson.replace(/,\s*$/, "");
+                fixedJson = fixedJson.replace(/:\s*$/, "");
+              }
+            }
+
+            // Remove any trailing comma
+            fixedJson = fixedJson.trim();
+            fixedJson = fixedJson.replace(/,\s*$/, "");
+
+            // Count unclosed braces and brackets
+            let brace_count = 0;
+            let bracket_count = 0;
+            let in_string = false;
+            let escape_next = false;
+
+            for (const char of fixedJson) {
+              if (escape_next) {
+                escape_next = false;
+                continue;
+              }
+              if (char === "\\") {
+                escape_next = true;
+                continue;
+              }
+              if (char === '"' && !escape_next) {
+                in_string = !in_string;
+                continue;
+              }
+              if (!in_string) {
+                if (char === "{") {
+                  brace_count++;
+                } else if (char === "}") {
+                  brace_count--;
+                } else if (char === "[") {
+                  bracket_count++;
+                } else if (char === "]") {
+                  bracket_count--;
+                }
+              }
+            }
+
+            console.log(
+              `Unclosed: ${bracket_count} brackets, ${brace_count} braces`
+            );
+
+            // Before adding closing brackets/braces, remove any comma
+            fixedJson = fixedJson.replace(/",(\s*)([\]}]+)/g, '"$1$2');
+
+            // Close in correct order: alternate between brackets and braces
+            let closing_chars = "";
+            let remaining_brackets = bracket_count;
+            let remaining_braces = brace_count;
+
+            // Alternate closing: bracket, brace, bracket, brace...
+            while (remaining_brackets > 0 || remaining_braces > 0) {
+              if (remaining_brackets > 0) {
+                closing_chars += "]";
+                remaining_brackets--;
+              }
+              if (remaining_braces > 0) {
+                closing_chars += "}";
+                remaining_braces--;
+              }
+            }
+
+            fixedJson += closing_chars;
+            console.log(
+              `Added closing sequence: ${JSON.stringify(closing_chars)}`
+            );
+
+            // Final cleanup: remove any trailing comma before closing brackets/braces
+            fixedJson = fixedJson.replace(/",(\s*)([\]}]+)/g, '"$1$2');
+
+            jsonContent = fixedJson;
+            console.log(
+              "Fixed incomplete JSON from raw content, length:",
+              jsonContent?.length || 0
+            );
+          } else {
+            console.warn("Direct brace matching failed:", {
+              startIndex,
+              endIndex,
+              braceCount,
+            });
+          }
+        }
+      }
+
+      if (!jsonContent) {
+        console.warn("Could not extract JSON from _raw field");
+        console.warn("Raw content structure:", {
+          hasCodeBlock: rawContent.includes("```json"),
+          hasOpeningBrace: rawContent.includes("{"),
+          firstBraceIndex: rawContent.indexOf("{"),
+        });
+        return analysisData;
+      }
+
+      // Parse JSON
+      console.log("Attempting to parse JSON, length:", jsonContent.length);
+      console.log(
+        "JSON preview (first 500 chars):",
+        jsonContent.substring(0, 500)
+      );
+      console.log(
+        "JSON preview (last 200 chars):",
+        jsonContent.substring(Math.max(0, jsonContent.length - 200))
+      );
+
+      const parsed = JSON.parse(jsonContent);
+      console.log("Successfully parsed JSON, keys:", Object.keys(parsed));
+
+      if (typeof parsed === "object" && parsed !== null) {
+        // Merge parsed data into analysis, preserving existing fields
+        const merged = { ...analysisData };
+        for (const [key, value] of Object.entries(parsed)) {
+          if (key !== "_raw") {
+            merged[key] = value;
+          }
+        }
+        // Remove _raw after parsing
+        delete merged._raw;
+        console.log("Merged analysis keys:", Object.keys(merged));
+        console.log("Has summary.overview:", !!merged.summary?.overview);
+        return merged;
+      }
+    } catch (error) {
+      console.error("Failed to parse _raw field:", error);
+      console.error(
+        "Error details:",
+        error instanceof Error ? error.message : String(error)
+      );
+      console.error(
+        "Raw content preview (first 500 chars):",
+        rawContent?.substring(0, 500)
+      );
+      console.error(
+        "Raw content preview (last 500 chars):",
+        rawContent?.substring(Math.max(0, (rawContent?.length || 0) - 500))
+      );
+      // Try to extract at least partial data if possible
+      return analysisData;
+    }
+  }
+
+  return analysisData;
+}
+
 export default function ActivitiesPage() {
   const [allActivities, setAllActivities] =
     useState<ActivityListResponse | null>(null);
@@ -62,6 +635,32 @@ export default function ActivitiesPage() {
   const [dailyAnalysisLoading, setDailyAnalysisLoading] = useState(false);
   const [dailyAnalysisTab, setDailyAnalysisTab] = useState<string>("overview");
   const [allMembers, setAllMembers] = useState<string[]>([]);
+
+  // Auto-parse _raw field when selectedDailyAnalysis changes
+  useEffect(() => {
+    if (
+      selectedDailyAnalysis?.analysis &&
+      selectedDailyAnalysis.analysis._raw
+    ) {
+      const parsed = parseRawAnalysis(selectedDailyAnalysis.analysis);
+      // Check if parsing actually changed something by comparing structure
+      const hasSummary = !!parsed.summary?.overview;
+      const originalHasSummary =
+        !!selectedDailyAnalysis.analysis.summary?.overview;
+
+      if (hasSummary && !originalHasSummary) {
+        // Only update if parsing added summary that wasn't there before
+        setSelectedDailyAnalysis({
+          ...selectedDailyAnalysis,
+          analysis: parsed,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedDailyAnalysis?.target_date,
+    selectedDailyAnalysis?.analysis?._raw,
+  ]);
   // Notion UUID to member name mapping
   const [notionUuidMap, setNotionUuidMap] = useState<Record<string, string>>(
     {}
@@ -523,7 +1122,7 @@ export default function ActivitiesPage() {
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <select
+               <select
                 value={itemsPerPage}
                 onChange={(e) => {
                   setItemsPerPage(Number(e.target.value));
@@ -1419,6 +2018,12 @@ export default function ActivitiesPage() {
                                   await apiClient.getRecordingsDailyByDate(
                                     targetDate
                                   );
+                                // Parse _raw field if needed
+                                if (response.analysis) {
+                                  response.analysis = parseRawAnalysis(
+                                    response.analysis
+                                  );
+                                }
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
@@ -1448,6 +2053,12 @@ export default function ActivitiesPage() {
                                   await apiClient.getRecordingsDailyByDate(
                                     targetDate
                                   );
+                                // Parse _raw field if needed
+                                if (response.analysis) {
+                                  response.analysis = parseRawAnalysis(
+                                    response.analysis
+                                  );
+                                }
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
@@ -1477,6 +2088,12 @@ export default function ActivitiesPage() {
                                   await apiClient.getRecordingsDailyByDate(
                                     targetDate
                                   );
+                                // Parse _raw field if needed
+                                if (response.analysis) {
+                                  response.analysis = parseRawAnalysis(
+                                    response.analysis
+                                  );
+                                }
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
@@ -1506,6 +2123,12 @@ export default function ActivitiesPage() {
                                   await apiClient.getRecordingsDailyByDate(
                                     targetDate
                                   );
+                                // Parse _raw field if needed
+                                if (response.analysis) {
+                                  response.analysis = parseRawAnalysis(
+                                    response.analysis
+                                  );
+                                }
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
@@ -1535,6 +2158,12 @@ export default function ActivitiesPage() {
                                   await apiClient.getRecordingsDailyByDate(
                                     targetDate
                                   );
+                                // Parse _raw field if needed
+                                if (response.analysis) {
+                                  response.analysis = parseRawAnalysis(
+                                    response.analysis
+                                  );
+                                }
                                 setSelectedDailyAnalysis(response);
                               }
                             } catch (err: any) {
@@ -4032,9 +4661,9 @@ export default function ActivitiesPage() {
                                 ),
                               }}
                             >
-                              {translations[
-                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
-                              ]?.text ||
+                            {translations[
+                              `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                            ]?.text ||
                                 selectedDailyAnalysis.analysis
                                   .full_analysis_text}
                             </ReactMarkdown>

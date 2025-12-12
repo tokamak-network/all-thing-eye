@@ -649,8 +649,59 @@ class GitHubPluginMongo(DataSourcePlugin):
         raise Exception(f"GraphQL query{repo_info}: Maximum retries exceeded")
     
     def _get_members(self) -> List[Dict[str, Any]]:
-        """Get organization members from config or API"""
+        """
+        Get members for GitHub data collection
+        
+        Priority:
+        1. MongoDB members collection (with GitHub identifiers)
+        2. config.yaml member_list (if explicitly configured)
+        3. GitHub API organization members (fallback)
+        """
+        # First, try to get members from MongoDB
+        try:
+            db = self.mongo.db
+            members_col = db['members']
+            identifiers_col = db['member_identifiers']
+            
+            # Get all members from MongoDB
+            members_cursor = members_col.find({})
+            mongodb_members = []
+            
+            for member in members_cursor:
+                member_name = member.get('name')
+                member_email = member.get('email')
+                
+                if not member_name:
+                    continue
+                
+                # Get GitHub identifier for this member
+                github_identifier = identifiers_col.find_one({
+                    'member_name': member_name,
+                    'source': 'github'
+                })
+                
+                if github_identifier:
+                    github_id = github_identifier.get('identifier_value')
+                    if github_id:
+                        mongodb_members.append({
+                            'login': github_id,
+                            'github_id': github_id,
+                            'name': member_name,
+                            'email': member_email
+                        })
+            
+            if mongodb_members:
+                print(f"   📊 Using {len(mongodb_members)} members from MongoDB")
+                return mongodb_members
+            else:
+                print("   ⚠️  No members with GitHub identifiers found in MongoDB")
+        
+        except Exception as e:
+            print(f"   ⚠️  Failed to get members from MongoDB: {e}")
+        
+        # Fallback to config member_list if explicitly configured
         if self.member_list:
+            print(f"   📊 Using {len(self.member_list)} members from config")
             members = []
             for member in self.member_list:
                 members.append({
@@ -661,7 +712,8 @@ class GitHubPluginMongo(DataSourcePlugin):
                 })
             return members
         
-        # Otherwise fetch from GitHub API
+        # Last resort: fetch from GitHub API
+        print(f"   📊 Fetching members from GitHub API (organization members)")
         query = '''
             query getOrgMembers($orgName: String!, $cursor: String) {
                 organization(login: $orgName) {

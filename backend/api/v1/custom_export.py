@@ -360,11 +360,13 @@ async def fetch_github_data(db, members: List[str], date_filter: dict, member_in
         
         # Build query for commits (use author_name field like activities_mongo.py)
         commit_query = {}
+        or_conditions = []
         if identifiers["github"]:
-            commit_query["author_name"] = {"$in": identifiers["github"]}
-        else:
-            # Fallback: exact match on member name
-            commit_query["author_name"] = member_name
+            or_conditions.append({"author_name": {"$in": identifiers["github"]}})
+        # Also add regex match for member name (case-insensitive, partial match)
+        or_conditions.append({"author_name": {"$regex": f"{member_name}", "$options": "i"}})
+        
+        commit_query["$or"] = or_conditions
         
         if date_filter:
             commit_query["date"] = date_filter
@@ -391,11 +393,13 @@ async def fetch_github_data(db, members: List[str], date_filter: dict, member_in
         
         # Fetch PRs (use author field like activities_mongo.py)
         pr_query = {}
+        or_conditions = []
         if identifiers["github"]:
-            pr_query["author"] = {"$in": identifiers["github"]}
-        else:
-            # Fallback: exact match on member name
-            pr_query["author"] = member_name
+            or_conditions.append({"author": {"$in": identifiers["github"]}})
+        # Also add regex match for member name (case-insensitive, partial match)
+        or_conditions.append({"author": {"$regex": f"{member_name}", "$options": "i"}})
+        
+        pr_query["$or"] = or_conditions
         
         if date_filter:
             pr_query["created_at"] = date_filter
@@ -520,9 +524,14 @@ async def fetch_drive_data(db, members: List[str], date_filter: dict, member_inf
         if identifiers["drive"]:
             # Use user_email field (not actor_email)
             or_conditions.append({"user_email": {"$in": identifiers["drive"]}})
+        # Also add regex match for member name in user field
+        or_conditions.append({"user": {"$regex": f"{member_name}", "$options": "i"}})
         
         if or_conditions:
             query["$or"] = or_conditions
+        else:
+            # If no conditions, skip this member to avoid returning all documents
+            continue
         
         if date_filter:
             # Use timestamp field (not activity_time)
@@ -559,13 +568,49 @@ async def fetch_gemini_data(db, members: List[str], date_filter: dict, member_in
         # Build query
         query = {}
         if date_filter:
-            # Use target_date for filtering
-            query['target_date'] = date_filter
+            # target_date is stored as string (YYYY-MM-DD), convert datetime filter to string
+            string_date_filter = {}
+            for op, value in date_filter.items():
+                if isinstance(value, datetime):
+                    string_date_filter[op] = value.strftime('%Y-%m-%d')
+                else:
+                    string_date_filter[op] = value
+            query['target_date'] = string_date_filter
         
         # Get documents (sync operation)
         daily_docs = list(recordings_daily_col.find(query).sort("target_date", -1))
         
         for daily in daily_docs:
+            # If members are specified, filter by participants
+            if members:
+                # Check if any selected member is in the participants
+                analysis = daily.get("analysis", {})
+                participants = analysis.get("participants", []) if analysis else []
+                
+                # Extract participant names
+                participant_names = []
+                if isinstance(participants, list):
+                    for p in participants:
+                        if isinstance(p, dict) and "name" in p:
+                            participant_names.append(p["name"])
+                        elif isinstance(p, str):
+                            participant_names.append(p)
+                
+                # Check if any selected member is in participants
+                has_match = False
+                for member in members:
+                    for participant_name in participant_names:
+                        if member.lower() in participant_name.lower() or participant_name.lower() in member.lower():
+                            has_match = True
+                            break
+                    if has_match:
+                        break
+                
+                # Skip this document if no match found
+                if not has_match:
+                    continue
+            
+            # Continue processing matched document
             try:
                 timestamp = daily.get("timestamp")
                 if isinstance(timestamp, datetime):
@@ -638,49 +683,66 @@ async def fetch_gemini_data(db, members: List[str], date_filter: dict, member_in
 
 
 async def fetch_recordings_data(db, members: List[str], date_filter: dict, member_info_map: dict) -> List[dict]:
-    """Fetch recordings data from shared database"""
+    """Fetch recordings data from gemini database"""
     results = []
     
     try:
-        mongo = get_mongo()
-        shared_db = mongo.shared_async_db
-        recordings_col = shared_db["recordings"]
+        from backend.api.v1.ai_processed import get_gemini_db
+        gemini_db = get_gemini_db()
+        recordings_col = gemini_db["recordings"]
         
         # Build query
         query = {}
+        
         if members:
-            # Filter by createdBy if members are specified
-            member_patterns = [{"createdBy": {"$regex": f"^{name}", "$options": "i"}} for name in members]
-            if member_patterns:
-                query["$or"] = member_patterns
+            # participants is a list of strings like ['YEONGJU BAK', 'Eugenie Nguyen']
+            # Use $in with $regex for case-insensitive partial matching
+            regex_patterns = [{"$regex": name, "$options": "i"} for name in members]
+            query["$or"] = [
+                {"participants": {"$elemMatch": pattern}} for pattern in regex_patterns
+            ]
         
         if date_filter:
-            query["modifiedTime"] = date_filter
+            # meeting_date is a datetime field
+            query["meeting_date"] = date_filter
         
-        # Get recordings (async operation)
-        recordings = await recordings_col.find(query).sort("modifiedTime", -1).to_list(length=10000)
+        # Get recordings (sync operation for gemini)
+        recordings = list(recordings_col.find(query).sort("meeting_date", -1).limit(10000))
         
         for recording in recordings:
             try:
-                modified_time = recording.get("modifiedTime")
-                if isinstance(modified_time, datetime):
-                    timestamp_str = modified_time.isoformat() + 'Z' if modified_time.tzinfo is None else modified_time.isoformat()
+                meeting_date = recording.get("meeting_date")
+                if isinstance(meeting_date, datetime):
+                    timestamp_str = meeting_date.isoformat() + 'Z' if meeting_date.tzinfo is None else meeting_date.isoformat()
                 else:
-                    timestamp_str = str(modified_time) if modified_time else ""
+                    timestamp_str = str(meeting_date) if meeting_date else ""
                 
-                created_by = recording.get("createdBy", "Unknown")
-                member_info = member_info_map.get(created_by, {})
+                participants = recording.get("participants", [])
+                
+                # Find which selected member(s) participated
+                participating_members = []
+                if members:
+                    for member in members:
+                        for participant in participants:
+                            if member.lower() in participant.lower() or participant.lower() in member.lower():
+                                participating_members.append(participant)
+                                break
+                
+                # Use first participating member as primary
+                primary_member = participating_members[0] if participating_members else (participants[0] if participants else "Unknown")
+                member_info = member_info_map.get(primary_member, {})
                 
                 results.append({
                     "source": "recordings",
                     "type": "meeting_recording",
-                    "member_name": created_by,
+                    "member_name": primary_member,
                     "member_email": member_info.get("email"),
                     "timestamp": timestamp_str,
-                    "recording_name": recording.get("name"),
-                    "recording_id": recording.get("id"),
-                    "size": recording.get("size", 0),
-                    "web_view_link": recording.get("webViewLink"),
+                    "meeting_title": recording.get("meeting_title"),
+                    "meeting_id": recording.get("meeting_id"),
+                    "meeting_date": timestamp_str,
+                    "participants": ", ".join(participants),
+                    "participant_count": len(participants),
                 })
             except Exception as e:
                 logger.warning(f"Error processing recording document: {e}")
@@ -781,25 +843,36 @@ async def export_custom_data(
                     }
         
         results = []
+        source_results_count = {}
+        
         for source in sources_needed:
+            source_data = []
             if source == "github":
-                results.extend(await fetch_github_data(db, members_to_filter, date_filter, member_info_map, body.project))
+                source_data = await fetch_github_data(db, members_to_filter, date_filter, member_info_map, body.project)
             elif source == "slack":
-                results.extend(await fetch_slack_data(db, members_to_filter, date_filter, member_info_map))
+                source_data = await fetch_slack_data(db, members_to_filter, date_filter, member_info_map)
             elif source == "notion":
-                results.extend(await fetch_notion_data(db, members_to_filter, date_filter, member_info_map))
+                source_data = await fetch_notion_data(db, members_to_filter, date_filter, member_info_map)
             elif source == "drive":
-                results.extend(await fetch_drive_data(db, members_to_filter, date_filter, member_info_map))
+                source_data = await fetch_drive_data(db, members_to_filter, date_filter, member_info_map)
             elif source == "gemini":
-                results.extend(await fetch_gemini_data(db, members_to_filter, date_filter, member_info_map))
+                source_data = await fetch_gemini_data(db, members_to_filter, date_filter, member_info_map)
             elif source == "recordings":
-                results.extend(await fetch_recordings_data(db, members_to_filter, date_filter, member_info_map))
+                source_data = await fetch_recordings_data(db, members_to_filter, date_filter, member_info_map)
+            
+            source_results_count[source] = len(source_data)
+            results.extend(source_data)
+            logger.info(f"Fetched {len(source_data)} records from {source}")
         
         # Sort by timestamp
         results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         
         if not results:
-            raise HTTPException(status_code=404, detail="No data found with the given filters")
+            logger.warning(f"No data found with filters - Members: {members_to_filter}, Sources: {sources_needed}, Results by source: {source_results_count}")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No data found with the given filters. Members: {', '.join(members_to_filter) if members_to_filter else 'All'}, Sources queried: {', '.join(sources_needed)}, Results: {source_results_count}"
+            )
         
         # Generate filename
         date_suffix = f"{body.start_date or 'all'}_{body.end_date or 'all'}"
