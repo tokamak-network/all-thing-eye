@@ -35,6 +35,7 @@ class CustomExportRequest(BaseModel):
     end_date: Optional[str] = None
     project: Optional[str] = None
     selected_fields: List[str] = []
+    sources: Optional[List[str]] = None  # Add sources field for activities page
     limit: int = 50
     offset: int = 0
 

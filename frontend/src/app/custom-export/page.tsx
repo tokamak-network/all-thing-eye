@@ -10,8 +10,12 @@ import { api } from "@/lib/api";
 
 export default function CustomExportPage() {
   const [activeTab, setActiveTab] = useState<"custom" | "notion">("custom");
-  const [exportMode, setExportMode] = useState<"fields" | "collections">("fields");
-  const [exportFormat, setExportFormat] = useState<"csv" | "json" | "toon">("csv");
+  const [exportMode, setExportMode] = useState<"fields" | "collections">(
+    "fields"
+  );
+  const [exportFormat, setExportFormat] = useState<"csv" | "json" | "toon">(
+    "csv"
+  );
 
   const [selectedFields, setSelectedFields] = useState<string[]>([
     "member.name",
@@ -103,9 +107,24 @@ export default function CustomExportPage() {
         document.body.removeChild(a);
       } catch (err: any) {
         console.error("Export error:", err);
-        setError(
-          err.response?.data?.detail || err.message || "Failed to export data"
-        );
+
+        // Handle 404 - No data found
+        if (err.response?.status === 404) {
+          setError(
+            "📭 No data found for the selected filters.\n\n" +
+              "Selected members: " +
+              filters.selectedMembers.join(", ") +
+              "\n" +
+              "Selected fields: " +
+              selectedFields.join(", ") +
+              "\n\n" +
+              "Try adjusting your member selection, date range, or data fields."
+          );
+        } else {
+          setError(
+            err.response?.data?.detail || err.message || "Failed to export data"
+          );
+        }
       } finally {
         setIsLoading(false);
       }
@@ -141,8 +160,13 @@ export default function CustomExportPage() {
           const a = document.createElement("a");
           a.href = url;
           const ext = exportFormat === "toon" ? "toon" : exportFormat;
-          const collectionName = collection.collection.replace(/^(main|shared|gemini)\./, "");
-          a.download = `${collectionName}_${filters.startDate || "all"}_${filters.endDate || "all"}.${ext}`;
+          const collectionName = collection.collection.replace(
+            /^(main|shared|gemini)\./,
+            ""
+          );
+          a.download = `${collectionName}_${filters.startDate || "all"}_${
+            filters.endDate || "all"
+          }.${ext}`;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
@@ -159,7 +183,9 @@ export default function CustomExportPage() {
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
-          a.download = `collections_export_${filters.startDate || "all"}_${filters.endDate || "all"}.zip`;
+          a.download = `collections_export_${filters.startDate || "all"}_${
+            filters.endDate || "all"
+          }.zip`;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
@@ -167,9 +193,29 @@ export default function CustomExportPage() {
         }
       } catch (err: any) {
         console.error("Export error:", err);
-        setError(
-          err.response?.data?.detail || err.message || "Failed to export data"
-        );
+
+        // Handle 404 - No data found
+        if (err.response?.status === 404) {
+          const collectionNames = Array.from(selectedCollections).join(", ");
+          setError(
+            "📭 No data found for the selected collections.\n\n" +
+              "Selected collections: " +
+              collectionNames +
+              "\n" +
+              (filters.startDate || filters.endDate
+                ? "Date range: " +
+                  (filters.startDate || "any") +
+                  " ~ " +
+                  (filters.endDate || "any") +
+                  "\n\n"
+                : "\n") +
+              "Try adjusting your collection selection or date range."
+          );
+        } else {
+          setError(
+            err.response?.data?.detail || err.message || "Failed to export data"
+          );
+        }
       } finally {
         setIsLoading(false);
       }
@@ -194,7 +240,8 @@ export default function CustomExportPage() {
           📊 Custom Data Export Builder
         </h1>
         <p className="text-gray-600">
-          Select fields from multiple data sources or entire collections and export custom reports
+          Select fields from multiple data sources or entire collections and
+          export custom reports
         </p>
 
         {/* Tabs */}
@@ -248,7 +295,9 @@ export default function CustomExportPage() {
                 >
                   <div className="flex flex-col items-center text-center">
                     <span className="text-2xl mb-2">🔧</span>
-                    <span className="font-medium text-gray-900">Custom Fields</span>
+                    <span className="font-medium text-gray-900">
+                      Custom Fields
+                    </span>
                     <span className="text-xs text-gray-500 mt-1">
                       Select specific fields from data sources
                     </span>
@@ -264,7 +313,9 @@ export default function CustomExportPage() {
                 >
                   <div className="flex flex-col items-center text-center">
                     <span className="text-2xl mb-2">🗄️</span>
-                    <span className="font-medium text-gray-900">Collections</span>
+                    <span className="font-medium text-gray-900">
+                      Collections
+                    </span>
                     <span className="text-xs text-gray-500 mt-1">
                       Export entire database collections
                     </span>
@@ -289,7 +340,9 @@ export default function CustomExportPage() {
                 >
                   <div className="flex flex-col items-center text-center">
                     <span className="text-xl mb-1">📊</span>
-                    <span className="font-medium text-sm text-gray-900">CSV</span>
+                    <span className="font-medium text-sm text-gray-900">
+                      CSV
+                    </span>
                     <span className="text-xs text-gray-500 mt-0.5">
                       Excel/Sheets
                     </span>
@@ -305,7 +358,9 @@ export default function CustomExportPage() {
                 >
                   <div className="flex flex-col items-center text-center">
                     <span className="text-xl mb-1">🔧</span>
-                    <span className="font-medium text-sm text-gray-900">JSON</span>
+                    <span className="font-medium text-sm text-gray-900">
+                      JSON
+                    </span>
                     <span className="text-xs text-gray-500 mt-0.5">
                       Developers
                     </span>
@@ -321,7 +376,9 @@ export default function CustomExportPage() {
                 >
                   <div className="flex flex-col items-center text-center">
                     <span className="text-xl mb-1">🤖</span>
-                    <span className="font-medium text-sm text-gray-900">TOON</span>
+                    <span className="font-medium text-sm text-gray-900">
+                      TOON
+                    </span>
                     <span className="text-xs text-gray-500 mt-0.5">
                       LLM Optimized
                     </span>
@@ -358,19 +415,25 @@ export default function CustomExportPage() {
 
                 {/* Error Message */}
                 {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm whitespace-pre-line">
                     ❌ {error}
                   </div>
                 )}
 
                 {/* Export Configuration Summary */}
                 {exportMode === "fields" && (
-                  <PreviewTable selectedFields={selectedFields} filters={filters} />
+                  <PreviewTable
+                    selectedFields={selectedFields}
+                    filters={filters}
+                  />
                 )}
 
                 {/* AI Chat Panel */}
                 {exportMode === "fields" && (
-                  <AIChatPanel selectedFields={selectedFields} filters={filters} />
+                  <AIChatPanel
+                    selectedFields={selectedFields}
+                    filters={filters}
+                  />
                 )}
               </div>
             </div>

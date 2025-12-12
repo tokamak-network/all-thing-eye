@@ -74,20 +74,54 @@ class FailedRecording(BaseModel):
 # Helper functions
 # ============================================
 
-def get_gemini_db():
-    """Get gemini database connection"""
-    from backend.main import mongo_manager
-    # Access underlying sync client to get gemini database
-    if mongo_manager._sync_client is None:
-        mongo_manager.connect_sync()
-    return mongo_manager._sync_client["gemini"]
+# Cache for gemini database connection
+_gemini_db_cache = None
 
+def get_gemini_db():
+    """Get gemini database connection (cached)"""
+    global _gemini_db_cache
+    
+    if _gemini_db_cache is not None:
+        return _gemini_db_cache
+    
+    import os
+    from pymongo import MongoClient
+    
+    # Get MongoDB URI from environment
+    gemini_uri = os.getenv('GEMINI_MONGODB_URI')
+    if not gemini_uri:
+        # Fall back to main MongoDB URI
+        gemini_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
+    
+    # Create a direct connection to gemini database
+    client = MongoClient(gemini_uri)
+    _gemini_db_cache = client["gemini"]
+    return _gemini_db_cache
+
+
+# Cache for shared database connection
+_shared_db_cache = None
 
 def get_shared_db():
-    """Get shared database connection"""
-    from backend.main import mongo_manager
-    # Use the shared_db property which connects to 'shared' database
-    return mongo_manager.shared_db
+    """Get shared database connection (cached)"""
+    global _shared_db_cache
+    
+    if _shared_db_cache is not None:
+        return _shared_db_cache
+    
+    import os
+    from pymongo import MongoClient
+    
+    # Get MongoDB URI from environment
+    shared_uri = os.getenv('SHARED_MONGODB_URI')
+    if not shared_uri:
+        # Fall back to main MongoDB URI
+        shared_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
+    
+    # Create a direct connection to shared database
+    client = MongoClient(shared_uri)
+    _shared_db_cache = client["shared"]
+    return _shared_db_cache
 
 
 # ============================================
