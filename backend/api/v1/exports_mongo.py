@@ -795,6 +795,101 @@ async def export_activities(
                             'activity_id': activity.get('activity_id', f"drive:{activity.get('file_id')}"),
                             'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
                         })
+            
+            elif source == 'recordings':
+                # Recordings from Gemini database
+                try:
+                    from backend.api.v1.ai_processed import get_gemini_db
+                    gemini_db = get_gemini_db()
+                    recordings_col = gemini_db["recordings"]
+                    
+                    query = {}
+                    if date_filter:
+                        query['meeting_date'] = date_filter
+                    
+                    # Use sync cursor for gemini database
+                    recordings_cursor = recordings_col.find(query).sort("meeting_date", -1).limit(limit)
+                    
+                    for recording in recordings_cursor:
+                        meeting_date = recording.get('meeting_date')
+                        if isinstance(meeting_date, datetime):
+                            timestamp_str = meeting_date.isoformat() + 'Z' if meeting_date.tzinfo is None else meeting_date.isoformat()
+                        else:
+                            timestamp_str = str(meeting_date) if meeting_date else ''
+                        
+                        participants = recording.get('participants', [])
+                        # For recordings, use first participant as member_name
+                        member_name = participants[0] if participants else 'Unknown'
+                        
+                        metadata = {
+                            'meeting_id': recording.get('meeting_id'),
+                            'meeting_title': recording.get('meeting_title'),
+                            'participants': participants,
+                            'participant_count': len(participants)
+                        }
+                        
+                        activities.append({
+                            'id': str(recording['_id']),
+                            'member_name': member_name,
+                            'source_type': 'recordings',
+                            'activity_type': 'meeting',
+                            'timestamp': timestamp_str,
+                            'activity_id': f"recordings:meeting:{recording.get('meeting_id')}",
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
+                except Exception as e:
+                    logger.error(f"Error fetching recordings data: {e}")
+            
+            elif source == 'recordings_daily':
+                # Daily analysis from Gemini database
+                try:
+                    from backend.api.v1.ai_processed import get_gemini_db
+                    gemini_db = get_gemini_db()
+                    recordings_daily_col = gemini_db["recordings_daily"]
+                    
+                    query = {}
+                    if date_filter:
+                        # target_date is string format, need to convert date_filter
+                        string_date_filter = {}
+                        for op, value in date_filter.items():
+                            if isinstance(value, datetime):
+                                string_date_filter[op] = value.strftime('%Y-%m-%d')
+                            else:
+                                string_date_filter[op] = value
+                        query['target_date'] = string_date_filter
+                    
+                    # Use sync cursor for gemini database
+                    daily_cursor = recordings_daily_col.find(query).sort("target_date", -1).limit(limit)
+                    
+                    for daily in daily_cursor:
+                        timestamp = daily.get('timestamp')
+                        if isinstance(timestamp, datetime):
+                            timestamp_str = timestamp.isoformat() + 'Z' if timestamp.tzinfo is None else timestamp.isoformat()
+                        else:
+                            timestamp_str = daily.get('target_date', '')
+                        
+                        analysis = daily.get('analysis', {})
+                        meeting_count = daily.get('meeting_count', 0)
+                        
+                        metadata = {
+                            'target_date': daily.get('target_date'),
+                            'meeting_count': meeting_count,
+                            'total_meeting_time': daily.get('total_meeting_time'),
+                            'meeting_titles': daily.get('meeting_titles', []),
+                            'status': daily.get('status')
+                        }
+                        
+                        activities.append({
+                            'id': str(daily['_id']),
+                            'member_name': 'System',
+                            'source_type': 'recordings_daily',
+                            'activity_type': 'daily_analysis',
+                            'timestamp': timestamp_str,
+                            'activity_id': f"recordings_daily:{daily.get('target_date')}",
+                            'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
+                        })
+                except Exception as e:
+                    logger.error(f"Error fetching recordings_daily data: {e}")
         
         # Sort all activities by timestamp (newest first)
         activities.sort(key=lambda x: x['timestamp'] or '', reverse=True)

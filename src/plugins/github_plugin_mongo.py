@@ -41,6 +41,7 @@ class GitHubPluginMongo(DataSourcePlugin):
         self.include_diff = config.get('collection', {}).get('include_diff', False)
         self.rate_limit = config.get('rate_limit', 5000)
         self.member_list = config.get('member_list', [])
+        self.target_members = config.get('target_members', [])  # Specific members to collect for
         
         # MongoDB Manager
         self.mongo = mongo_manager
@@ -656,6 +657,8 @@ class GitHubPluginMongo(DataSourcePlugin):
         1. MongoDB members collection (with GitHub identifiers)
         2. config.yaml member_list (if explicitly configured)
         3. GitHub API organization members (fallback)
+        
+        If target_members is specified, filter results to only those members.
         """
         # First, try to get members from MongoDB
         try:
@@ -663,8 +666,13 @@ class GitHubPluginMongo(DataSourcePlugin):
             members_col = db['members']
             identifiers_col = db['member_identifiers']
             
-            # Get all members from MongoDB
-            members_cursor = members_col.find({})
+            # Build query - if target_members specified, filter by name
+            query = {}
+            if self.target_members:
+                query['name'] = {'$in': self.target_members}
+            
+            # Get members from MongoDB
+            members_cursor = members_col.find(query)
             mongodb_members = []
             
             for member in members_cursor:
@@ -692,25 +700,39 @@ class GitHubPluginMongo(DataSourcePlugin):
             
             if mongodb_members:
                 print(f"   📊 Using {len(mongodb_members)} members from MongoDB")
+                if self.target_members:
+                    print(f"      🎯 Filtered to target members: {', '.join([m['name'] for m in mongodb_members])}")
                 return mongodb_members
             else:
-                print("   ⚠️  No members with GitHub identifiers found in MongoDB")
+                if self.target_members:
+                    print(f"   ⚠️  No members with GitHub identifiers found in MongoDB for: {', '.join(self.target_members)}")
+                else:
+                    print("   ⚠️  No members with GitHub identifiers found in MongoDB")
         
         except Exception as e:
             print(f"   ⚠️  Failed to get members from MongoDB: {e}")
         
         # Fallback to config member_list if explicitly configured
         if self.member_list:
-            print(f"   📊 Using {len(self.member_list)} members from config")
             members = []
             for member in self.member_list:
+                member_name = member.get('name')
+                # If target_members specified, filter member_list too
+                if self.target_members and member_name not in self.target_members:
+                    continue
+                
                 members.append({
                     'login': member.get('githubId') or member.get('github_id'),
                     'github_id': member.get('githubId') or member.get('github_id'),
-                    'name': member.get('name'),
+                    'name': member_name,
                     'email': member.get('email')
                 })
-            return members
+            
+            if members:
+                print(f"   📊 Using {len(members)} members from config")
+                if self.target_members:
+                    print(f"      🎯 Filtered to target members: {', '.join([m['name'] for m in members])}")
+                return members
         
         # Last resort: fetch from GitHub API
         print(f"   📊 Fetching members from GitHub API (organization members)")
@@ -748,6 +770,23 @@ class GitHubPluginMongo(DataSourcePlugin):
             
             has_next_page = members_data['pageInfo']['hasNextPage']
             cursor = members_data['pageInfo']['endCursor']
+        
+        # Filter by target_members if specified (match by name or login)
+        if self.target_members:
+            filtered_members = []
+            for member in all_members:
+                member_name = member.get('name', '')
+                member_login = member.get('login', '')
+                # Check if member name or login matches any target member
+                if member_name in self.target_members or member_login in self.target_members:
+                    filtered_members.append(member)
+            
+            if filtered_members:
+                print(f"      🎯 Filtered to {len(filtered_members)} target members from {len(all_members)} total")
+            else:
+                print(f"      ⚠️  No matching members found for: {', '.join(self.target_members)}")
+            
+            return filtered_members
         
         return all_members
     

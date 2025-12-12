@@ -696,18 +696,24 @@ async def fetch_recordings_data(db, members: List[str], date_filter: dict, membe
         
         if members:
             # participants is a list of strings like ['YEONGJU BAK', 'Eugenie Nguyen']
-            # Use $in with $regex for case-insensitive partial matching
-            regex_patterns = [{"$regex": name, "$options": "i"} for name in members]
-            query["$or"] = [
-                {"participants": {"$elemMatch": pattern}} for pattern in regex_patterns
-            ]
+            # Create $or conditions for each member name with case-insensitive regex
+            or_conditions = []
+            for name in members:
+                or_conditions.append({"participants": {"$regex": name, "$options": "i"}})
+            query["$or"] = or_conditions
         
         if date_filter:
             # meeting_date is a datetime field
             query["meeting_date"] = date_filter
         
+        logger.info(f"[RECORDINGS] Query: {query}")
+        logger.info(f"[RECORDINGS] Members filter: {members}")
+        logger.info(f"[RECORDINGS] Date filter: {date_filter}")
+        
         # Get recordings (sync operation for gemini)
         recordings = list(recordings_col.find(query).sort("meeting_date", -1).limit(10000))
+        
+        logger.info(f"[RECORDINGS] Found {len(recordings)} documents")
         
         for recording in recordings:
             try:
@@ -800,19 +806,30 @@ async def export_custom_data(
         File download response
     """
     try:
+        logger.info(f"[EXPORT] Request body: members={body.selected_members}, fields={body.selected_fields}, sources={body.sources}")
+        
         # Get preview data (full, not limited)
         mongo = get_mongo()
         db = mongo.db
         
         # Determine which sources to query
         sources_needed = set()
-        for field in body.selected_fields:
-            source = get_source_from_field(field)
-            if source and source != "member":
-                sources_needed.add(source)
+        
+        # First check if body.sources is provided (from activities page)
+        if hasattr(body, 'sources') and body.sources:
+            sources_needed = set(body.sources)
+            logger.info(f"[EXPORT] Using sources from body.sources: {sources_needed}")
+        else:
+            # Fall back to determining from selected_fields
+            for field in body.selected_fields:
+                source = get_source_from_field(field)
+                if source and source != "member":
+                    sources_needed.add(source)
+            logger.info(f"[EXPORT] Determined sources from fields: {sources_needed}")
         
         if not sources_needed:
             sources_needed = {"github", "slack", "notion", "drive", "gemini", "recordings"}
+            logger.info(f"[EXPORT] No sources specified, using all: {sources_needed}")
         
         # Build date filter - convert string to datetime for MongoDB comparison
         date_filter = {}

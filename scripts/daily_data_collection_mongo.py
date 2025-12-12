@@ -19,6 +19,7 @@ import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from typing import List
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -77,7 +78,7 @@ def get_previous_day_range_kst():
     return start_utc, end_utc
 
 
-async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime):
+async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime, target_members: List[str] = None):
     """Collect GitHub data for the specified date range"""
     try:
         logger.info("📂 Collecting GitHub data...")
@@ -88,6 +89,11 @@ async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, en
         if not plugin_config or not plugin_config.get('enabled', False):
             logger.info("   ⏭️  GitHub plugin disabled, skipping")
             return
+        
+        # If target members specified, add to plugin config
+        if target_members:
+            plugin_config['target_members'] = target_members
+            logger.info(f"   🎯 Targeting specific members: {', '.join(target_members)}")
         
         plugin = GitHubPluginMongo(plugin_config, mongo_manager)
         
@@ -243,11 +249,16 @@ async def main():
         help='Specific date to collect (YYYY-MM-DD in KST). Default: yesterday'
     )
     parser.add_argument(
-        '--sources',
+        '--sources', 
         nargs='+',
         choices=['github', 'slack', 'notion', 'drive', 'all'],
         default=['all'],
         help='Sources to collect from (default: all)'
+    )
+    parser.add_argument(
+        '--members',
+        nargs='+',
+        help='Specific members to collect GitHub data for (e.g., "Thomas Shin" "Eugenie Nguyen")'
     )
     
     args = parser.parse_args()
@@ -290,7 +301,7 @@ async def main():
         
         # Collect from each source
         if 'github' in sources:
-            await collect_github(mongo_manager, start_utc, end_utc)
+            await collect_github(mongo_manager, start_utc, end_utc, args.members)
         
         if 'slack' in sources:
             await collect_slack(mongo_manager, start_utc, end_utc)

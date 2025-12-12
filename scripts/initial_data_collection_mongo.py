@@ -35,7 +35,7 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def collect_github(mongo_manager: MongoDBManager, days: int = 14):
+async def collect_github(mongo_manager: MongoDBManager, days: int = 14, target_members: List[str] = None):
     """Collect GitHub data for the past N days"""
     try:
         logger.info("📂 Collecting GitHub data...")
@@ -46,6 +46,11 @@ async def collect_github(mongo_manager: MongoDBManager, days: int = 14):
         if not plugin_config or not plugin_config.get('enabled', False):
             logger.info("   ⏭️  GitHub plugin disabled, skipping")
             return
+        
+        # If target members specified, add to plugin config
+        if target_members:
+            plugin_config['target_members'] = target_members
+            logger.info(f"   🎯 Targeting specific members: {', '.join(target_members)}")
         
         plugin = GitHubPluginMongo(plugin_config, mongo_manager)
         
@@ -208,6 +213,11 @@ async def main():
         default=['all'],
         help='Sources to collect from (default: all)'
     )
+    parser.add_argument(
+        '--members',
+        nargs='+',
+        help='Specific members to collect GitHub data for (e.g., "Thomas Shin" "Eugenie Nguyen")'
+    )
     
     args = parser.parse_args()
     
@@ -215,6 +225,8 @@ async def main():
     logger.info(f"🚀 Starting INITIAL data collection - {datetime.utcnow().isoformat()}")
     logger.info(f"📅 Collection period: Last {args.days} days")
     logger.info(f"📦 Sources: {', '.join(args.sources)}")
+    if args.members:
+        logger.info(f"🎯 Target members: {', '.join(args.members)}")
     logger.info("=" * 80)
     
     # Initialize MongoDB connection
@@ -235,7 +247,7 @@ async def main():
         
         # Collect from each source
         if 'github' in sources:
-            await collect_github(mongo_manager, args.days)
+            await collect_github(mongo_manager, args.days, args.members)
         
         if 'slack' in sources:
             await collect_slack(mongo_manager, args.days)
