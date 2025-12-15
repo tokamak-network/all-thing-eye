@@ -623,16 +623,16 @@ class Query:
         member_to_identifiers = {}  # For filtering: member_name -> {source: [identifiers]}
         
         async for id_doc in db['member_identifiers'].find():
-            source = id_doc.get('source')
+            id_source = id_doc.get('source')  # Renamed to avoid conflict with function parameter
             identifier_value = id_doc.get('identifier_value')
             display_name = id_doc.get('member_name')  # Direct member_name field!
             
-            if source and identifier_value and display_name:
+            if id_source and identifier_value and display_name:
                 # Case-insensitive key for GitHub and email (like REST API)
-                if source in ['github', 'drive', 'email']:
-                    key = (source, identifier_value.lower())
+                if id_source in ['github', 'drive', 'email']:
+                    key = (id_source, identifier_value.lower())
                 else:
-                    key = (source, identifier_value)
+                    key = (id_source, identifier_value)
                 
                 # Store mapping for display conversion
                 identifier_to_member[key] = display_name
@@ -640,9 +640,9 @@ class Query:
                 # Build reverse mapping for filtering
                 if display_name not in member_to_identifiers:
                     member_to_identifiers[display_name] = {}
-                if source not in member_to_identifiers[display_name]:
-                    member_to_identifiers[display_name][source] = []
-                member_to_identifiers[display_name][source].append(identifier_value)
+                if id_source not in member_to_identifiers[display_name]:
+                    member_to_identifiers[display_name][id_source] = []
+                member_to_identifiers[display_name][id_source].append(identifier_value)
         
         # Get identifiers for the specified member (for filtering)
         member_identifiers = {}
