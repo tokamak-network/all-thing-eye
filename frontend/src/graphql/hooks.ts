@@ -13,6 +13,7 @@ import {
   GET_PROJECTS,
   GET_PROJECT,
   GET_MEMBERS_WITH_ACTIVITIES,
+  GET_MEMBER_DETAIL,
 } from "./queries";
 import type {
   GetMembersVariables,
@@ -29,6 +30,8 @@ import type {
   GetProjectResponse,
   GetMembersWithActivitiesVariables,
   GetMembersWithActivitiesResponse,
+  GetMemberDetailVariables,
+  GetMemberDetailResponse,
 } from "./types";
 
 /**
@@ -123,3 +126,18 @@ export function useMembersWithActivities(
   });
 }
 
+/**
+ * Hook to fetch member detail with collaboration and repository data
+ */
+export function useMemberDetail(
+  variables: GetMemberDetailVariables
+): QueryResult<GetMemberDetailResponse, GetMemberDetailVariables> {
+  return useQuery<GetMemberDetailResponse, GetMemberDetailVariables>(
+    GET_MEMBER_DETAIL,
+    {
+      variables,
+      // Skip if name is empty
+      skip: !variables.name,
+    }
+  );
+}

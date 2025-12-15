@@ -127,6 +127,69 @@ class Member:
             limit=limit,
             source=source
         )
+    
+    @strawberry.field
+    async def top_collaborators(
+        self,
+        info,
+        limit: int = 10
+    ) -> List['Collaborator']:
+        """
+        Get top collaborators for this member.
+        
+        Analyzes GitHub and Slack data to find frequent collaborators.
+        
+        Args:
+            limit: Maximum number of collaborators to return
+            
+        Returns:
+            List of Collaborator objects
+        """
+        from .queries import get_top_collaborators
+        return await get_top_collaborators(
+            db=info.context['db'],
+            member_name=self.name,
+            limit=limit
+        )
+    
+    @strawberry.field
+    async def active_repositories(
+        self,
+        info,
+        limit: int = 10
+    ) -> List['RepositoryActivity']:
+        """
+        Get repositories where this member is active.
+        
+        Args:
+            limit: Maximum number of repositories to return
+            
+        Returns:
+            List of RepositoryActivity objects
+        """
+        from .queries import get_active_repositories
+        return await get_active_repositories(
+            db=info.context['db'],
+            member_name=self.name,
+            limit=limit
+        )
+    
+    @strawberry.field
+    async def activity_stats(
+        self,
+        info
+    ) -> 'ActivityStats':
+        """
+        Get comprehensive activity statistics for this member.
+        
+        Returns:
+            ActivityStats object with detailed metrics
+        """
+        from .queries import get_activity_stats
+        return await get_activity_stats(
+            db=info.context['db'],
+            member_name=self.name
+        )
 
 
 @strawberry.type
@@ -271,3 +334,58 @@ class Project:
             date_range_start=start_date,
             date_range_end=end_date
         )
+
+
+@strawberry.type
+class Collaborator:
+    """
+    Represents a member's collaborator with activity metrics.
+    """
+    member_name: str
+    collaboration_count: int
+    collaboration_type: str  # "github", "slack", "both"
+    last_collaboration: Optional[datetime] = None
+
+
+@strawberry.type
+class RepositoryActivity:
+    """
+    Represents activity in a specific repository.
+    """
+    repository: str
+    commit_count: int
+    pr_count: int
+    issue_count: int
+    last_activity: Optional[datetime] = None
+    additions: int
+    deletions: int
+
+
+@strawberry.type
+class SourceStats:
+    """
+    Activity statistics by source.
+    """
+    source: str
+    count: int
+    percentage: float
+
+
+@strawberry.type
+class WeeklyStats:
+    """
+    Weekly activity statistics.
+    """
+    week_start: datetime
+    count: int
+
+
+@strawberry.type
+class ActivityStats:
+    """
+    Comprehensive activity statistics for a member.
+    """
+    total_activities: int
+    by_source: List[SourceStats]
+    weekly_trend: List[WeeklyStats]
+    last_30_days: int

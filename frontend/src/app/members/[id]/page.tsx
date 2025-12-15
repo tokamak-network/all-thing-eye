@@ -28,6 +28,10 @@ import {
   Legend,
 } from "recharts";
 import DateRangePicker from "@/components/DateRangePicker";
+// TODO: Fix issues with new GraphQL components before re-enabling
+// import { useMemberDetail } from "@/graphql/hooks";
+// import MemberCollaboration from "@/components/MemberCollaboration";
+// import MemberActivityStats from "@/components/MemberActivityStats";
 
 // Helper function to safely format timestamps
 function formatTimestamp(timestamp: string, formatStr: string): string {
@@ -110,6 +114,28 @@ export default function MemberDetailPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
+
+  // TODO: Fix issues with new GraphQL components before re-enabling
+  // GraphQL: Fetch member detail with collaboration and repository data
+  // const {
+  //   data: memberDetailData,
+  //   loading: graphqlLoading,
+  //   error: graphqlError,
+  // } = useMemberDetail({ name: memberId });
+
+  // // Debug GraphQL data
+  // useEffect(() => {
+  //   console.log("🔍 GraphQL Debug:", {
+  //     memberId,
+  //     loading: graphqlLoading,
+  //     error: graphqlError,
+  //     hasData: !!memberDetailData,
+  //     member: memberDetailData?.member,
+  //     topCollaborators: memberDetailData?.member?.topCollaborators,
+  //     activeRepositories: memberDetailData?.member?.activeRepositories,
+  //     activityStats: memberDetailData?.member?.activityStats,
+  //   });
+  // }, [memberId, graphqlLoading, graphqlError, memberDetailData]);
 
   // Translation states
   const [summaryTranslation, setSummaryTranslation] = useState<{
@@ -1307,6 +1333,113 @@ export default function MemberDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* TODO: Fix issues with new GraphQL components before re-enabling */}
+            {/* GraphQL-Powered Collaboration and Repository Analysis */}
+            {/* {!graphqlLoading && memberDetailData?.member && (
+              <div className="mt-8 space-y-8">
+                {memberDetailData.member.activityStats && (
+                  <div>
+                    <h2 className="text-2xl font-bold mb-4 flex items-center">
+                      📊 Activity Statistics
+                    </h2>
+                    <MemberActivityStats
+                      stats={memberDetailData.member.activityStats}
+                    />
+                  </div>
+                )}
+
+                {(memberDetailData.member.topCollaborators ||
+                  memberDetailData.member.activeRepositories) && (
+                  <div>
+                    <h2 className="text-2xl font-bold mb-4 flex items-center">
+                      🤝 Collaboration Network
+                    </h2>
+                    <MemberCollaboration
+                      collaborators={
+                        memberDetailData.member.topCollaborators || []
+                      }
+                      repositories={
+                        memberDetailData.member.activeRepositories || []
+                      }
+                    />
+                  </div>
+                )}
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="text-2xl">⚡</div>
+                    <div>
+                      <p className="font-semibold text-green-900">
+                        Powered by GraphQL
+                      </p>
+                      <p className="text-sm text-green-700 mt-1">
+                        This collaboration and repository data is loaded
+                        efficiently using GraphQL queries with MongoDB
+                        aggregation, providing fast insights into team
+                        collaboration patterns.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )} */}
+
+            {/* {graphqlLoading && (
+              <div className="mt-8 text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="mt-2 text-gray-600">
+                  Loading collaboration data...
+                </p>
+              </div>
+            )} */}
+
+            {/* {graphqlError && (
+              <div className="mt-8 bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="text-2xl">⚠️</div>
+                  <div>
+                    <p className="font-semibold text-red-900">
+                      Failed to load collaboration data
+                    </p>
+                    <p className="text-sm text-red-700 mt-1">
+                      {graphqlError.message}
+                    </p>
+                    <details className="mt-2 text-xs text-red-600">
+                      <summary className="cursor-pointer">
+                        Show technical details
+                      </summary>
+                      <pre className="mt-2 bg-red-100 p-2 rounded overflow-auto">
+                        {JSON.stringify(graphqlError, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
+                </div>
+              </div>
+            )} */}
+
+            {/* {!graphqlLoading && !graphqlError && !memberDetailData?.member && (
+              <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="text-2xl">🔍</div>
+                  <div>
+                    <p className="font-semibold text-yellow-900">
+                      No collaboration data found
+                    </p>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      Member ID:{" "}
+                      <code className="bg-yellow-100 px-1 rounded">
+                        {memberId}
+                      </code>
+                    </p>
+                    <p className="text-xs text-yellow-600 mt-1">
+                      Check browser console (F12) for debug logs starting with
+                      🔍
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )} */}
           </>
         )}
       </div>

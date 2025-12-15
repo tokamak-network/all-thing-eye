@@ -10,6 +10,9 @@ import {
   ACTIVITY_FRAGMENT,
   ACTIVITY_SUMMARY_FRAGMENT,
   PROJECT_FRAGMENT,
+  COLLABORATOR_FRAGMENT,
+  REPOSITORY_ACTIVITY_FRAGMENT,
+  ACTIVITY_STATS_FRAGMENT,
 } from "./fragments";
 
 // Get all members
@@ -122,6 +125,33 @@ export const GET_MEMBERS_WITH_ACTIVITIES = gql`
       activityCount
       recentActivities(limit: $activityLimit) {
         ...ActivityFields
+      }
+    }
+  }
+`;
+
+// Get member detail with collaboration and repository data
+export const GET_MEMBER_DETAIL = gql`
+  ${MEMBER_FRAGMENT}
+  ${ACTIVITY_FRAGMENT}
+  ${COLLABORATOR_FRAGMENT}
+  ${REPOSITORY_ACTIVITY_FRAGMENT}
+  ${ACTIVITY_STATS_FRAGMENT}
+  query GetMemberDetail($name: String!) {
+    member(name: $name) {
+      ...MemberFields
+      activityCount
+      recentActivities(limit: 10) {
+        ...ActivityFields
+      }
+      topCollaborators(limit: 10) {
+        ...CollaboratorFields
+      }
+      activeRepositories(limit: 10) {
+        ...RepositoryActivityFields
+      }
+      activityStats {
+        ...ActivityStatsFields
       }
     }
   }

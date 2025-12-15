@@ -67,8 +67,8 @@ async def get_members(
             logger.warning("Members collection does not exist")
             return []
         
-        # Get all members
-        members_cursor = db["members"].find({})
+        # Get all members (sorted alphabetically by name)
+        members_cursor = db["members"].find({}).sort('name', 1)
         members = []
         
         async for member in members_cursor:
@@ -602,45 +602,49 @@ async def get_member_detail(
     _admin: str = Depends(require_admin)
 ) -> Dict[str, Any]:
     """
-    Get detailed information for a specific member including activity statistics
+    Get detailed information for a specific member including activity statistics.
+    
+    Args:
+        member_id: Member ID (ObjectId) or member name
     """
     try:
         mongo = get_mongo()
         db = mongo.async_db
         
-        # Check if member exists
+        # Try to find member by ObjectId first, then by name
         from bson import ObjectId
+        member = None
+        
+        # Try as ObjectId
         try:
             member_obj_id = ObjectId(member_id)
-        except Exception as e:
-            logger.error(f"Invalid member ID format: {member_id}, error: {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid member ID format: {member_id}")
+            member = await db["members"].find_one({"_id": member_obj_id})
+        except Exception:
+            # Not a valid ObjectId, try as name
+            pass
         
-        # Try to find member by ObjectId first
-        member = await db["members"].find_one({"_id": member_obj_id})
-        
-        # If not found, try to find by string ID (in case _id is stored as string)
+        # If not found by ObjectId, try by name
         if not member:
-            member = await db["members"].find_one({"_id": member_id})
+            member = await db["members"].find_one({"name": member_id})
         
-        # If still not found, log available members for debugging
         if not member:
-            # Get first few members for debugging
-            sample_members = await db["members"].find({}).limit(5).to_list(length=5)
-            sample_ids = [str(m.get("_id")) for m in sample_members]
-            logger.warning(f"Member with ID {member_id} not found. Sample member IDs: {sample_ids}")
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Member with ID {member_id} not found. Please check if the member exists in the database."
-            )
+            raise HTTPException(status_code=404, detail=f"Member not found: {member_id}")
         
+        # Get the actual member_id (ObjectId)
+        actual_member_id = str(member["_id"])
         member_name = member.get("name")
         
         # Get identifiers - try both string and ObjectId
+        from bson import ObjectId
+        try:
+            member_obj_id = ObjectId(actual_member_id)
+        except:
+            member_obj_id = None
+        
         identifiers_cursor = db["member_identifiers"].find({
             "$or": [
-                {"member_id": member_id},
-                {"member_id": member_obj_id}
+                {"member_id": actual_member_id},
+                {"member_id": member_obj_id} if member_obj_id else {}
             ]
         })
         identifiers = {}
@@ -950,10 +954,10 @@ async def get_member_detail(
         except Exception as e:
             logger.error(f"Failed to generate member daily trends: {e}")
 
-        logger.info(f"Retrieved member detail: {member_name} ({member_id})")
+        logger.info(f"Retrieved member detail: {member_name} ({actual_member_id})")
         
         return {
-            "id": member_id,
+            "id": actual_member_id,
             "name": member.get("name"),
             "email": member.get("email"),
             "role": member.get("role"),
@@ -988,7 +992,7 @@ async def get_member_activities(
     Get activities for a specific member with detailed information
     
     Args:
-        member_id: Member ID
+        member_id: Member ID (ObjectId) or member name
         source_type: Filter by source (github, slack, notion, google_drive)
         activity_type: Filter by activity type
         start_date: Filter by start date (ISO format)
@@ -1003,16 +1007,24 @@ async def get_member_activities(
         mongo = get_mongo()
         db = mongo.async_db
         
-        # Check if member exists
+        # Try to find member by ObjectId first, then by name
         from bson import ObjectId
+        member = None
+        
+        # Try as ObjectId
         try:
             member_obj_id = ObjectId(member_id)
-        except:
-            raise HTTPException(status_code=400, detail="Invalid member ID format")
+            member = await db["members"].find_one({"_id": member_obj_id})
+        except Exception:
+            # Not a valid ObjectId, try as name
+            pass
         
-        member = await db["members"].find_one({"_id": member_obj_id})
+        # If not found by ObjectId, try by name
         if not member:
-            raise HTTPException(status_code=404, detail=f"Member with ID {member_id} not found")
+            member = await db["members"].find_one({"name": member_id})
+        
+        if not member:
+            raise HTTPException(status_code=404, detail=f"Member not found: {member_id}")
         
         member_name = member.get("name")
         

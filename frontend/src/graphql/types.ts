@@ -132,3 +132,60 @@ export interface GetProjectResponse {
 export interface GetMembersWithActivitiesResponse {
   members: Member[];
 }
+
+// Collaborator type
+export interface Collaborator {
+  memberName: string;
+  collaborationCount: number;
+  collaborationType: string;
+  lastCollaboration?: string;
+}
+
+// Repository activity type
+export interface RepositoryActivity {
+  repository: string;
+  commitCount: number;
+  prCount: number;
+  issueCount: number;
+  lastActivity?: string;
+  additions: number;
+  deletions: number;
+}
+
+// Source stats type
+export interface SourceStats {
+  source: string;
+  count: number;
+  percentage: number;
+}
+
+// Weekly stats type
+export interface WeeklyStats {
+  weekStart: string;
+  count: number;
+}
+
+// Activity stats type
+export interface ActivityStats {
+  totalActivities: number;
+  bySource: SourceStats[];
+  weeklyTrend: WeeklyStats[];
+  last30Days: number;
+}
+
+// Member detail type (extended member with additional fields)
+export interface MemberDetail extends Member {
+  topCollaborators?: Collaborator[];
+  activeRepositories?: RepositoryActivity[];
+  activityStats?: ActivityStats;
+}
+
+// Query variables for member detail
+export interface GetMemberDetailVariables {
+  name: string;
+}
+
+// Query response for member detail
+export interface GetMemberDetailResponse {
+  member: MemberDetail;
+}

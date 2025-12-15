@@ -732,7 +732,7 @@ class GitHubPluginMongo(DataSourcePlugin):
                 print(f"   📊 Using {len(members)} members from config")
                 if self.target_members:
                     print(f"      🎯 Filtered to target members: {', '.join([m['name'] for m in members])}")
-                return members
+            return members
         
         # Last resort: fetch from GitHub API
         print(f"   📊 Fetching members from GitHub API (organization members)")

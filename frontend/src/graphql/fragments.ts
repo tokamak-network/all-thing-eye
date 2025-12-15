@@ -59,3 +59,43 @@ export const PROJECT_FRAGMENT = gql`
     isActive
   }
 `;
+
+// Collaborator fragment
+export const COLLABORATOR_FRAGMENT = gql`
+  fragment CollaboratorFields on Collaborator {
+    memberName
+    collaborationCount
+    collaborationType
+    lastCollaboration
+  }
+`;
+
+// Repository activity fragment
+export const REPOSITORY_ACTIVITY_FRAGMENT = gql`
+  fragment RepositoryActivityFields on RepositoryActivity {
+    repository
+    commitCount
+    prCount
+    issueCount
+    lastActivity
+    additions
+    deletions
+  }
+`;
+
+// Activity stats fragment
+export const ACTIVITY_STATS_FRAGMENT = gql`
+  fragment ActivityStatsFields on ActivityStats {
+    totalActivities
+    bySource {
+      source
+      count
+      percentage
+    }
+    weeklyTrend {
+      weekStart
+      count
+    }
+    last30Days
+  }
+`;

@@ -303,7 +303,7 @@ export default function MembersPage() {
                   <tr key={member.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <button
-                        onClick={() => router.push(`/members/${member.id}`)}
+                        onClick={() => router.push(`/members/${member.name}`)}
                         className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
                       >
                         {member.name}

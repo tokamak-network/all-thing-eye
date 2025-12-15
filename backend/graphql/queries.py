@@ -180,6 +180,304 @@ async def get_activities_for_member(
     return activities[:limit]
 
 
+async def get_top_collaborators(
+    db,
+    member_name: str,
+    limit: int = 10
+) -> List:
+    """
+    Get top collaborators for a member using MongoDB aggregation.
+    
+    Analyzes GitHub PR reviews, co-authored commits, and Slack interactions.
+    """
+    from .types import Collaborator
+    from datetime import timezone as tz
+    
+    collaborators = {}
+    
+    # 1. GitHub PR Reviews (members who reviewed this member's PRs)
+    pipeline_pr_reviews = [
+        {'$match': {'author': member_name}},
+        {'$unwind': '$reviewers'},
+        {'$group': {
+            '_id': '$reviewers',
+            'count': {'$sum': 1},
+            'last_date': {'$max': '$created_at'}
+        }},
+        {'$match': {'_id': {'$ne': member_name}}},  # Exclude self
+        {'$sort': {'count': -1}},
+        {'$limit': limit * 2}
+    ]
+    
+    try:
+        async for doc in db['github_pull_requests'].aggregate(pipeline_pr_reviews):
+            reviewer = doc['_id']
+            if reviewer and reviewer != member_name:
+                if reviewer not in collaborators:
+                    collaborators[reviewer] = {
+                        'github': doc['count'],
+                        'slack': 0,
+                        'last_date': ensure_datetime(doc.get('last_date'))
+                    }
+                else:
+                    collaborators[reviewer]['github'] += doc['count']
+                    last_date = ensure_datetime(doc.get('last_date'))
+                    if last_date and (not collaborators[reviewer]['last_date'] or last_date > collaborators[reviewer]['last_date']):
+                        collaborators[reviewer]['last_date'] = last_date
+    except Exception as e:
+        print(f"Error fetching PR reviews: {e}")
+    
+    # 2. Slack Interactions (threads, mentions)
+    pipeline_slack = [
+        {'$match': {'user_name': member_name}},
+        {'$group': {
+            '_id': '$channel_id',
+            'messages': {'$push': {'ts': '$ts', 'thread_ts': '$thread_ts'}}
+        }}
+    ]
+    
+    try:
+        # Find who replied to this member's messages
+        async for doc in db['slack_messages'].aggregate([
+            {'$match': {'user_name': {'$ne': member_name}}},
+            {'$group': {
+                '_id': '$user_name',
+                'count': {'$sum': 1},
+                'last_date': {'$max': '$posted_at'}
+            }},
+            {'$sort': {'count': -1}},
+            {'$limit': limit * 2}
+        ]):
+            user = doc['_id']
+            if user and user != member_name:
+                if user not in collaborators:
+                    collaborators[user] = {
+                        'github': 0,
+                        'slack': doc['count'],
+                        'last_date': ensure_datetime(doc.get('last_date'))
+                    }
+                else:
+                    collaborators[user]['slack'] += doc['count']
+                    last_date = ensure_datetime(doc.get('last_date'))
+                    if last_date and (not collaborators[user]['last_date'] or last_date > collaborators[user]['last_date']):
+                        collaborators[user]['last_date'] = last_date
+    except Exception as e:
+        print(f"Error fetching Slack interactions: {e}")
+    
+    # Build result list
+    result = []
+    for name, data in collaborators.items():
+        github_count = data['github']
+        slack_count = data['slack']
+        total = github_count + slack_count
+        
+        if total > 0:
+            collab_type = 'both' if github_count > 0 and slack_count > 0 else ('github' if github_count > 0 else 'slack')
+            result.append(Collaborator(
+                member_name=name,
+                collaboration_count=total,
+                collaboration_type=collab_type,
+                last_collaboration=data['last_date']
+            ))
+    
+    # Sort by collaboration count and return top N
+    result.sort(key=lambda x: x.collaboration_count, reverse=True)
+    return result[:limit]
+
+
+async def get_active_repositories(
+    db,
+    member_name: str,
+    limit: int = 10
+) -> List:
+    """
+    Get repositories where member is active using MongoDB aggregation.
+    """
+    from .types import RepositoryActivity
+    
+    repos = {}
+    
+    # 1. Commits
+    pipeline_commits = [
+        {'$match': {'author_name': member_name}},
+        {'$group': {
+            '_id': '$repository',
+            'commit_count': {'$sum': 1},
+            'additions': {'$sum': '$additions'},
+            'deletions': {'$sum': '$deletions'},
+            'last_date': {'$max': '$date'}
+        }},
+        {'$sort': {'commit_count': -1}},
+        {'$limit': limit * 2}
+    ]
+    
+    try:
+        async for doc in db['github_commits'].aggregate(pipeline_commits):
+            repo = doc['_id']
+            if repo:
+                repos[repo] = {
+                    'commit_count': doc['commit_count'],
+                    'pr_count': 0,
+                    'issue_count': 0,
+                    'additions': doc.get('additions', 0),
+                    'deletions': doc.get('deletions', 0),
+                    'last_date': ensure_datetime(doc.get('last_date'))
+                }
+    except Exception as e:
+        print(f"Error fetching commit stats: {e}")
+    
+    # 2. Pull Requests
+    pipeline_prs = [
+        {'$match': {'author': member_name}},
+        {'$group': {
+            '_id': '$repository',
+            'pr_count': {'$sum': 1},
+            'last_date': {'$max': '$created_at'}
+        }},
+        {'$sort': {'pr_count': -1}},
+        {'$limit': limit * 2}
+    ]
+    
+    try:
+        async for doc in db['github_pull_requests'].aggregate(pipeline_prs):
+            repo = doc['_id']
+            if repo:
+                if repo not in repos:
+                    repos[repo] = {
+                        'commit_count': 0,
+                        'pr_count': doc['pr_count'],
+                        'issue_count': 0,
+                        'additions': 0,
+                        'deletions': 0,
+                        'last_date': ensure_datetime(doc.get('last_date'))
+                    }
+                else:
+                    repos[repo]['pr_count'] = doc['pr_count']
+                    last_date = ensure_datetime(doc.get('last_date'))
+                    if last_date and (not repos[repo]['last_date'] or last_date > repos[repo]['last_date']):
+                        repos[repo]['last_date'] = last_date
+    except Exception as e:
+        print(f"Error fetching PR stats: {e}")
+    
+    # Build result list
+    result = []
+    for repo, data in repos.items():
+        result.append(RepositoryActivity(
+            repository=repo,
+            commit_count=data['commit_count'],
+            pr_count=data['pr_count'],
+            issue_count=data['issue_count'],
+            additions=data['additions'],
+            deletions=data['deletions'],
+            last_activity=data['last_date']
+        ))
+    
+    # Sort by total activity (commits + PRs)
+    result.sort(key=lambda x: x.commit_count + x.pr_count, reverse=True)
+    return result[:limit]
+
+
+async def get_activity_stats(
+    db,
+    member_name: str
+) -> 'ActivityStats':
+    """
+    Get comprehensive activity statistics for a member.
+    """
+    from .types import ActivityStats, SourceStats, WeeklyStats
+    from datetime import datetime, timedelta, timezone as tz
+    
+    # Calculate date ranges
+    now = datetime.now(tz.utc)
+    thirty_days_ago = now - timedelta(days=30)
+    four_weeks_ago = now - timedelta(weeks=4)
+    
+    # Count by source
+    source_counts = {}
+    
+    # GitHub
+    github_commits = await db['github_commits'].count_documents({'author_name': member_name})
+    github_prs = await db['github_pull_requests'].count_documents({'author': member_name})
+    source_counts['github'] = github_commits + github_prs
+    
+    # Slack
+    source_counts['slack'] = await db['slack_messages'].count_documents({'user_name': member_name})
+    
+    # Notion
+    source_counts['notion'] = await db['notion_pages'].count_documents({
+        '$or': [
+            {'created_by.name': member_name},
+            {'last_edited_by.name': member_name}
+        ]
+    })
+    
+    # Drive
+    source_counts['drive'] = await db['drive_activities'].count_documents({'actor_name': member_name})
+    
+    total = sum(source_counts.values())
+    
+    # Build source stats with percentages
+    by_source = []
+    for source, count in source_counts.items():
+        percentage = (count / total * 100) if total > 0 else 0
+        by_source.append(SourceStats(
+            source=source,
+            count=count,
+            percentage=round(percentage, 2)
+        ))
+    
+    # Sort by count descending
+    by_source.sort(key=lambda x: x.count, reverse=True)
+    
+    # Weekly trend (last 4 weeks)
+    weekly_trend = []
+    for i in range(4):
+        week_start = four_weeks_ago + timedelta(weeks=i)
+        week_end = week_start + timedelta(weeks=1)
+        
+        # Count activities in this week
+        week_count = 0
+        week_count += await db['github_commits'].count_documents({
+            'author_name': member_name,
+            'date': {'$gte': week_start, '$lt': week_end}
+        })
+        week_count += await db['github_pull_requests'].count_documents({
+            'author': member_name,
+            'created_at': {'$gte': week_start, '$lt': week_end}
+        })
+        week_count += await db['slack_messages'].count_documents({
+            'user_name': member_name,
+            'posted_at': {'$gte': week_start, '$lt': week_end}
+        })
+        
+        weekly_trend.append(WeeklyStats(
+            week_start=week_start,
+            count=week_count
+        ))
+    
+    # Last 30 days count
+    last_30_days = 0
+    last_30_days += await db['github_commits'].count_documents({
+        'author_name': member_name,
+        'date': {'$gte': thirty_days_ago}
+    })
+    last_30_days += await db['github_pull_requests'].count_documents({
+        'author': member_name,
+        'created_at': {'$gte': thirty_days_ago}
+    })
+    last_30_days += await db['slack_messages'].count_documents({
+        'user_name': member_name,
+        'posted_at': {'$gte': thirty_days_ago}
+    })
+    
+    return ActivityStats(
+        total_activities=total,
+        by_source=by_source,
+        weekly_trend=weekly_trend,
+        last_30_days=last_30_days
+    )
+
+
 @strawberry.type
 class Query:
     """Root Query type for GraphQL API"""
@@ -204,7 +502,8 @@ class Query:
         db = info.context['db']
         
         members = []
-        async for doc in db['members'].find().skip(offset).limit(limit):
+        # Sort by name alphabetically (case-insensitive)
+        async for doc in db['members'].find().sort('name', 1).skip(offset).limit(limit):
             members.append(Member(
                 id=str(doc['_id']),
                 name=doc['name'],
