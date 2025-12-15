@@ -636,17 +636,24 @@ class Query:
         
         # Determine which sources to query
         # Handle both enum and string values
+        import time
+        request_id = int(time.time() * 1000) % 100000  # Last 5 digits of timestamp
+        
+        print(f"🔍 [{request_id}] ===== GraphQL Activities Query Start =====")
+        print(f"🔍 [{request_id}] Raw source param: {source} (type: {type(source).__name__})")
+        print(f"🔍 [{request_id}] Member: {member_name}")
+        print(f"🔍 [{request_id}] Project: {project_key}")
+        print(f"🔍 [{request_id}] Keyword: {keyword}")
+        print(f"🔍 [{request_id}] Date range: {start_date} ~ {end_date}")
+        
         if source:
             source_value = source.value if hasattr(source, 'value') else source
             # Convert to lowercase for consistent comparison
             sources = [source_value.lower()]
-            print(f"🔍 GraphQL Activities Filter - Source: {source} → {source_value} → {sources}")
+            print(f"🔍 [{request_id}] Source conversion: {source} → {source_value} → {sources}")
         else:
             sources = ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
-            print(f"🔍 GraphQL Activities Filter - No source filter, querying all sources")
-        
-        print(f"🔍 Member filter: {member_name}")
-        print(f"🔍 Project filter: {project_key}")
+            print(f"🔍 [{request_id}] No source filter, querying all: {sources}")
         
         activities = []
         
