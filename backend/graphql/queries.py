@@ -603,32 +603,36 @@ class Query:
                 project_repositories = project_doc.get('repositories', [])
         
         # Build mapping: identifier -> display name for ALL members (to resolve "Unknown")
+        # Uses the same structure as REST API's load_member_mappings
         identifier_to_member = {}
-        async for member_doc in db['members'].find():
-            display_name = member_doc.get('name', 'Unknown')
-            member_id = str(member_doc['_id'])
-            
-            # Get all identifiers for this member
-            async for id_doc in db['member_identifiers'].find({'member_id': member_id}):
-                source = id_doc.get('source', id_doc.get('identifier_type'))
-                value = id_doc.get('identifier_value')
-                if source and value:
-                    # Store: (source, value) -> display_name
-                    identifier_to_member[(source, value)] = display_name
+        member_to_identifiers = {}  # For filtering: member_name -> {source: [identifiers]}
         
-        # Get member identifiers if member_name is specified (for filtering)
+        async for id_doc in db['member_identifiers'].find():
+            source = id_doc.get('source')
+            identifier_value = id_doc.get('identifier_value')
+            display_name = id_doc.get('member_name')  # Direct member_name field!
+            
+            if source and identifier_value and display_name:
+                # Case-insensitive key for GitHub and email (like REST API)
+                if source in ['github', 'drive', 'email']:
+                    key = (source, identifier_value.lower())
+                else:
+                    key = (source, identifier_value)
+                
+                # Store mapping for display conversion
+                identifier_to_member[key] = display_name
+                
+                # Build reverse mapping for filtering
+                if display_name not in member_to_identifiers:
+                    member_to_identifiers[display_name] = {}
+                if source not in member_to_identifiers[display_name]:
+                    member_to_identifiers[display_name][source] = []
+                member_to_identifiers[display_name][source].append(identifier_value)
+        
+        # Get identifiers for the specified member (for filtering)
         member_identifiers = {}
-        if member_name:
-            # Find member by name
-            member_doc = await db['members'].find_one({'name': member_name})
-            if member_doc:
-                member_id = str(member_doc['_id'])
-                # Get all identifiers for this member
-                async for id_doc in db['member_identifiers'].find({'member_id': member_id}):
-                    source = id_doc.get('source', id_doc.get('identifier_type'))
-                    value = id_doc.get('identifier_value')
-                    if source and value:
-                        member_identifiers[source] = value
+        if member_name and member_name in member_to_identifiers:
+            member_identifiers = member_to_identifiers[member_name]
         
         # Determine which sources to query
         sources = [source.value] if source else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
@@ -639,10 +643,10 @@ class Query:
         if 'github' in sources:
             query = {}
             if member_name:
-                # Use GitHub username from identifiers if available
-                github_username = member_identifiers.get('github')
-                if github_username:
-                    query['author_name'] = github_username
+                # Use GitHub usernames from identifiers if available (REST API pattern)
+                github_usernames = member_identifiers.get('github', [])
+                if github_usernames:
+                    query['author_name'] = {'$in': github_usernames}
                 else:
                     # Fallback to display name
                     query['author_name'] = member_name
@@ -663,8 +667,11 @@ class Query:
                 if not timestamp:
                     continue
                 
-                # Convert GitHub username to display name
-                display_name = identifier_to_member.get(('github', author_name), author_name)
+                # Convert GitHub username to display name (case-insensitive like REST API)
+                display_name = identifier_to_member.get(('github', author_name.lower()), author_name)
+                # Capitalize first letter (REST API pattern)
+                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                    display_name = display_name[0].upper() + display_name[1:]
                 
                 activities.append(Activity(
                     id=str(doc['_id']),
@@ -689,10 +696,10 @@ class Query:
         if 'github' in sources:
             query = {}
             if member_name:
-                # Use GitHub username from identifiers if available
-                github_username = member_identifiers.get('github')
-                if github_username:
-                    query['author'] = github_username
+                # Use GitHub usernames from identifiers if available
+                github_usernames = member_identifiers.get('github', [])
+                if github_usernames:
+                    query['author'] = {'$in': github_usernames}
                 else:
                     # Fallback to display name
                     query['author'] = member_name
@@ -713,8 +720,11 @@ class Query:
                 if not timestamp:
                     continue
                 
-                # Convert GitHub username to display name
-                display_name = identifier_to_member.get(('github', author), author)
+                # Convert GitHub username to display name (case-insensitive)
+                display_name = identifier_to_member.get(('github', author.lower()), author)
+                # Capitalize first letter
+                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                    display_name = display_name[0].upper() + display_name[1:]
                 
                 activities.append(Activity(
                     id=str(doc['_id']),
@@ -741,10 +751,10 @@ class Query:
         if 'slack' in sources:
             query = {}
             if member_name:
-                # Use Slack username from identifiers if available
-                slack_username = member_identifiers.get('slack')
-                if slack_username:
-                    query['user_name'] = slack_username
+                # Use Slack usernames from identifiers if available
+                slack_usernames = member_identifiers.get('slack', [])
+                if slack_usernames:
+                    query['user_name'] = {'$in': slack_usernames}
                 else:
                     # Fallback to display name
                     query['user_name'] = member_name
@@ -765,6 +775,9 @@ class Query:
                 
                 # Convert Slack username to display name
                 display_name = identifier_to_member.get(('slack', user_name), user_name)
+                # Capitalize first letter
+                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                    display_name = display_name[0].upper() + display_name[1:]
                 
                 activities.append(Activity(
                     id=str(doc['_id']),
@@ -786,18 +799,18 @@ class Query:
         if 'notion' in sources:
             query = {}
             if member_name:
-                # Try to use Notion user_id or email from identifiers
-                notion_id = member_identifiers.get('notion') or member_identifiers.get('notion_user_id')
-                if notion_id:
+                # Try to use Notion IDs from identifiers
+                notion_ids = member_identifiers.get('notion', [])
+                if notion_ids:
                     query['$or'] = [
-                        {'created_by.id': notion_id},
-                        {'last_edited_by.id': notion_id}
+                        {'last_edited_by.id': {'$in': notion_ids}},
+                        {'created_by.id': {'$in': notion_ids}}
                     ]
                 else:
                     # Fallback to display name
                     query['$or'] = [
-                        {'created_by.name': member_name},
-                        {'last_edited_by.name': member_name}
+                        {'last_edited_by.name': member_name},
+                        {'created_by.name': member_name}
                     ]
             if start_date:
                 query['last_edited_time'] = {'$gte': start_date}
@@ -808,20 +821,23 @@ class Query:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
             
             async for doc in db['notion_pages'].find(query).sort('last_edited_time', -1).limit(limit * 2):
-                # Determine member name from created_by or last_edited_by
-                doc_member_name = member_name
-                if not doc_member_name:
-                    # Try to get from last_edited_by first, then created_by
-                    last_edited_by = doc.get('last_edited_by', {})
-                    created_by = doc.get('created_by', {})
-                    
-                    # Try to convert notion ID to display name
-                    notion_id = last_edited_by.get('id') or created_by.get('id')
-                    if notion_id:
-                        doc_member_name = identifier_to_member.get(('notion', notion_id), 
-                                                                   last_edited_by.get('name') or created_by.get('name', 'Unknown'))
-                    else:
-                        doc_member_name = last_edited_by.get('name') or created_by.get('name', 'Unknown')
+                # Get the person who actually made the action (last_edited_by preferred)
+                last_edited_by = doc.get('last_edited_by', {})
+                created_by = doc.get('created_by', {})
+                
+                # Priority: last_edited_by (the person who actually made the action)
+                notion_id = last_edited_by.get('id') or created_by.get('id')
+                fallback_name = last_edited_by.get('name') or created_by.get('name', 'Unknown')
+                
+                # Convert Notion ID to display name
+                if notion_id:
+                    doc_member_name = identifier_to_member.get(('notion', notion_id), fallback_name)
+                else:
+                    doc_member_name = fallback_name
+                
+                # Capitalize first letter
+                if doc_member_name and isinstance(doc_member_name, str) and len(doc_member_name) > 0:
+                    doc_member_name = doc_member_name[0].upper() + doc_member_name[1:]
                 
                 # Safely get timestamp
                 timestamp = ensure_datetime(doc.get('last_edited_time') or doc.get('created_time'))
@@ -850,11 +866,11 @@ class Query:
         if 'drive' in sources:
             query = {}
             if member_name:
-                # Try to use email from identifiers (Drive uses email)
-                email = member_identifiers.get('email') or member_identifiers.get('google_drive')
-                if email:
+                # Try to use emails from identifiers (Drive uses email)
+                emails = member_identifiers.get('email', []) or member_identifiers.get('drive', [])
+                if emails:
                     query['$or'] = [
-                        {'actor_email': email},
+                        {'actor_email': {'$in': emails}},
                         {'actor_name': member_name}
                     ]
                 else:
@@ -871,12 +887,17 @@ class Query:
                 # Safely get actor_name with fallback
                 actor_name = doc.get('actor_name') or doc.get('actor_email', 'Unknown')
                 
-                # Convert email to display name (Drive uses email)
+                # Convert email to display name (Drive uses email, case-insensitive)
                 actor_email = doc.get('actor_email')
                 if actor_email:
-                    display_name = identifier_to_member.get(('email', actor_email), actor_name)
+                    display_name = identifier_to_member.get(('email', actor_email.lower()), 
+                                                           identifier_to_member.get(('drive', actor_email.lower()), actor_name))
                 else:
                     display_name = actor_name
+                
+                # Capitalize first letter
+                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                    display_name = display_name[0].upper() + display_name[1:]
                 
                 # Safely get timestamp (time field might not exist)
                 timestamp = ensure_datetime(doc.get('time') or doc.get('timestamp') or doc.get('created_at'))
