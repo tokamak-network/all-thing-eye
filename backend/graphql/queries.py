@@ -635,7 +635,12 @@ class Query:
             member_identifiers = member_to_identifiers[member_name]
         
         # Determine which sources to query
-        sources = [source.value] if source else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
+        # Handle both enum and string values
+        if source:
+            source_value = source.value if hasattr(source, 'value') else source
+            sources = [source_value]
+        else:
+            sources = ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
         
         activities = []
         
