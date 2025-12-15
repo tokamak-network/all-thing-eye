@@ -778,8 +778,8 @@ export default function ActivitiesPage() {
     normalizedSource: normalizeSourceType(sourceFilter),
     memberFilter,
     projectFilter,
-    variables: activitiesVariables,
   });
+  console.log("🔍 GraphQL Variables being sent:", JSON.stringify(activitiesVariables, null, 2));
 
   const {
     data: activitiesData,

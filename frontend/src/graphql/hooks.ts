@@ -63,6 +63,10 @@ export function useMember(
 export function useActivities(
   variables?: GetActivitiesVariables
 ): QueryResult<GetActivitiesResponse, GetActivitiesVariables> {
+  // Debug: Log which component is calling useActivities
+  console.log("🔍 useActivities called with variables:", JSON.stringify(variables, null, 2));
+  console.trace("Call stack:");
+  
   return useQuery<GetActivitiesResponse, GetActivitiesVariables>(
     GET_ACTIVITIES,
     {
