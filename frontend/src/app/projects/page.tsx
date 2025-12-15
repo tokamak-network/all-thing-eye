@@ -1,14 +1,15 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import apiClient from '@/lib/api';
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import apiClient from "@/lib/api";
+import { useProjects, useMembers } from "@/graphql/hooks";
 import {
   PlusIcon,
   PencilIcon,
   TrashIcon,
   FolderIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface Project {
   id: string;
@@ -44,86 +45,91 @@ interface ProjectListResponse {
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const [data, setData] = useState<ProjectListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activeOnly, setActiveOnly] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [activeOnly, setActiveOnly] = useState(true);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // GraphQL queries (READ operations)
+  const {
+    data: projectsData,
+    loading,
+    error: projectsError,
+    refetch: refetchProjects,
+  } = useProjects({ isActive: activeOnly });
+  const { data: membersData } = useMembers({ limit: 1000 });
+
+  // Transform GraphQL data to REST API format
+  const projects = (projectsData?.projects || []).map((p) => ({
+    id: p.id,
+    key: p.key,
+    name: p.name,
+    description: p.description,
+    slack_channel: p.slackChannel,
+    slack_channel_id: undefined,
+    lead: undefined,
+    repositories: p.repositories || [],
+    repositories_synced_at: undefined,
+    github_team_slug: undefined,
+    drive_folders: [],
+    notion_page_ids: [],
+    notion_parent_page_id: undefined,
+    sub_projects: [],
+    member_ids: [],
+    is_active: p.isActive,
+    created_at: "",
+    updated_at: "",
+  }));
+
+  const data = {
+    total: projects.length,
+    projects,
+  };
+
+  const error = projectsError?.message || localError;
+
+  // Transform GraphQL members to REST API format
+  const allMembers: Member[] = (membersData?.members || []).map((m) => ({
+    id: m.id,
+    name: m.name,
+    email: m.email,
+  }));
 
   // Form state
   const [formData, setFormData] = useState({
-    key: '',
-    name: '',
-    description: '',
-    lead: '',
-    github_team_slug: '',
+    key: "",
+    name: "",
+    description: "",
+    lead: "",
+    github_team_slug: "",
     repositories: [] as string[],
     drive_folders: [] as string[],
-    notion_parent_page_id: '',
+    notion_parent_page_id: "",
     member_ids: [] as string[],
     is_active: true,
   });
 
-  const [newDriveFolder, setNewDriveFolder] = useState('');
-  const [newNotionRoot, setNewNotionRoot] = useState('');
-  const [allMembers, setAllMembers] = useState<Member[]>([]);
-  const [memberSearchTerm, setMemberSearchTerm] = useState('');
+  const [newDriveFolder, setNewDriveFolder] = useState("");
+  const [newNotionRoot, setNewNotionRoot] = useState("");
+  const [memberSearchTerm, setMemberSearchTerm] = useState("");
   const [showMemberSelector, setShowMemberSelector] = useState(false);
-
-  const fetchProjects = useCallback(async () => {
-      try {
-        setLoading(true);
-      setError(null);
-      const response = await apiClient.getProjectsManagement(activeOnly);
-        setData(response);
-      } catch (err: any) {
-        console.error('Error fetching projects:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to fetch projects');
-      } finally {
-        setLoading(false);
-      }
-  }, [activeOnly]);
-
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
-
-  // Fetch all members for member selector
-  useEffect(() => {
-    async function fetchMembers() {
-      try {
-        const response = await apiClient.getMembers({ limit: 1000 });
-        // Handle both response formats: {members: []} or []
-        const members = Array.isArray(response) ? response : (response.members || []);
-        setAllMembers(members.map((m: any) => ({
-          id: m.id || String(m._id),
-          name: m.name || '',
-          email: m.email || ''
-        })));
-      } catch (err: any) {
-        console.error('Error fetching members:', err);
-      }
-    }
-    fetchMembers();
-  }, []);
 
   function openCreateModal() {
     setEditingProject(null);
     setFormData({
-      key: '',
-      name: '',
-      description: '',
-      lead: '',
-      github_team_slug: '',
+      key: "",
+      name: "",
+      description: "",
+      lead: "",
+      github_team_slug: "",
       repositories: [],
       drive_folders: [],
-      notion_parent_page_id: '',
+      notion_parent_page_id: "",
       member_ids: [],
       is_active: true,
     });
-    setNewDriveFolder('');
-    setNewNotionRoot('');
+    setNewDriveFolder("");
+    setNewNotionRoot("");
     setShowCreateModal(true);
   }
 
@@ -132,26 +138,26 @@ export default function ProjectsPage() {
     setFormData({
       key: project.key,
       name: project.name,
-      description: project.description || '',
-      lead: project.lead || '',
-      github_team_slug: project.github_team_slug || '',
+      description: project.description || "",
+      lead: project.lead || "",
+      github_team_slug: project.github_team_slug || "",
       repositories: project.repositories || [],
       drive_folders: project.drive_folders || [],
-      notion_parent_page_id: project.notion_parent_page_id || '',
+      notion_parent_page_id: project.notion_parent_page_id || "",
       member_ids: project.member_ids || [],
       is_active: project.is_active,
     });
-    setNewDriveFolder('');
-    setNewNotionRoot(project.notion_parent_page_id || '');
+    setNewDriveFolder("");
+    setNewNotionRoot(project.notion_parent_page_id || "");
     setShowCreateModal(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      setError(null);
+      setLocalError(null);
       if (editingProject) {
-        // Update existing project
+        // Update existing project (REST API - mutations not implemented yet)
         await apiClient.updateProject(editingProject.key, {
           name: formData.name,
           description: formData.description || undefined,
@@ -167,10 +173,10 @@ export default function ProjectsPage() {
         // Generate key from name: "Project OOO" -> "project-ooo"
         const generatedKey = formData.name
           .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        
-        // Create new project
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+
+        // Create new project (REST API - mutations not implemented yet)
         await apiClient.createProject({
           key: generatedKey,
           name: formData.name,
@@ -185,33 +191,45 @@ export default function ProjectsPage() {
         });
       }
       setShowCreateModal(false);
-      fetchProjects();
+
+      // Refetch projects from GraphQL
+      await refetchProjects();
     } catch (err: any) {
-      console.error('Error saving project:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to save project');
+      console.error("Error saving project:", err);
+      setLocalError(
+        err.response?.data?.detail || err.message || "Failed to save project"
+      );
     }
   }
 
   async function handleDelete(projectKey: string) {
-    if (!confirm(`Are you sure you want to delete project "${projectKey}"? This will deactivate the project.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to delete project "${projectKey}"? This will deactivate the project.`
+      )
+    ) {
       return;
     }
     try {
-      setError(null);
+      setLocalError(null);
+      // Delete project (REST API - mutations not implemented yet)
       await apiClient.deleteProject(projectKey);
-      fetchProjects();
+
+      // Refetch projects from GraphQL
+      await refetchProjects();
     } catch (err: any) {
-      console.error('Error deleting project:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to delete project');
+      console.error("Error deleting project:", err);
+      setLocalError(
+        err.response?.data?.detail || err.message || "Failed to delete project"
+      );
     }
   }
-
 
   // Extract folder ID from Drive URL
   function extractDriveFolderId(urlOrId: string): string {
     const trimmed = urlOrId.trim();
     // If it's already just an ID (no slashes), return as is
-    if (!trimmed.includes('/')) {
+    if (!trimmed.includes("/")) {
       return trimmed;
     }
     // Extract from URL: https://drive.google.com/drive/folders/FOLDER_ID
@@ -223,8 +241,8 @@ export default function ProjectsPage() {
   function extractNotionPageId(urlOrId: string): string {
     const trimmed = urlOrId.trim();
     // If it's already just an ID (32 hex chars, possibly with dashes), return as is
-    if (/^[a-f0-9]{32}$/i.test(trimmed.replace(/-/g, ''))) {
-      return trimmed.replace(/-/g, '');
+    if (/^[a-f0-9]{32}$/i.test(trimmed.replace(/-/g, ""))) {
+      return trimmed.replace(/-/g, "");
     }
     // Extract from URL: https://www.notion.so/workspace/Page-Title-PAGE_ID
     // Notion URLs can have format: https://www.notion.so/[workspace]/[title]-[32-char-id]
@@ -240,7 +258,7 @@ export default function ProjectsPage() {
           ...formData,
           drive_folders: [...formData.drive_folders, folderId],
         });
-        setNewDriveFolder('');
+        setNewDriveFolder("");
       }
     }
   }
@@ -262,7 +280,7 @@ export default function ProjectsPage() {
     } else {
       setFormData({
         ...formData,
-        notion_parent_page_id: '',
+        notion_parent_page_id: "",
       });
     }
   }
@@ -271,17 +289,17 @@ export default function ProjectsPage() {
     setFormData({
       ...formData,
       member_ids: formData.member_ids.includes(memberId)
-        ? formData.member_ids.filter(id => id !== memberId)
+        ? formData.member_ids.filter((id) => id !== memberId)
         : [...formData.member_ids, memberId],
     });
   }
 
   // Filter members based on search term
-  const filteredMembers = allMembers.filter(member =>
-    member.name.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
-    member.email?.toLowerCase().includes(memberSearchTerm.toLowerCase())
+  const filteredMembers = allMembers.filter(
+    (member) =>
+      member.name.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+      member.email?.toLowerCase().includes(memberSearchTerm.toLowerCase())
   );
-
 
   if (loading && !data) {
     return (
@@ -291,36 +309,45 @@ export default function ProjectsPage() {
     );
   }
 
-    return (
+  return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
-      {/* TBD Banner */}
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-        <div className="flex items-center">
-          <div className="flex-shrink-0">
-            <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <p className="text-sm text-yellow-700">
-              <span className="font-bold">TBD (To Be Determined)</span> - This page is currently under development.
-            </p>
+        {/* TBD Banner */}
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg
+                className="h-5 w-5 text-yellow-400"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                <span className="font-bold">TBD (To Be Determined)</span> - This
+                page is currently under development.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Header */}
+        {/* Header */}
         <div className="flex justify-between items-center mb-8">
-      <div>
+          <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
               <FolderIcon className="h-8 w-8 text-blue-600" />
               Projects Management
             </h1>
             <p className="text-gray-600 mt-2">
               Manage project configurations and settings
-        </p>
-      </div>
+            </p>
+          </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2">
               <input
@@ -374,15 +401,17 @@ export default function ProjectsPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-        {data?.projects.map((project) => (
+                {data?.projects.map((project) => (
                   <tr key={project.key} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <button
-                          onClick={() => router.push(`/projects/${project.key}`)}
+                          onClick={() =>
+                            router.push(`/projects/${project.key}`)
+                          }
                           className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
                         >
-                  {project.name}
+                          {project.name}
                         </button>
                         <div className="text-sm text-gray-500">
                           {project.key}
@@ -395,10 +424,12 @@ export default function ProjectsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {project.lead || '-'}
+                      {project.lead || "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {project.slack_channel ? `#${project.slack_channel}` : '-'}
+                      {project.slack_channel
+                        ? `#${project.slack_channel}`
+                        : "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -406,7 +437,10 @@ export default function ProjectsPage() {
                       </div>
                       {project.repositories_synced_at && (
                         <div className="text-xs text-gray-500">
-                          Synced: {new Date(project.repositories_synced_at).toLocaleDateString()}
+                          Synced:{" "}
+                          {new Date(
+                            project.repositories_synced_at
+                          ).toLocaleDateString()}
                         </div>
                       )}
                     </td>
@@ -414,11 +448,11 @@ export default function ProjectsPage() {
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           project.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
                         }`}
                       >
-                        {project.is_active ? 'Active' : 'Inactive'}
+                        {project.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -448,16 +482,18 @@ export default function ProjectsPage() {
           {data?.projects.length === 0 && (
             <div className="text-center py-12">
               <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No projects found</h3>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">
+                No projects found
+              </h3>
               <p className="mt-1 text-sm text-gray-500">
                 {activeOnly
-                  ? 'No active projects are configured yet.'
-                  : 'No projects are configured yet.'}
+                  ? "No active projects are configured yet."
+                  : "No projects are configured yet."}
               </p>
             </div>
           )}
-              </div>
-              
+        </div>
+
         {/* Create/Edit Modal */}
         {showCreateModal && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -465,15 +501,25 @@ export default function ProjectsPage() {
               <div className="mt-3">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-medium text-gray-900">
-                    {editingProject ? 'Edit Project' : 'Create New Project'}
+                    {editingProject ? "Edit Project" : "Create New Project"}
                   </h3>
                   <button
                     onClick={() => setShowCreateModal(false)}
                     className="text-gray-400 hover:text-gray-500"
                   >
                     <span className="sr-only">Close</span>
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -487,19 +533,26 @@ export default function ProjectsPage() {
                       type="text"
                       required
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                       placeholder="Project OOO"
                     />
                   </div>
 
-                <div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700">
                       Description
                     </label>
                     <textarea
                       value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          description: e.target.value,
+                        })
+                      }
                       rows={3}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                       placeholder="Project description..."
@@ -514,7 +567,9 @@ export default function ProjectsPage() {
                       <input
                         type="text"
                         value={formData.lead}
-                        onChange={(e) => setFormData({ ...formData, lead: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, lead: e.target.value })
+                        }
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                         placeholder="John Doe"
                       />
@@ -526,12 +581,17 @@ export default function ProjectsPage() {
                       <input
                         type="text"
                         value={formData.github_team_slug}
-                        onChange={(e) => setFormData({ ...formData, github_team_slug: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            github_team_slug: e.target.value,
+                          })
+                        }
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                         placeholder="project-ooo"
                       />
                     </div>
-                </div>
+                  </div>
 
                   {/* GitHub Repositories */}
                   <div>
@@ -542,15 +602,26 @@ export default function ProjectsPage() {
                     </div>
                     <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-3">
                       <div className="flex items-start gap-2">
-                        <svg className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <svg
+                          className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
                         </svg>
                         <div className="flex-1">
                           <p className="text-sm text-blue-800 font-medium mb-1">
-                            Repositories are automatically synced from GitHub Teams
+                            Repositories are automatically synced from GitHub
+                            Teams
                           </p>
                           <p className="text-xs text-blue-700 mb-2">
-                            Repositories are managed on{' '}
+                            Repositories are managed on{" "}
                             <a
                               href="https://github.com/orgs/tokamak-network/teams"
                               target="_blank"
@@ -558,8 +629,12 @@ export default function ProjectsPage() {
                               className="underline hover:text-blue-900 font-medium"
                             >
                               GitHub Teams page
-                            </a>
-                            {' '}for the team &quot;{formData.github_team_slug || formData.key}&quot;. The data collector automatically syncs repositories from GitHub Teams to the database every day at midnight (KST).
+                            </a>{" "}
+                            for the team &quot;
+                            {formData.github_team_slug || formData.key}&quot;.
+                            The data collector automatically syncs repositories
+                            from GitHub Teams to the database every day at
+                            midnight (KST).
                           </p>
                         </div>
                       </div>
@@ -576,10 +651,12 @@ export default function ProjectsPage() {
                     </div>
                     {formData.repositories.length === 0 && (
                       <p className="text-xs text-gray-500 mt-2">
-                        No repositories found. Add repositories to the GitHub team and they will be automatically synced at midnight (KST).
+                        No repositories found. Add repositories to the GitHub
+                        team and they will be automatically synced at midnight
+                        (KST).
                       </p>
-                )}
-              </div>
+                    )}
+                  </div>
 
                   {/* Google Drive Root Folder */}
                   <div>
@@ -587,7 +664,9 @@ export default function ProjectsPage() {
                       Google Drive Root Folder
                     </label>
                     <p className="text-xs text-gray-500 mb-2">
-                      Enter the root folder URL or ID for this project. All activities in this folder and its subfolders will be associated with this project.
+                      Enter the root folder URL or ID for this project. All
+                      activities in this folder and its subfolders will be
+                      associated with this project.
                     </p>
                     <div className="flex gap-2 mb-2">
                       <input
@@ -595,7 +674,7 @@ export default function ProjectsPage() {
                         value={newDriveFolder}
                         onChange={(e) => setNewDriveFolder(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === "Enter") {
                             e.preventDefault();
                             addDriveFolder();
                           }
@@ -644,7 +723,8 @@ export default function ProjectsPage() {
                       Notion Root Page
                     </label>
                     <p className="text-xs text-gray-500 mb-2">
-                      Enter the root page URL or ID for this project. All pages under this root page will be associated with this project.
+                      Enter the root page URL or ID for this project. All pages
+                      under this root page will be associated with this project.
                     </p>
                     <div className="flex gap-2">
                       <input
@@ -660,7 +740,10 @@ export default function ProjectsPage() {
                       <div className="mt-2">
                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
                           <a
-                            href={`https://www.notion.so/${formData.notion_parent_page_id.replace(/-/g, '')}`}
+                            href={`https://www.notion.so/${formData.notion_parent_page_id.replace(
+                              /-/g,
+                              ""
+                            )}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="hover:underline"
@@ -670,8 +753,11 @@ export default function ProjectsPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setNewNotionRoot('');
-                              setFormData({ ...formData, notion_parent_page_id: '' });
+                              setNewNotionRoot("");
+                              setFormData({
+                                ...formData,
+                                notion_parent_page_id: "",
+                              });
                             }}
                             className="text-purple-600 hover:text-purple-800"
                           >
@@ -697,7 +783,9 @@ export default function ProjectsPage() {
                           value={memberSearchTerm}
                           onChange={(e) => setMemberSearchTerm(e.target.value)}
                           onFocus={() => setShowMemberSelector(true)}
-                          onBlur={() => setTimeout(() => setShowMemberSelector(false), 200)}
+                          onBlur={() =>
+                            setTimeout(() => setShowMemberSelector(false), 200)
+                          }
                           className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                           placeholder="Search members..."
                         />
@@ -711,13 +799,19 @@ export default function ProjectsPage() {
                             >
                               <input
                                 type="checkbox"
-                                checked={formData.member_ids.includes(member.id)}
+                                checked={formData.member_ids.includes(
+                                  member.id
+                                )}
                                 onChange={() => toggleMember(member.id)}
                                 className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                               />
-                              <span className="text-sm text-gray-900">{member.name}</span>
+                              <span className="text-sm text-gray-900">
+                                {member.name}
+                              </span>
                               {member.email && (
-                                <span className="text-xs text-gray-500">({member.email})</span>
+                                <span className="text-xs text-gray-500">
+                                  ({member.email})
+                                </span>
                               )}
                             </label>
                           ))}
@@ -727,7 +821,9 @@ export default function ProjectsPage() {
                     {formData.member_ids.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {formData.member_ids.map((memberId) => {
-                          const member = allMembers.find(m => m.id === memberId);
+                          const member = allMembers.find(
+                            (m) => m.id === memberId
+                          );
                           return member ? (
                             <span
                               key={memberId}
@@ -752,7 +848,12 @@ export default function ProjectsPage() {
                     <input
                       type="checkbox"
                       checked={formData.is_active}
-                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          is_active: e.target.checked,
+                        })
+                      }
                       className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
                     <label className="ml-2 block text-sm text-gray-700">
@@ -772,7 +873,7 @@ export default function ProjectsPage() {
                       type="submit"
                       className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                     >
-                      {editingProject ? 'Update' : 'Create'}
+                      {editingProject ? "Update" : "Create"}
                     </button>
                   </div>
                 </form>

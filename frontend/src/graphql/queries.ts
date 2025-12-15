@@ -46,6 +46,8 @@ export const GET_ACTIVITIES = gql`
     $memberName: String
     $startDate: DateTime
     $endDate: DateTime
+    $keyword: String
+    $projectKey: String
     $limit: Int
     $offset: Int
   ) {
@@ -54,6 +56,8 @@ export const GET_ACTIVITIES = gql`
       memberName: $memberName
       startDate: $startDate
       endDate: $endDate
+      keyword: $keyword
+      projectKey: $projectKey
       limit: $limit
       offset: $offset
     ) {
@@ -85,8 +89,8 @@ export const GET_ACTIVITY_SUMMARY = gql`
 // Get projects
 export const GET_PROJECTS = gql`
   ${PROJECT_FRAGMENT}
-  query GetProjects($activeOnly: Boolean) {
-    projects(activeOnly: $activeOnly) {
+  query GetProjects($isActive: Boolean) {
+    projects(isActive: $isActive) {
       ...ProjectFields
       memberCount
     }
@@ -122,4 +126,3 @@ export const GET_MEMBERS_WITH_ACTIVITIES = gql`
     }
   }
 `;
-

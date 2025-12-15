@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api as apiClient } from "@/lib/api";
+import { useMembers } from "@/graphql/hooks";
 import {
   UserGroupIcon,
   PlusIcon,
@@ -45,16 +46,34 @@ interface MemberFormData {
 
 export default function MembersPage() {
   const router = useRouter();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
+
+  // GraphQL query for members (READ operation)
+  const { data, loading, error: graphqlError, refetch } = useMembers();
+
+  // Transform GraphQL members to REST API format
+  const members: Member[] = (data?.members || []).map((gqlMember) => ({
+    id: gqlMember.id, // MongoDB ObjectId from GraphQL
+    name: gqlMember.name,
+    email: gqlMember.email || "",
+    role: gqlMember.role,
+    project: gqlMember.team, // GraphQL uses 'team' instead of 'project'
+    eoa_address: gqlMember.eoaAddress, // Convert camelCase to snake_case
+    identifiers: {
+      email: gqlMember.email,
+      github: gqlMember.githubUsername,
+      slack: gqlMember.slackId,
+      notion: gqlMember.notionId,
+    },
+  }));
+
+  const error = graphqlError?.message || null;
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [deletingMember, setDeletingMember] = useState<Member | null>(null);
-  
+
   // Form states
   const [formData, setFormData] = useState<MemberFormData>({
     name: "",
@@ -68,25 +87,6 @@ export default function MembersPage() {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  // Load members
-  const loadMembers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await apiClient.getMembers();
-      setMembers(data);
-    } catch (err: any) {
-      console.error("Error loading members:", err);
-      setError(err.message || "Failed to load members");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadMembers();
-  }, []);
 
   // Open modal for creating new member
   const openCreateModal = () => {
@@ -108,7 +108,7 @@ export default function MembersPage() {
   // Open modal for editing existing member
   const openEditModal = (member: Member) => {
     setEditingMember(member);
-    
+
     // Extract identifiers - handle both old format (identifier_type keys) and new format (source keys)
     const getIdentifier = (source: string): string => {
       // Try source key first (new format: github, slack, notion, drive)
@@ -132,7 +132,7 @@ export default function MembersPage() {
       }
       return "";
     };
-    
+
     setFormData({
       name: member.name,
       email: member.email,
@@ -162,19 +162,21 @@ export default function MembersPage() {
 
     try {
       if (editingMember) {
-        // Update existing member
+        // Update existing member (REST API - mutations not implemented yet)
         await apiClient.updateMember(editingMember.id, formData);
       } else {
-        // Create new member
+        // Create new member (REST API - mutations not implemented yet)
         await apiClient.createMember(formData);
       }
-      
-      // Reload members and close modal
-      await loadMembers();
+
+      // Refetch members from GraphQL
+      await refetch();
       closeModal();
     } catch (err: any) {
       console.error("Error saving member:", err);
-      setFormError(err.response?.data?.detail || err.message || "Failed to save member");
+      setFormError(
+        err.response?.data?.detail || err.message || "Failed to save member"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -198,12 +200,18 @@ export default function MembersPage() {
 
     setSubmitting(true);
     try {
+      // Delete member (REST API - mutations not implemented yet)
       await apiClient.deleteMember(deletingMember.id);
-      await loadMembers();
+
+      // Refetch members from GraphQL
+      await refetch();
       closeDeleteDialog();
     } catch (err: any) {
       console.error("Error deleting member:", err);
-      setError(err.response?.data?.detail || err.message || "Failed to delete member");
+      // Note: GraphQL error state is separate, this sets local error for delete operation
+      alert(
+        err.response?.data?.detail || err.message || "Failed to delete member"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -282,8 +290,12 @@ export default function MembersPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {members.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                    No members found. Click &quot;Add Member&quot; to create one.
+                  <td
+                    colSpan={7}
+                    className="px-6 py-12 text-center text-gray-500"
+                  >
+                    No members found. Click &quot;Add Member&quot; to create
+                    one.
                   </td>
                 </tr>
               ) : (
@@ -298,7 +310,9 @@ export default function MembersPage() {
                       </button>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">{member.email}</div>
+                      <div className="text-sm text-gray-600">
+                        {member.email}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {member.identifiers.github ? (
@@ -539,7 +553,11 @@ export default function MembersPage() {
                   disabled={submitting}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {submitting ? "Saving..." : editingMember ? "Update" : "Create"}
+                  {submitting
+                    ? "Saving..."
+                    : editingMember
+                    ? "Update"
+                    : "Create"}
                 </button>
               </div>
             </form>
@@ -555,8 +573,9 @@ export default function MembersPage() {
               Delete Member
             </h2>
             <p className="text-gray-600 mb-6">
-              Are you sure you want to delete <strong>{deletingMember.name}</strong>? 
-              This action cannot be undone.
+              Are you sure you want to delete{" "}
+              <strong>{deletingMember.name}</strong>? This action cannot be
+              undone.
             </p>
             <div className="flex justify-end gap-3">
               <button

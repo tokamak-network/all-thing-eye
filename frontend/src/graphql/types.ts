@@ -10,11 +10,13 @@ export enum SourceType {
   SLACK = "SLACK",
   NOTION = "NOTION",
   DRIVE = "DRIVE",
-  RECORDING = "RECORDING",
+  RECORDINGS = "RECORDINGS",
+  RECORDINGS_DAILY = "RECORDINGS_DAILY",
 }
 
-// Member type
+// Member type (GraphQL)
 export interface Member {
+  id: string;
   name: string;
   email?: string;
   role?: string;
@@ -34,6 +36,7 @@ export interface Activity {
   sourceType: string;
   activityType: string;
   timestamp: string;
+  metadata: Record<string, any>; // JSON metadata field
   message?: string;
   repository?: string;
   url?: string;
@@ -75,6 +78,8 @@ export interface GetActivitiesVariables {
   memberName?: string;
   startDate?: string;
   endDate?: string;
+  keyword?: string;
+  projectKey?: string;
   limit?: number;
   offset?: number;
 }
@@ -87,7 +92,7 @@ export interface GetActivitySummaryVariables {
 }
 
 export interface GetProjectsVariables {
-  activeOnly?: boolean;
+  isActive?: boolean;
 }
 
 export interface GetProjectVariables {
@@ -127,4 +132,3 @@ export interface GetProjectResponse {
 export interface GetMembersWithActivitiesResponse {
   members: Member[];
 }
-

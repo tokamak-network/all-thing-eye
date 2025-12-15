@@ -5,11 +5,86 @@ Implements query resolvers for fetching data from MongoDB.
 """
 
 import strawberry
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 from datetime import datetime
 from bson import ObjectId
 
 from .types import Member, Activity, Project, SourceType, ActivitySummary
+
+
+def ensure_datetime(value: Any) -> Optional[datetime]:
+    """
+    Ensure a value is converted to timezone-aware datetime object in UTC.
+    
+    Args:
+        value: Timestamp value (datetime, string, or None)
+        
+    Returns:
+        Timezone-aware datetime object in UTC or None if conversion fails
+    """
+    from datetime import timezone
+    
+    if value is None:
+        return None
+    
+    if isinstance(value, datetime):
+        # If already timezone-aware, convert to UTC
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc)
+        # If naive, assume UTC
+        else:
+            return value.replace(tzinfo=timezone.utc)
+    
+    if isinstance(value, str):
+        try:
+            # Try ISO format
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            # Ensure timezone-aware
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except:
+            try:
+                # Try other common formats (assume UTC)
+                dt = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                return dt.replace(tzinfo=timezone.utc)
+            except:
+                return None
+    
+    return None
+
+
+def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize metadata for JSON serialization.
+    
+    Converts datetime objects and ObjectIds to strings.
+    
+    Args:
+        metadata: Raw metadata dictionary from MongoDB
+        
+    Returns:
+        Sanitized metadata dictionary safe for JSON serialization
+    """
+    sanitized = {}
+    for key, value in metadata.items():
+        if isinstance(value, datetime):
+            sanitized[key] = value.isoformat()
+        elif isinstance(value, ObjectId):
+            sanitized[key] = str(value)
+        elif isinstance(value, dict):
+            sanitized[key] = sanitize_metadata(value)
+        elif isinstance(value, list):
+            sanitized[key] = [
+                sanitize_metadata(item) if isinstance(item, dict) else
+                item.isoformat() if isinstance(item, datetime) else
+                str(item) if isinstance(item, ObjectId) else
+                item
+                for item in value
+            ]
+        else:
+            sanitized[key] = value
+    return sanitized
 
 
 async def get_activities_for_member(
@@ -46,14 +121,14 @@ async def get_activities_for_member(
                 source_type='github',
                 activity_type='commit',
                 timestamp=timestamp,
-                metadata={
+                metadata=sanitize_metadata({
                     'sha': doc.get('sha'),
                     'message': doc.get('message'),
                     'repository': doc.get('repository'),
                     'additions': doc.get('additions', 0),
                     'deletions': doc.get('deletions', 0),
                     'url': doc.get('url')
-                }
+                })
             ))
     
     # GitHub PRs
@@ -70,13 +145,13 @@ async def get_activities_for_member(
                 source_type='github',
                 activity_type='pull_request',
                 timestamp=timestamp,
-                metadata={
+                metadata=sanitize_metadata({
                     'number': doc.get('number'),
                     'title': doc.get('title'),
                     'state': doc.get('state'),
                     'repository': doc.get('repository'),
                     'url': doc.get('url')
-                }
+                })
             ))
     
     # Slack messages
@@ -196,6 +271,7 @@ class Query:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         keyword: Optional[str] = None,
+        project_key: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
     ) -> List[Activity]:
@@ -203,7 +279,7 @@ class Query:
         Query activities with flexible filtering.
         
         This is the main query for fetching team activities across all sources.
-        Supports filtering by source, member, date range, and keyword search.
+        Supports filtering by source, member, date range, keyword search, and project.
         
         Args:
             source: Filter by data source (github, slack, notion, drive)
@@ -211,6 +287,7 @@ class Query:
             start_date: Filter activities after this date
             end_date: Filter activities before this date
             keyword: Search in messages/titles
+            project_key: Filter by project key (filters GitHub by repositories)
             limit: Maximum number of activities to return (default: 100)
             offset: Number of activities to skip (default: 0)
             
@@ -219,8 +296,15 @@ class Query:
         """
         db = info.context['db']
         
+        # Get project repositories if project_key is specified
+        project_repositories = []
+        if project_key:
+            project_doc = await db['projects'].find_one({'key': project_key})
+            if project_doc:
+                project_repositories = project_doc.get('repositories', [])
+        
         # Determine which sources to query
-        sources = [source.value] if source else ['github', 'slack', 'notion', 'drive']
+        sources = [source.value] if source else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
         
         activities = []
         
@@ -236,11 +320,13 @@ class Query:
                 query['date']['$lte'] = end_date
             if keyword:
                 query['message'] = {'$regex': keyword, '$options': 'i'}
+            if project_repositories:
+                query['repository'] = {'$in': project_repositories}
             
             async for doc in db['github_commits'].find(query).sort('date', -1).limit(limit * 2):
                 # Safely get required fields
                 author_name = doc.get('author_name') or doc.get('author', 'Unknown')
-                timestamp = doc.get('date') or doc.get('committed_date')
+                timestamp = ensure_datetime(doc.get('date') or doc.get('committed_date'))
                 if not timestamp:
                     continue
                 
@@ -250,14 +336,17 @@ class Query:
                     source_type='github',
                     activity_type='commit',
                     timestamp=timestamp,
-                    metadata={
+                    metadata=sanitize_metadata({
                         'sha': doc.get('sha'),
                         'message': doc.get('message'),
                         'repository': doc.get('repository'),
                         'additions': doc.get('additions', 0),
                         'deletions': doc.get('deletions', 0),
-                        'url': doc.get('url')
-                    }
+                        'url': doc.get('url'),
+                        'author': doc.get('author'),
+                        'date': doc.get('date'),
+                        'committed_date': doc.get('committed_date')
+                    })
                 ))
         
         # GitHub PRs
@@ -272,11 +361,13 @@ class Query:
                 query['created_at']['$lte'] = end_date
             if keyword:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
+            if project_repositories:
+                query['repository'] = {'$in': project_repositories}
             
             async for doc in db['github_pull_requests'].find(query).sort('created_at', -1).limit(limit * 2):
                 # Safely get required fields
                 author = doc.get('author', 'Unknown')
-                timestamp = doc.get('created_at')
+                timestamp = ensure_datetime(doc.get('created_at'))
                 if not timestamp:
                     continue
                 
@@ -286,15 +377,19 @@ class Query:
                     source_type='github',
                     activity_type='pull_request',
                     timestamp=timestamp,
-                    metadata={
+                    metadata=sanitize_metadata({
                         'number': doc.get('number'),
                         'title': doc.get('title'),
                         'state': doc.get('state'),
                         'repository': doc.get('repository'),
                         'additions': doc.get('additions', 0),
                         'deletions': doc.get('deletions', 0),
-                        'url': doc.get('url')
-                    }
+                        'url': doc.get('url'),
+                        'created_at': doc.get('created_at'),
+                        'updated_at': doc.get('updated_at'),
+                        'merged_at': doc.get('merged_at'),
+                        'closed_at': doc.get('closed_at')
+                    })
                 ))
         
         # Slack messages
@@ -313,7 +408,7 @@ class Query:
             async for doc in db['slack_messages'].find(query).sort('posted_at', -1).limit(limit * 2):
                 # Safely get required fields
                 user_name = doc.get('user_name', 'Unknown')
-                timestamp = doc.get('posted_at')
+                timestamp = ensure_datetime(doc.get('posted_at'))
                 if not timestamp:
                     continue
                 
@@ -323,12 +418,14 @@ class Query:
                     source_type='slack',
                     activity_type='message',
                     timestamp=timestamp,
-                    metadata={
+                    metadata=sanitize_metadata({
                         'text': doc.get('text'),
                         'channel_name': doc.get('channel_name'),
                         'channel_id': doc.get('channel_id'),
-                        'thread_ts': doc.get('thread_ts')
-                    }
+                        'thread_ts': doc.get('thread_ts'),
+                        'posted_at': doc.get('posted_at'),
+                        'reactions': doc.get('reactions', [])
+                    })
                 ))
         
         # Notion pages
@@ -355,7 +452,7 @@ class Query:
                     doc_member_name = created_by.get('name', 'Unknown')
                 
                 # Safely get timestamp
-                timestamp = doc.get('last_edited_time') or doc.get('created_time')
+                timestamp = ensure_datetime(doc.get('last_edited_time') or doc.get('created_time'))
                 if not timestamp:
                     continue  # Skip documents without timestamp
                 
@@ -365,12 +462,16 @@ class Query:
                     source_type='notion',
                     activity_type='page_edit',
                     timestamp=timestamp,
-                    metadata={
+                    metadata=sanitize_metadata({
                         'title': doc.get('title'),
                         'url': doc.get('url'),
                         'created_time': doc.get('created_time'),
-                        'last_edited_time': doc.get('last_edited_time')
-                    }
+                        'last_edited_time': doc.get('last_edited_time'),
+                        'created_by': doc.get('created_by'),
+                        'last_edited_by': doc.get('last_edited_by'),
+                        'parent': doc.get('parent'),
+                        'properties': doc.get('properties')
+                    })
                 ))
         
         # Drive activities
@@ -390,7 +491,7 @@ class Query:
                 actor_name = doc.get('actor_name') or doc.get('actor_email', 'Unknown')
                 
                 # Safely get timestamp (time field might not exist)
-                timestamp = doc.get('time') or doc.get('timestamp') or doc.get('created_at')
+                timestamp = ensure_datetime(doc.get('time') or doc.get('timestamp') or doc.get('created_at'))
                 if not timestamp:
                     continue  # Skip documents without timestamp
                 
@@ -400,17 +501,142 @@ class Query:
                     source_type='drive',
                     activity_type=doc.get('type', 'unknown'),
                     timestamp=timestamp,
-                    metadata={
+                    metadata=sanitize_metadata({
                         'type': doc.get('type'),
-                        'target_name': target.get('name'),
-                        'target_type': target.get('type'),
-                        'target_url': target.get('url'),
-                        'actor_email': doc.get('actor_email')
-                    }
+                        'target_name': target.get('name') if target else None,
+                        'target_type': target.get('type') if target else None,
+                        'target_url': target.get('url') if target else None,
+                        'actor_email': doc.get('actor_email'),
+                        'time': doc.get('time'),
+                        'target': doc.get('target')
+                    })
                 ))
         
+        # Recordings (Google Drive recordings via shared_async_db)
+        if 'recordings' in sources:
+            try:
+                from backend.main import mongo_manager
+                shared_db = mongo_manager.shared_async_db
+                recordings_col = shared_db["recordings"]
+                
+                query = {}
+                if start_date:
+                    query['modifiedTime'] = {'$gte': start_date}
+                if end_date:
+                    query['modifiedTime'] = query.get('modifiedTime', {})
+                    query['modifiedTime']['$lte'] = end_date
+                if keyword:
+                    query['name'] = {'$regex': keyword, '$options': 'i'}
+                
+                # Async MongoDB query
+                async for doc in recordings_col.find(query).sort('modifiedTime', -1).limit(limit * 2):
+                    timestamp = ensure_datetime(doc.get('modifiedTime'))
+                    if not timestamp:
+                        continue
+                    
+                    activities.append(Activity(
+                        id=str(doc['_id']),
+                        member_name=doc.get('createdBy', 'Unknown'),
+                        source_type='recordings',
+                        activity_type='meeting_recording',
+                        timestamp=timestamp,
+                        metadata=sanitize_metadata({
+                            'name': doc.get('name'),
+                            'size': doc.get('size', 0),
+                            'recording_id': doc.get('id'),
+                            'created_by': doc.get('createdBy'),
+                            'modified_time': doc.get('modifiedTime'),
+                            'mime_type': doc.get('mimeType')
+                        })
+                    ))
+            except Exception as e:
+                print(f"Error fetching recordings: {e}")
+                import traceback
+                print(traceback.format_exc())
+        
+        # Recordings Daily (Daily analysis)
+        if 'recordings_daily' in sources:
+            try:
+                from backend.api.v1.ai_processed import get_gemini_db
+                gemini_db = get_gemini_db()
+                recordings_daily_col = gemini_db["recordings_daily"]
+                
+                query = {}
+                # recordings_daily uses target_date (date string) instead of timestamp
+                if start_date:
+                    query['target_date'] = {'$gte': start_date.strftime('%Y-%m-%d')}
+                if end_date:
+                    query['target_date'] = query.get('target_date', {})
+                    query['target_date']['$lte'] = end_date.strftime('%Y-%m-%d')
+                
+                # Sync MongoDB query
+                daily_docs = list(recordings_daily_col.find(query).limit(limit * 2))
+                
+                # Sort by target_date (newest first)
+                daily_docs.sort(key=lambda d: d.get('target_date', ''), reverse=True)
+                
+                for doc in daily_docs:
+                    target_date = doc.get('target_date')
+                    if not target_date:
+                        continue
+                    
+                    # Parse target_date to datetime
+                    try:
+                        from datetime import datetime as dt
+                        timestamp = ensure_datetime(dt.strptime(target_date, '%Y-%m-%d'))
+                    except:
+                        continue
+                    
+                    if not timestamp:
+                        continue
+                    
+                    analysis = doc.get('analysis', {})
+                    summary = analysis.get('summary', {}) if analysis else {}
+                    
+                    activities.append(Activity(
+                        id=str(doc['_id']),
+                        member_name='System',  # Daily analysis is system-generated
+                        source_type='recordings_daily',
+                        activity_type='daily_analysis',
+                        timestamp=timestamp,
+                        metadata=sanitize_metadata({
+                            'target_date': target_date,
+                            'meeting_count': doc.get('meeting_count', 0),
+                            'total_duration': doc.get('total_duration', 0),
+                            'total_participants': doc.get('total_participants', 0),
+                            'summary': summary.get('overview', ''),
+                            'key_topics': summary.get('key_topics', []),
+                            'decisions': summary.get('decisions', [])
+                        })
+                    ))
+            except Exception as e:
+                print(f"Error fetching recordings_daily: {e}")
+        
         # Sort by timestamp (newest first) and apply pagination
-        activities.sort(key=lambda a: a.timestamp, reverse=True)
+        # Handle mixed datetime/string timestamps
+        from datetime import timezone as tz
+        
+        def get_sort_key(activity):
+            ts = activity.timestamp
+            if isinstance(ts, datetime):
+                # Ensure timezone-aware
+                if ts.tzinfo is None:
+                    return ts.replace(tzinfo=tz.utc)
+                return ts.astimezone(tz.utc)
+            elif isinstance(ts, str):
+                try:
+                    # Try parsing ISO format
+                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=tz.utc)
+                    return dt.astimezone(tz.utc)
+                except:
+                    # If parsing fails, return a very old date (timezone-aware)
+                    return datetime.min.replace(tzinfo=tz.utc)
+            else:
+                return datetime.min.replace(tzinfo=tz.utc)
+        
+        activities.sort(key=get_sort_key, reverse=True)
         return activities[offset:offset + limit]
     
     @strawberry.field

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { api as apiClient } from "@/lib/api";
+import { useMembers, useProjects, useActivities } from "@/graphql/hooks";
 import type { ActivityListResponse } from "@/types";
 import ReactMarkdown from "react-markdown";
 
@@ -613,10 +614,7 @@ function parseRawAnalysis(analysisData: any): any {
 }
 
 export default function ActivitiesPage() {
-  const [allActivities, setAllActivities] =
-    useState<ActivityListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Note: allActivities, loading, error are now computed from GraphQL query below
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [memberFilter, setMemberFilter] = useState<string>("");
   const [projectFilter, setProjectFilter] = useState<string>("");
@@ -685,99 +683,136 @@ export default function ActivitiesPage() {
   // Export state
   const [exporting, setExporting] = useState(false);
 
-  // Fetch all members and Notion UUID mappings from DB (runs once on mount)
-  useEffect(() => {
-    async function fetchMembersAndMappings() {
-      try {
-        const response = await apiClient.getMembers({ limit: 100 });
-        // Response is directly an array of members
-        const memberNames = response
-          .map((m: any) => m.name)
-          .filter((name: string) => name)
-          .sort();
-        setAllMembers(memberNames);
+  // GraphQL queries for filters
+  const { data: membersData } = useMembers({ limit: 100 });
+  const { data: projectsData } = useProjects({ isActive: true });
 
+  // Set members from GraphQL data
+  useEffect(() => {
+    if (membersData?.members) {
+      const memberNames = membersData.members
+        .map((m) => m.name)
+        .filter((name) => name)
+        .sort();
+      setAllMembers(memberNames);
+    }
+  }, [membersData]);
+
+  // Set projects from GraphQL data
+  useEffect(() => {
+    if (projectsData?.projects) {
+      setProjects(
+        projectsData.projects.map((p) => ({ key: p.key, name: p.name }))
+      );
+    }
+  }, [projectsData]);
+
+  // Fetch Notion UUID mappings from DB (runs once on mount)
+  useEffect(() => {
+    async function fetchNotionMappings() {
+      try {
         // Fetch member_identifiers for Notion UUID mapping
-        try {
-          const identifiersResponse = await apiClient.get(
-            "/database/collections/member_identifiers/documents",
-            {
-              limit: 100,
-            }
-          );
-          const documents = identifiersResponse.documents || [];
-
-          // Build UUID -> member_name mapping for Notion
-          const uuidMap: Record<string, string> = {};
-          documents.forEach((doc: any) => {
-            if (
-              doc.source === "notion" &&
-              doc.identifier_value &&
-              doc.member_name
-            ) {
-              // Map full UUID
-              uuidMap[doc.identifier_value.toLowerCase()] = doc.member_name;
-              // Also map short UUID (first 8 chars) for "Notion-xxx" format
-              const shortUuid = doc.identifier_value
-                .split("-")[0]
-                .toLowerCase();
-              uuidMap[shortUuid] = doc.member_name;
-            }
-          });
-          setNotionUuidMap(uuidMap);
-        } catch (err) {
-          console.error("Error fetching member identifiers:", err);
-        }
-      } catch (err: any) {
-        console.error("Error fetching members:", err);
-      }
-    }
-
-    fetchMembersAndMappings();
-  }, []);
-
-  // Fetch projects for filter dropdown
-  useEffect(() => {
-    async function fetchProjects() {
-      try {
-        const response = await apiClient.getProjectsManagement(true); // Active only
-        setProjects(
-          response.projects.map((p: any) => ({ key: p.key, name: p.name }))
+        const identifiersResponse = await apiClient.get(
+          "/database/collections/member_identifiers/documents",
+          {
+            limit: 100,
+          }
         );
-      } catch (err: any) {
-        console.error("Error fetching projects:", err);
-        // Don't show error, just continue without project filter
+        const documents = identifiersResponse.documents || [];
+
+        // Build UUID -> member_name mapping for Notion
+        const uuidMap: Record<string, string> = {};
+        documents.forEach((doc: any) => {
+          if (
+            doc.source === "notion" &&
+            doc.identifier_value &&
+            doc.member_name
+          ) {
+            // Map full UUID
+            uuidMap[doc.identifier_value.toLowerCase()] = doc.member_name;
+            // Also map short UUID (first 8 chars) for "Notion-xxx" format
+            const shortUuid = doc.identifier_value.split("-")[0].toLowerCase();
+            uuidMap[shortUuid] = doc.member_name;
+          }
+        });
+        setNotionUuidMap(uuidMap);
+      } catch (err) {
+        console.error("Error fetching member identifiers:", err);
       }
     }
-    fetchProjects();
+
+    fetchNotionMappings();
   }, []);
 
-  // Fetch activities with filters (including member filter from backend)
-  useEffect(() => {
-    async function fetchActivities() {
-      try {
-        setLoading(true);
-        // Always fetch enough data for current page settings
-        const loadLimit = Math.max(itemsPerPage * 10, 500);
-        const response = await apiClient.getActivities({
-          limit: loadLimit,
-          source_type: sourceFilter || undefined,
-          member_name: memberFilter || undefined, // Filter by member on backend (for recordings/daily analysis, this filters by participant)
-          keyword: searchKeyword || undefined, // Search keyword (only updated when search button is clicked)
-          project_key: projectFilter || undefined, // Filter by project
-        });
-        setAllActivities(response);
-        setCurrentPage(1); // Reset to first page when filter changes
-      } catch (err: any) {
-        console.error("Error fetching activities:", err);
-        setError(err.message || "Failed to fetch activities");
-      } finally {
-        setLoading(false);
-      }
+  // Fetch activities with GraphQL
+  const loadLimit = Math.max(itemsPerPage * 10, 500);
+
+  // Prepare GraphQL variables - ensure no empty strings for enums
+  // Convert source to uppercase for GraphQL enum (github -> GITHUB)
+  // Keep recordings_daily as RECORDINGS_DAILY (not just RECORDINGS)
+  const normalizeSourceType = (source: string): string | undefined => {
+    if (!source || source === "") return undefined;
+
+    // Special handling for recordings_daily - keep the suffix
+    if (source === "recordings_daily") {
+      return "RECORDINGS_DAILY";
     }
 
-    fetchActivities();
-  }, [sourceFilter, memberFilter, projectFilter, searchKeyword, itemsPerPage]); // Reload when any filter changes
+    // For other sources, just uppercase
+    return source.toUpperCase();
+  };
+
+  const activitiesVariables = {
+    source: normalizeSourceType(sourceFilter) as any,
+    memberName: memberFilter && memberFilter !== "" ? memberFilter : undefined,
+    keyword: searchKeyword && searchKeyword !== "" ? searchKeyword : undefined,
+    projectKey:
+      projectFilter && projectFilter !== "" ? projectFilter : undefined,
+    limit: loadLimit,
+    offset: 0,
+  };
+
+  const {
+    data: activitiesData,
+    loading: activitiesLoading,
+    error: activitiesError,
+    refetch: refetchActivities,
+  } = useActivities(activitiesVariables);
+
+  // Transform GraphQL data to match REST API format
+  const allActivities: ActivityListResponse | null = activitiesData
+    ? {
+        total: activitiesData.activities.length,
+        activities: activitiesData.activities.map((a) => ({
+          id: a.id,
+          member_id: 0, // Not used
+          member_name: a.memberName,
+          source_type: a.sourceType,
+          source: a.sourceType,
+          activity_type: a.activityType,
+          timestamp: a.timestamp,
+          metadata: a.metadata,
+          activity_id: a.id,
+        })),
+        filters: {
+          source_type: sourceFilter || null,
+          activity_type: null,
+          member_id: null,
+          start_date: null,
+          end_date: null,
+          limit: loadLimit,
+          offset: 0,
+        },
+      }
+    : null;
+
+  const loading = activitiesLoading;
+  const error = activitiesError?.message || null;
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sourceFilter, memberFilter, projectFilter, searchKeyword]);
 
   // Activities are already filtered by backend, but we need to filter out Kevin's Google Drive activities (noise)
   const filteredActivities = allActivities

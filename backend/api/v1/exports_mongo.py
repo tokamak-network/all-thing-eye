@@ -795,7 +795,7 @@ async def export_activities(
                             'activity_id': activity.get('activity_id', f"drive:{activity.get('file_id')}"),
                             'metadata': metadata if format == 'json' else json.dumps(metadata, ensure_ascii=False, default=str)
                         })
-            
+        
             elif source == 'recordings':
                 # Recordings from Gemini database
                 try:

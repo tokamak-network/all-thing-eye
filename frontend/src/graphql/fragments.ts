@@ -9,6 +9,7 @@ import { gql } from "@apollo/client";
 // Member fragment
 export const MEMBER_FRAGMENT = gql`
   fragment MemberFields on Member {
+    id
     name
     email
     role
@@ -28,6 +29,7 @@ export const ACTIVITY_FRAGMENT = gql`
     sourceType
     activityType
     timestamp
+    metadata
     message
     repository
     url
@@ -57,4 +59,3 @@ export const PROJECT_FRAGMENT = gql`
     isActive
   }
 `;
-

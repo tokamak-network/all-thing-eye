@@ -19,6 +19,7 @@ class SourceType(Enum):
     NOTION = "notion"
     DRIVE = "drive"
     RECORDINGS = "recordings"
+    RECORDINGS_DAILY = "recordings_daily"
 
 
 @strawberry.type

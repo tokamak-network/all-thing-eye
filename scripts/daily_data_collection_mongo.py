@@ -249,7 +249,7 @@ async def main():
         help='Specific date to collect (YYYY-MM-DD in KST). Default: yesterday'
     )
     parser.add_argument(
-        '--sources', 
+        '--sources',
         nargs='+',
         choices=['github', 'slack', 'notion', 'drive', 'all'],
         default=['all'],
