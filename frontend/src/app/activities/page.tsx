@@ -693,8 +693,8 @@ export default function ActivitiesPage() {
       const memberNames = membersData.members
         .map((m) => m.name)
         .filter((name) => name)
-        .sort();
-      setAllMembers(memberNames);
+          .sort();
+        setAllMembers(memberNames);
     }
   }, [membersData]);
 
@@ -712,32 +712,32 @@ export default function ActivitiesPage() {
     async function fetchNotionMappings() {
       try {
         // Fetch member_identifiers for Notion UUID mapping
-        const identifiersResponse = await apiClient.get(
-          "/database/collections/member_identifiers/documents",
-          {
-            limit: 100,
-          }
-        );
-        const documents = identifiersResponse.documents || [];
+          const identifiersResponse = await apiClient.get(
+            "/database/collections/member_identifiers/documents",
+            {
+              limit: 100,
+            }
+          );
+          const documents = identifiersResponse.documents || [];
 
-        // Build UUID -> member_name mapping for Notion
-        const uuidMap: Record<string, string> = {};
-        documents.forEach((doc: any) => {
-          if (
-            doc.source === "notion" &&
-            doc.identifier_value &&
-            doc.member_name
-          ) {
-            // Map full UUID
-            uuidMap[doc.identifier_value.toLowerCase()] = doc.member_name;
-            // Also map short UUID (first 8 chars) for "Notion-xxx" format
+          // Build UUID -> member_name mapping for Notion
+          const uuidMap: Record<string, string> = {};
+          documents.forEach((doc: any) => {
+            if (
+              doc.source === "notion" &&
+              doc.identifier_value &&
+              doc.member_name
+            ) {
+              // Map full UUID
+              uuidMap[doc.identifier_value.toLowerCase()] = doc.member_name;
+              // Also map short UUID (first 8 chars) for "Notion-xxx" format
             const shortUuid = doc.identifier_value.split("-")[0].toLowerCase();
-            uuidMap[shortUuid] = doc.member_name;
-          }
-        });
-        setNotionUuidMap(uuidMap);
-      } catch (err) {
-        console.error("Error fetching member identifiers:", err);
+              uuidMap[shortUuid] = doc.member_name;
+            }
+          });
+          setNotionUuidMap(uuidMap);
+        } catch (err) {
+          console.error("Error fetching member identifiers:", err);
       }
     }
 
@@ -768,7 +768,7 @@ export default function ActivitiesPage() {
     keyword: searchKeyword && searchKeyword !== "" ? searchKeyword : undefined,
     projectKey:
       projectFilter && projectFilter !== "" ? projectFilter : undefined,
-    limit: loadLimit,
+          limit: loadLimit,
     offset: 0,
   };
 
@@ -1103,20 +1103,20 @@ export default function ActivitiesPage() {
               </>
             ) : (
               <>
-                <svg
-                  className="mr-2 h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                  />
-                </svg>
-                Export CSV
+            <svg
+              className="mr-2 h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+            Export CSV
               </>
             )}
           </button>
@@ -1244,7 +1244,7 @@ export default function ActivitiesPage() {
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <select
+               <select
                 value={itemsPerPage}
                 onChange={(e) => {
                   setItemsPerPage(Number(e.target.value));
@@ -4783,9 +4783,9 @@ export default function ActivitiesPage() {
                                 ),
                               }}
                             >
-                              {translations[
-                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
-                              ]?.text ||
+                            {translations[
+                              `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                            ]?.text ||
                                 selectedDailyAnalysis.analysis
                                   .full_analysis_text}
                             </ReactMarkdown>

@@ -650,6 +650,10 @@ class Query:
         member_identifiers = {}
         if member_name and member_name in member_to_identifiers:
             member_identifiers = member_to_identifiers[member_name]
+            print(f"🔍 [{request_id}] 👤 Member '{member_name}' identifiers: {member_identifiers}")
+        elif member_name:
+            print(f"🔍 [{request_id}] ⚠️  Member '{member_name}' NOT FOUND in member_to_identifiers!")
+            print(f"🔍 [{request_id}] Available members: {list(member_to_identifiers.keys())[:10]}")
         
         # Checkpoint: Verify source variable hasn't been corrupted
         print(f"🔍 [{request_id}] 📍 CHECKPOINT before sources logic: source={source}, type={type(source).__name__}")
@@ -778,13 +782,20 @@ class Query:
         if 'slack' in sources:
             query = {}
             if member_name:
-                # Use Slack usernames from identifiers if available
-                slack_usernames = member_identifiers.get('slack', [])
-                if slack_usernames:
-                    query['user_name'] = {'$in': slack_usernames}
+                # Use Slack identifiers (REST API pattern: user_id, user_email, user_name)
+                slack_identifiers = member_identifiers.get('slack', [])
+                print(f"🔍 [{request_id}] 💬 Slack identifiers for '{member_name}': {slack_identifiers}")
+                
+                if slack_identifiers:
+                    # Build $or conditions for multiple search fields (like REST API)
+                    or_conditions = []
+                    or_conditions.append({'user_id': {'$in': slack_identifiers}})
+                    or_conditions.append({'user_email': {'$in': slack_identifiers}})
+                    or_conditions.append({'user_name': {'$in': slack_identifiers}})
+                    query['$or'] = or_conditions
                 else:
-                    # Fallback to display name
-                    query['user_name'] = member_name
+                    # Fallback to display name (case-insensitive)
+                    query['user_name'] = {'$regex': f'^{member_name}$', '$options': 'i'}
             if start_date:
                 query['posted_at'] = {'$gte': start_date}
             if end_date:
@@ -793,6 +804,21 @@ class Query:
             if keyword:
                 query['text'] = {'$regex': keyword, '$options': 'i'}
             
+            print(f"🔍 [{request_id}] 💬 Slack query: {query}")
+            
+            # Debug: Check actual user_name values in DB
+            if member_name:
+                sample_users = []
+                async for sample_doc in db['slack_messages'].find().limit(10):
+                    if 'user_name' in sample_doc:
+                        sample_users.append(sample_doc['user_name'])
+                print(f"🔍 [{request_id}] 💬 Sample user_name values in DB: {list(set(sample_users))[:5]}")
+                
+                # Check if query matches any documents
+                count = await db['slack_messages'].count_documents(query)
+                print(f"🔍 [{request_id}] 💬 Slack messages found for query: {count}")
+            
+            slack_before = len(activities)
             async for doc in db['slack_messages'].find(query).sort('posted_at', -1).limit(limit * 2):
                 # Safely get required fields
                 user_name = doc.get('user_name', 'Unknown')
@@ -821,24 +847,25 @@ class Query:
                         'reactions': doc.get('reactions', [])
                     })
                 ))
+            
+            slack_after = len(activities)
+            print(f"🔍 [{request_id}] 💬 Slack activities added: {slack_after - slack_before}")
         
         # Notion pages
         if 'notion' in sources:
             query = {}
             if member_name:
-                # Try to use Notion IDs from identifiers
+                # REST API pattern: only created_by (not last_edited_by)
                 notion_ids = member_identifiers.get('notion', [])
+                or_conditions = []
                 if notion_ids:
-                    query['$or'] = [
-                        {'last_edited_by.id': {'$in': notion_ids}},
-                        {'created_by.id': {'$in': notion_ids}}
-                    ]
-                else:
-                    # Fallback to display name
-                    query['$or'] = [
-                        {'last_edited_by.name': member_name},
-                        {'created_by.name': member_name}
-                    ]
+                    or_conditions.append({'created_by.id': {'$in': notion_ids}})
+                    or_conditions.append({'created_by.email': {'$in': notion_ids}})
+                # Always add name search as fallback (case-insensitive)
+                or_conditions.append({'created_by.name': {'$regex': f'^{member_name}', '$options': 'i'}})
+                query['$or'] = or_conditions
+                print(f"🔍 [{request_id}] 📝 Notion identifiers for '{member_name}': {notion_ids}")
+            
             if start_date:
                 query['last_edited_time'] = {'$gte': start_date}
             if end_date:
@@ -846,6 +873,8 @@ class Query:
                 query['last_edited_time']['$lte'] = end_date
             if keyword:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
+            
+            print(f"🔍 [{request_id}] 📝 Notion query: {query}")
             
             async for doc in db['notion_pages'].find(query).sort('last_edited_time', -1).limit(limit * 2):
                 # Get the person who actually made the action (last_edited_by preferred)
@@ -893,21 +922,22 @@ class Query:
         if 'drive' in sources:
             query = {}
             if member_name:
-                # Try to use emails from identifiers (Drive uses email)
+                # Try to use emails from identifiers (REST API pattern: user_email field)
                 emails = member_identifiers.get('email', []) or member_identifiers.get('drive', [])
+                print(f"🔍 [{request_id}] 📁 Drive emails for '{member_name}': {emails}")
                 if emails:
-                    query['$or'] = [
-                        {'actor_email': {'$in': emails}},
-                        {'actor_name': member_name}
-                    ]
+                    # Use user_email field (like REST API)
+                    query['user_email'] = {'$in': emails}
                 else:
-                    # Fallback to display name
-                    query['actor_name'] = member_name
+                    # Fallback to regex search (case-insensitive)
+                    query['user_email'] = {'$regex': member_name, '$options': 'i'}
             if start_date:
                 query['time'] = {'$gte': start_date}
             if end_date:
                 query['time'] = query.get('time', {})
                 query['time']['$lte'] = end_date
+            
+            print(f"🔍 [{request_id}] 📁 Drive query: {query}")
             
             async for doc in db['drive_activities'].find(query).sort('time', -1).limit(limit * 2):
                 target = doc.get('target', {})
@@ -956,6 +986,30 @@ class Query:
                 recordings_col = shared_db["recordings"]
                 
                 query = {}
+                
+                # Debug: Sample one recording to see actual field structure
+                sample_doc = await recordings_col.find_one()
+                if sample_doc:
+                    print(f"🔍 [{request_id}] 🎥 Sample recording doc fields: {list(sample_doc.keys())}")
+                    print(f"🔍 [{request_id}] 🎥 Sample recording creator fields:")
+                    print(f"🔍 [{request_id}] 🎥   - createdBy (camelCase): {sample_doc.get('createdBy')}")
+                    print(f"🔍 [{request_id}] 🎥   - created_by (snake_case): {sample_doc.get('created_by')}")
+                    print(f"🔍 [{request_id}] 🎥   - owner: {sample_doc.get('owner')}")
+                    print(f"🔍 [{request_id}] 🎥   - lastModifyingUser: {sample_doc.get('lastModifyingUser')}")
+                
+                if member_name:
+                    # Debug: Check what created_by values actually exist in DB
+                    sample_creators = []
+                    async for sample in recordings_col.find().limit(10):
+                        created_by = sample.get('created_by')
+                        if created_by and created_by not in sample_creators:
+                            sample_creators.append(created_by)
+                    print(f"🔍 [{request_id}] 🎥 Sample created_by values in DB: {sample_creators[:5]}")
+                    
+                    # created_by stores display names (not emails)
+                    # Use case-insensitive regex to match member name
+                    print(f"🔍 [{request_id}] 🎥 Filtering by member name: {member_name}")
+                    query['created_by'] = {'$regex': f'^{member_name}$', '$options': 'i'}
                 if start_date:
                     query['modifiedTime'] = {'$gte': start_date}
                 if end_date:
@@ -964,15 +1018,37 @@ class Query:
                 if keyword:
                     query['name'] = {'$regex': keyword, '$options': 'i'}
                 
+                print(f"🔍 [{request_id}] 🎥 Recordings query: {query}")
+                
+                # Debug: Check if query matches any documents
+                if member_name:
+                    count = await recordings_col.count_documents(query)
+                    print(f"🔍 [{request_id}] 🎥 Documents matching query: {count}")
+                
                 # Async MongoDB query
+                recordings_before = len(activities)
                 async for doc in recordings_col.find(query).sort('modifiedTime', -1).limit(limit * 2):
                     timestamp = ensure_datetime(doc.get('modifiedTime'))
                     if not timestamp:
                         continue
                     
+                    # Get creator (created_by field is email)
+                    created_by = doc.get('created_by', 'Unknown')
+                    
+                    # Convert email to display name
+                    if created_by and '@' in str(created_by):
+                        display_name = identifier_to_member.get(('email', created_by.lower()), 
+                                                               identifier_to_member.get(('drive', created_by.lower()), created_by))
+                    else:
+                        display_name = created_by
+                    
+                    # Capitalize first letter
+                    if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                        display_name = display_name[0].upper() + display_name[1:]
+                    
                     activities.append(Activity(
                         id=str(doc['_id']),
-                        member_name=doc.get('createdBy', 'Unknown'),
+                        member_name=display_name,
                         source_type='recordings',
                         activity_type='meeting_recording',
                         timestamp=timestamp,
@@ -980,11 +1056,14 @@ class Query:
                             'name': doc.get('name'),
                             'size': doc.get('size', 0),
                             'recording_id': doc.get('id'),
-                            'created_by': doc.get('createdBy'),
+                            'created_by': doc.get('created_by'),  # Use snake_case from DB
                             'modified_time': doc.get('modifiedTime'),
                             'mime_type': doc.get('mimeType')
                         })
                     ))
+                
+                recordings_after = len(activities)
+                print(f"🔍 [{request_id}] 🎥 Recordings activities added: {recordings_after - recordings_before}")
             except Exception as e:
                 print(f"Error fetching recordings: {e}")
                 import traceback
@@ -997,6 +1076,24 @@ class Query:
                 gemini_db = get_gemini_db()
                 recordings_daily_col = gemini_db["recordings_daily"]
                 
+                # Debug: Sample one daily doc to see structure
+                sample_daily = recordings_daily_col.find_one()
+                if sample_daily:
+                    print(f"🔍 [{request_id}] 📅 Sample recordings_daily fields: {list(sample_daily.keys())}")
+                    
+                    # Check analysis.participants structure
+                    analysis = sample_daily.get('analysis', {})
+                    if analysis and 'participants' in analysis:
+                        participants = analysis['participants']
+                        print(f"🔍 [{request_id}] 📅 analysis.participants type: {type(participants)}")
+                        if isinstance(participants, list) and len(participants) > 0:
+                            sample_participant = participants[0]
+                            print(f"🔍 [{request_id}] 📅 Sample participant: {sample_participant}")
+                        elif isinstance(participants, dict):
+                            print(f"🔍 [{request_id}] 📅 Participants dict keys: {list(participants.keys())[:5]}")
+                        else:
+                            print(f"🔍 [{request_id}] 📅 Participants value: {str(participants)[:200]}")
+                
                 query = {}
                 # recordings_daily uses target_date (date string) instead of timestamp
                 if start_date:
@@ -1005,12 +1102,70 @@ class Query:
                     query['target_date'] = query.get('target_date', {})
                     query['target_date']['$lte'] = end_date.strftime('%Y-%m-%d')
                 
-                # Sync MongoDB query
-                daily_docs = list(recordings_daily_col.find(query).limit(limit * 2))
+                # If member filter is specified, filter by analysis.participants
+                # participants is array of dicts: [{'name': 'Ale Son', ...}, {'name': 'Jake Jang', ...}]
+                if member_name:
+                    print(f"🔍 [{request_id}] 📅 Filtering recordings_daily by analysis.participants.name containing: {member_name}")
+                    # Search for member name in participant.name field (case-insensitive)
+                    # This will match "Ale" in "Ale Son", "Jake" in "Jake Jang", etc.
+                    query['analysis.participants'] = {
+                        '$elemMatch': {
+                            'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}
+                        }
+                    }
                 
-                # Sort by target_date (newest first)
-                daily_docs.sort(key=lambda d: d.get('target_date', ''), reverse=True)
+                print(f"🔍 [{request_id}] 📅 recordings_daily query: {query}")
                 
+                # Debug: Check if query matches any documents
+                if member_name:
+                    count = recordings_daily_col.count_documents(query)
+                    print(f"🔍 [{request_id}] 📅 Documents matching query: {count}")
+                    
+                    # Check total documents without filter
+                    total_count = recordings_daily_col.count_documents({})
+                    print(f"🔍 [{request_id}] 📅 Total documents (no filter): {total_count}")
+                    
+                    # Check recent documents (last 10) to see if member is in participants
+                    recent_docs = list(recordings_daily_col.find({}).sort('target_date', -1).limit(10))
+                    print(f"🔍 [{request_id}] 📅 Recent 10 documents analysis:")
+                    for doc in recent_docs:
+                        target_date = doc.get('target_date')
+                        analysis = doc.get('analysis', {})
+                        participants = analysis.get('participants', []) if analysis else []
+                        
+                        # Check if member is in participants
+                        member_found = False
+                        participant_names = []
+                        if isinstance(participants, list):
+                            for p in participants:
+                                if isinstance(p, dict) and 'name' in p:
+                                    name = p['name']
+                                    participant_names.append(name)
+                                    # Check if member_name matches (word boundary)
+                                    import re
+                                    if re.search(rf'\b{member_name}\b', name, re.IGNORECASE):
+                                        member_found = True
+                        
+                        status = "✅ MATCH" if member_found else "❌ NO MATCH"
+                        print(f"🔍 [{request_id}] 📅   {target_date}: {status} | Names: {participant_names[:3]}")
+                
+                # Sync MongoDB query (recordings_daily uses sync client)
+                daily_docs = list(recordings_daily_col.find(query).sort('target_date', -1).limit(limit * 2))
+                
+                # Debug: Show matched dates
+                if member_name and daily_docs:
+                    matched_dates = [doc.get('target_date') for doc in daily_docs[:15]]
+                    print(f"🔍 [{request_id}] 📅 Matched dates (first 15): {matched_dates}")
+                    if len(daily_docs) > 15:
+                        print(f"🔍 [{request_id}] 📅 ... and {len(daily_docs) - 15} more documents")
+                    
+                    # Show date range
+                    if daily_docs:
+                        oldest = daily_docs[-1].get('target_date')
+                        newest = daily_docs[0].get('target_date')
+                        print(f"🔍 [{request_id}] 📅 Date range: {newest} to {oldest}")
+                
+                daily_before = len(activities)
                 for doc in daily_docs:
                     target_date = doc.get('target_date')
                     if not target_date:
@@ -1029,9 +1184,57 @@ class Query:
                     analysis = doc.get('analysis', {})
                     summary = analysis.get('summary', {}) if analysis else {}
                     
+                    # Helper function to convert recording name to display name
+                    def recording_name_to_display(recording_name: str) -> str:
+                        """
+                        Convert recording participant name to system display name.
+                        Examples: "Ale Son" -> "Ale", "YEONGJU BAK" -> "Zena"
+                        """
+                        if not recording_name:
+                            return recording_name
+                        
+                        # Try exact match (case-insensitive) in identifier_to_member
+                        for (source, identifier), display in identifier_to_member.items():
+                            if identifier.lower() == recording_name.lower():
+                                return display[0].upper() + display[1:] if display else display
+                        
+                        # Try first word match (e.g., "Ale Son" -> "Ale", "Jason Hwang" -> "Jason")
+                        first_word = recording_name.split()[0] if recording_name else ""
+                        if first_word:
+                            # Check if any member's display name starts with or matches first word
+                            for display in set(identifier_to_member.values()):
+                                if display and display.lower() == first_word.lower():
+                                    return display[0].upper() + display[1:] if display else display
+                        
+                        # Fallback: capitalize first letter of original name
+                        return recording_name[0].upper() + recording_name[1:] if recording_name else recording_name
+                    
+                    # Extract participant names
+                    display_name = 'System'
+                    participants = analysis.get('participants', []) if analysis else []
+                    if isinstance(participants, list) and participants:
+                        # If member filter is active, show only the filtered member
+                        if member_name:
+                            for p in participants:
+                                if isinstance(p, dict) and 'name' in p:
+                                    name = p['name']
+                                    import re
+                                    if re.search(rf'\b{member_name}\b', name, re.IGNORECASE):
+                                        # Convert to display name
+                                        display_name = recording_name_to_display(name)
+                                        break
+                        else:
+                            # No filter: show all participants (up to 3), convert each to display name
+                            recording_names = [p.get('name') for p in participants if isinstance(p, dict) and 'name' in p]
+                            if recording_names:
+                                display_names = [recording_name_to_display(rn) for rn in recording_names[:3]]
+                                display_name = ', '.join(display_names)
+                                if len(participants) > 3:
+                                    display_name += f' +{len(participants) - 3} more'
+                    
                     activities.append(Activity(
                         id=str(doc['_id']),
-                        member_name='System',  # Daily analysis is system-generated
+                        member_name=display_name,
                         source_type='recordings_daily',
                         activity_type='daily_analysis',
                         timestamp=timestamp,
@@ -1045,8 +1248,14 @@ class Query:
                             'decisions': summary.get('decisions', [])
                         })
                     ))
+                
+                daily_after = len(activities)
+                print(f"🔍 [{request_id}] 📅 recordings_daily activities added: {daily_after - daily_before}")
             except Exception as e:
-                print(f"Error fetching recordings_daily: {e}")
+                if "Skip recordings_daily" in str(e):
+                    print(f"🔍 [{request_id}] 📅 {str(e)}")
+                else:
+                    print(f"Error fetching recordings_daily: {e}")
         
         # Sort by timestamp (newest first) and apply pagination
         # Handle mixed datetime/string timestamps
@@ -1073,6 +1282,10 @@ class Query:
                 return datetime.min.replace(tzinfo=tz.utc)
         
         activities.sort(key=get_sort_key, reverse=True)
+        
+        print(f"🔍 [{request_id}] 📊 Total activities before pagination: {len(activities)}")
+        print(f"🔍 [{request_id}] 📊 Returning activities[{offset}:{offset + limit}] = {len(activities[offset:offset + limit])} items")
+        
         return activities[offset:offset + limit]
     
     @strawberry.field
