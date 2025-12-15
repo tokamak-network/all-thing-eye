@@ -649,10 +649,15 @@ class Query:
         if member_name and member_name in member_to_identifiers:
             member_identifiers = member_to_identifiers[member_name]
         
-        # Determine which sources to query (simplified version from commit 843e555)
-        sources = [source.value] if source else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
+        # Determine which sources to query
+        # Handle both SourceType enum and string values
+        if source:
+            source_value = source.value if hasattr(source, 'value') else source
+            sources = [source_value]  # No .lower() - keep original case
+        else:
+            sources = ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
         
-        print(f"🔍 [{request_id}] ⚡ sources = {sources} (from source={source})")
+        print(f"🔍 [{request_id}] ⚡ sources = {sources} (from source={source}, type={type(source).__name__})")
         
         activities = []
         
