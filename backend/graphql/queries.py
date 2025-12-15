@@ -595,6 +595,21 @@ class Query:
         """
         db = info.context['db']
         
+        # Debug: Log actual variables received by Strawberry
+        import time
+        request_id = int(time.time() * 1000) % 100000
+        print(f"🔍 [{request_id}] ===== GraphQL Activities Query Start =====")
+        print(f"🔍 [{request_id}] Strawberry variable_values: {info.variable_values}")
+        print(f"🔍 [{request_id}] Python parameters:")
+        print(f"🔍 [{request_id}]   - source: {source} (type: {type(source).__name__})")
+        print(f"🔍 [{request_id}]   - member_name: {member_name}")
+        print(f"🔍 [{request_id}]   - project_key: {project_key}")
+        print(f"🔍 [{request_id}]   - keyword: {keyword}")
+        print(f"🔍 [{request_id}]   - start_date: {start_date}")
+        print(f"🔍 [{request_id}]   - end_date: {end_date}")
+        print(f"🔍 [{request_id}]   - limit: {limit}")
+        print(f"🔍 [{request_id}]   - offset: {offset}")
+        
         # Get project repositories if project_key is specified
         project_repositories = []
         if project_key:
@@ -636,24 +651,14 @@ class Query:
         
         # Determine which sources to query
         # Handle both enum and string values
-        import time
-        request_id = int(time.time() * 1000) % 100000  # Last 5 digits of timestamp
-        
-        print(f"🔍 [{request_id}] ===== GraphQL Activities Query Start =====")
-        print(f"🔍 [{request_id}] Raw source param: {source} (type: {type(source).__name__})")
-        print(f"🔍 [{request_id}] Member: {member_name}")
-        print(f"🔍 [{request_id}] Project: {project_key}")
-        print(f"🔍 [{request_id}] Keyword: {keyword}")
-        print(f"🔍 [{request_id}] Date range: {start_date} ~ {end_date}")
-        
         if source:
             source_value = source.value if hasattr(source, 'value') else source
             # Convert to lowercase for consistent comparison
             sources = [source_value.lower()]
-            print(f"🔍 [{request_id}] Source conversion: {source} → {source_value} → {sources}")
         else:
             sources = ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
-            print(f"🔍 [{request_id}] No source filter, querying all: {sources}")
+        
+        print(f"🔍 [{request_id}] Final sources to query: {sources}")
         
         activities = []
         
