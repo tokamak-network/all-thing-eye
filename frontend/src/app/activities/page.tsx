@@ -772,6 +772,15 @@ export default function ActivitiesPage() {
     offset: 0,
   };
 
+  // Debug: Log filter values
+  console.log("🔍 Frontend Filters:", {
+    sourceFilter,
+    normalizedSource: normalizeSourceType(sourceFilter),
+    memberFilter,
+    projectFilter,
+    variables: activitiesVariables,
+  });
+
   const {
     data: activitiesData,
     loading: activitiesLoading,
