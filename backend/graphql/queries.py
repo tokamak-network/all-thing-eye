@@ -1173,7 +1173,12 @@ class Query:
         """
         db = info.context['db']
         
-        sources = [source.value] if source else ['github', 'slack', 'notion', 'drive']
+        # Handle both SourceType enum and string values
+        if source:
+            source_value = source.value if hasattr(source, 'value') else source
+            sources = [source_value]
+        else:
+            sources = ['github', 'slack', 'notion', 'drive']
         
         by_source = {}
         by_type = {}
