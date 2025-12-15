@@ -241,12 +241,22 @@ async def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Collect previous day data (KST timezone)'
+        description='Collect data for date range (KST timezone)'
     )
     parser.add_argument(
         '--date',
         type=str,
         help='Specific date to collect (YYYY-MM-DD in KST). Default: yesterday'
+    )
+    parser.add_argument(
+        '--start-date',
+        type=str,
+        help='Start date for collection range (YYYY-MM-DD in KST). Use with --end-date or alone (collects until today)'
+    )
+    parser.add_argument(
+        '--end-date',
+        type=str,
+        help='End date for collection range (YYYY-MM-DD in KST). Use with --start-date. Default: today if --start-date is specified'
     )
     parser.add_argument(
         '--sources',
@@ -268,8 +278,24 @@ async def main():
     logger.info("=" * 80)
     
     # Calculate date range
-    if args.date:
-        # Parse specific date
+    if args.start_date:
+        # Date range mode
+        start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
+        start_kst = start_date.replace(hour=0, minute=0, second=0, tzinfo=KST)
+        
+        if args.end_date:
+            end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
+            end_kst = end_date.replace(hour=23, minute=59, second=59, tzinfo=KST)
+        else:
+            # If only --start-date is specified, collect until today
+            today = datetime.now(KST)
+            end_kst = today.replace(hour=23, minute=59, second=59, tzinfo=KST)
+        
+        start_utc = start_kst.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        end_utc = end_kst.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        logger.info(f"📅 Date range (KST): {start_date.date()} ~ {end_kst.date()}")
+    elif args.date:
+        # Single date mode
         target_date = datetime.strptime(args.date, '%Y-%m-%d')
         start_kst = target_date.replace(hour=0, minute=0, second=0, tzinfo=KST)
         end_kst = target_date.replace(hour=23, minute=59, second=59, tzinfo=KST)
@@ -277,7 +303,7 @@ async def main():
         end_utc = end_kst.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
         logger.info(f"📅 Target date (KST): {target_date.date()}")
     else:
-        # Use previous day
+        # Use previous day (default)
         start_utc, end_utc = get_previous_day_range_kst()
     
     # Initialize MongoDB connection

@@ -558,23 +558,95 @@ class GoogleDrivePluginMongo(DataSourcePlugin):
         
         if activities_to_save:
             try:
-                # Save in batches to avoid timeout with large datasets
+                # Use bulk_write with upsert to handle duplicates gracefully
+                from pymongo import UpdateOne
+                from pymongo.errors import BulkWriteError
                 batch_size = 1000
                 total = len(activities_to_save)
                 saved_count = 0
+                updated_count = 0
+                skipped_count = 0
                 
                 for i in range(0, total, batch_size):
                     batch = activities_to_save[i:i+batch_size]
                     try:
-                        self.collections["activities"].insert_many(batch, ordered=False)
-                        saved_count += len(batch)
+                        # Create UpdateOne operations for each activity (upsert)
+                        operations = [
+                            UpdateOne(
+                                {'activity_id': activity['activity_id']},
+                                {'$set': activity},
+                                upsert=True
+                            )
+                            for activity in batch
+                        ]
+                        
+                        result = self.collections["activities"].bulk_write(operations, ordered=False)
+                        saved_count += result.upserted_count
+                        updated_count += result.modified_count
+                        
                         if (i + batch_size) % 10000 == 0:
-                            print(f"   📊 Progress: {saved_count}/{total} activities saved...")
-                    except DuplicateKeyError:
-                        # Some documents already exist, continue
-                        pass
+                            print(f"   📊 Progress: {saved_count + updated_count}/{total} activities processed...")
+                    except BulkWriteError as bwe:
+                        # Handle bulk write errors (duplicates are expected)
+                        # Count successful operations
+                        saved_count += bwe.details.get('nInserted', 0) + bwe.details.get('nUpserted', 0)
+                        updated_count += bwe.details.get('nModified', 0)
+                        
+                        # Count duplicate key errors (these are expected and can be ignored)
+                        write_errors = bwe.details.get('writeErrors', [])
+                        duplicate_errors = [e for e in write_errors if e.get('code') == 11000]
+                        skipped_count += len(duplicate_errors)
+                        
+                        # If there are non-duplicate errors, log them
+                        other_errors = [e for e in write_errors if e.get('code') != 11000]
+                        if other_errors:
+                            print(f"   ⚠️  Non-duplicate errors in batch: {len(other_errors)}")
+                            for error in other_errors[:5]:  # Show first 5
+                                print(f"      Error: {error.get('errmsg', 'Unknown error')}")
+                        
+                        # Try individual upserts for failed operations (excluding duplicates)
+                        if other_errors:
+                            failed_indices = {e.get('index') for e in other_errors}
+                            for idx in failed_indices:
+                                if idx < len(batch):
+                                    try:
+                                        activity = batch[idx]
+                                        result = self.collections["activities"].update_one(
+                                            {'activity_id': activity['activity_id']},
+                                            {'$set': activity},
+                                            upsert=True
+                                        )
+                                        if result.upserted_id:
+                                            saved_count += 1
+                                        elif result.modified_count:
+                                            updated_count += 1
+                                    except Exception as e:
+                                        print(f"   ⚠️  Error saving activity {activity.get('activity_id', 'unknown')}: {e}")
+                    except Exception as batch_error:
+                        # If batch fails with non-BulkWriteError, try individual upserts
+                        print(f"   ⚠️  Batch error, processing individually: {batch_error}")
+                        for activity in batch:
+                            try:
+                                result = self.collections["activities"].update_one(
+                                    {'activity_id': activity['activity_id']},
+                                    {'$set': activity},
+                                    upsert=True
+                                )
+                                if result.upserted_id:
+                                    saved_count += 1
+                                elif result.modified_count:
+                                    updated_count += 1
+                            except Exception as e:
+                                # Ignore duplicate key errors
+                                if 'duplicate key' in str(e).lower() or 'E11000' in str(e):
+                                    skipped_count += 1
+                                else:
+                                    print(f"   ⚠️  Error saving activity {activity.get('activity_id', 'unknown')}: {e}")
                 
-                print(f"   ✅ Saved {saved_count} activities")
+                if skipped_count > 0:
+                    print(f"   ✅ Saved {saved_count} new activities, updated {updated_count} existing activities, skipped {skipped_count} duplicates")
+                else:
+                    print(f"   ✅ Saved {saved_count} new activities, updated {updated_count} existing activities")
             except Exception as e:
                 print(f"   ❌ Error saving activities: {e}")
         

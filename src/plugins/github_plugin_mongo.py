@@ -402,17 +402,40 @@ class GitHubPluginMongo(DataSourcePlugin):
                 merged_at = datetime.fromisoformat(pr_data['merged_at'].replace('Z', '+00:00')) if pr_data.get('merged_at') else None
                 closed_at = datetime.fromisoformat(pr_data['closed_at'].replace('Z', '+00:00')) if pr_data.get('closed_at') else None
                 
+                # Parse reviews
+                reviews = []
+                for review_data in pr_data.get('reviews', []):
+                    if not review_data.get('submitted_at'):
+                        continue
+                    try:
+                        submitted_at = datetime.fromisoformat(review_data['submitted_at'].replace('Z', '+00:00'))
+                        review = {
+                            'reviewer': review_data.get('reviewer', 'unknown'),
+                            'state': review_data.get('state', 'COMMENTED'),
+                            'submitted_at': submitted_at,
+                            'body': review_data.get('body', '') or ''
+                        }
+                        # Add comment metadata if available (for code line comments)
+                        if 'comment_path' in review_data:
+                            review['comment_path'] = review_data.get('comment_path')
+                        if 'comment_line' in review_data:
+                            review['comment_line'] = review_data.get('comment_line')
+                        reviews.append(review)
+                    except Exception as e:
+                        print(f"      ⚠️  Error parsing review for PR #{pr_data.get('number')}: {e}")
+                        continue
+                
                 # Insert or update PR
                 self.prs_col.update_one(
                     {
-                        'repository': pr_data['repository_name'],  # Changed from repository_name
+                        'repository': pr_data['repository_name'],
                         'number': pr_data['number']
                     },
                     {
                         '$set': {
                             'title': pr_data.get('title'),
                             'state': pr_data.get('state'),
-                            'author': pr_data.get('author_login'),  # Changed from author_login
+                            'author': pr_data.get('author_login'),
                             'created_at': created_at,
                             'updated_at': datetime.utcnow(),
                             'merged_at': merged_at,
@@ -421,7 +444,7 @@ class GitHubPluginMongo(DataSourcePlugin):
                             'deletions': pr_data.get('deletions', 0),
                             'changed_files': 0,  # Not available in current data
                             'commits': 0,  # Not available in current data
-                            'reviews': [],  # Would need additional API calls
+                            'reviews': reviews,  # Now includes collected reviews
                             'labels': [],  # Not available in current data
                             'assignees': [],  # Not available in current data
                             'url': pr_data.get('url'),
@@ -431,6 +454,9 @@ class GitHubPluginMongo(DataSourcePlugin):
                     upsert=True
                 )
                 saved_count += 1
+                
+                if reviews:
+                    print(f"      ✅ PR #{pr_data.get('number')}: {len(reviews)} reviews saved")
             except Exception as e:
                 print(f"      ⚠️  Error saving PR #{pr_data.get('number')}: {e}")
         
@@ -857,6 +883,9 @@ class GitHubPluginMongo(DataSourcePlugin):
                             }
                             repository {
                                 name
+                                owner {
+                                    login
+                                }
                             }
                         }
                     }
@@ -878,8 +907,9 @@ class GitHubPluginMongo(DataSourcePlugin):
             if not result or 'search' not in result:
                 break
             
-            prs = [
-                {
+            prs = []
+            for node in result['search']['nodes']:
+                pr_data = {
                     'number': node['number'],
                     'title': node['title'],
                     'url': node['url'],
@@ -889,18 +919,173 @@ class GitHubPluginMongo(DataSourcePlugin):
                     'closed_at': node.get('closedAt'),
                     'author_login': node['author']['login'] if node.get('author') else 'unknown',
                     'repository_name': node['repository']['name'],
+                    'repository_owner': node['repository']['owner']['login'] if node.get('repository', {}).get('owner') else self.org_name,
                     'additions': node.get('additions', 0),
                     'deletions': node.get('deletions', 0)
                 }
-                for node in result['search']['nodes']
-            ]
+                
+                # Fetch reviews for this PR
+                try:
+                    reviews = self._get_pr_reviews(
+                        pr_data['repository_owner'],
+                        pr_data['repository_name'],
+                        pr_data['number']
+                    )
+                    pr_data['reviews'] = reviews
+                except Exception as e:
+                    print(f"      ⚠️  Error fetching reviews for PR #{pr_data['number']}: {e}")
+                    pr_data['reviews'] = []
+                
+                prs.append(pr_data)
             
             all_prs.extend(prs)
             
             has_next_page = result['search']['pageInfo']['hasNextPage']
             cursor = result['search']['pageInfo']['endCursor']
+            
+            # Rate limiting: small delay between pages
+            time.sleep(0.5)
         
         return all_prs
+    
+    def _get_pr_reviews(self, owner: str, repo: str, pr_number: int) -> List[Dict[str, Any]]:
+        """Get reviews and review comments for a specific pull request"""
+        query = '''
+            query getPRReviews($owner: String!, $repo: String!, $prNumber: Int!, $cursor: String, $commentsCursor: String) {
+                repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $prNumber) {
+                        reviews(first: 100, after: $cursor) {
+                            nodes {
+                                author {
+                                    login
+                                }
+                                state
+                                submittedAt
+                                body
+                            }
+                            pageInfo {
+                                hasNextPage
+                                endCursor
+                            }
+                        }
+                        reviewThreads(first: 50, after: $commentsCursor) {
+                            nodes {
+                                comments(first: 10) {
+                                    nodes {
+                                        author {
+                                            login
+                                        }
+                                        body
+                                        createdAt
+                                        path
+                                        line
+                                    }
+                                }
+                            }
+                            pageInfo {
+                                hasNextPage
+                                endCursor
+                            }
+                        }
+                    }
+                }
+            }
+        '''
+        
+        all_reviews = []
+        has_next_page = True
+        cursor = None
+        comments_cursor = None
+        
+        # First, collect all reviews
+        while has_next_page:
+            result = self._query_graphql(query, {
+                'owner': owner,
+                'repo': repo,
+                'prNumber': pr_number,
+                'cursor': cursor,
+                'commentsCursor': None
+            })
+            
+            if not result or 'repository' not in result:
+                break
+            
+            pr_node = result['repository'].get('pullRequest')
+            if not pr_node or 'reviews' not in pr_node:
+                break
+            
+            reviews_data = pr_node['reviews']
+            if not reviews_data or 'nodes' not in reviews_data:
+                break
+            
+            for review_node in reviews_data['nodes']:
+                if not review_node.get('author'):
+                    continue
+                
+                review = {
+                    'reviewer': review_node['author']['login'],
+                    'state': review_node['state'],  # APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, PENDING
+                    'submitted_at': review_node.get('submittedAt'),
+                    'body': review_node.get('body') or ''
+                }
+                all_reviews.append(review)
+            
+            has_next_page = reviews_data['pageInfo']['hasNextPage']
+            cursor = reviews_data['pageInfo']['endCursor']
+            
+            # Rate limiting: small delay between pages
+            if has_next_page:
+                time.sleep(0.3)
+        
+        # Then, collect review comments (code line comments)
+        has_more_comments = True
+        comments_cursor = None
+        
+        while has_more_comments:
+            result = self._query_graphql(query, {
+                'owner': owner,
+                'repo': repo,
+                'prNumber': pr_number,
+                'cursor': None,
+                'commentsCursor': comments_cursor
+            })
+            
+            if not result or 'repository' not in result:
+                break
+            
+            pr_node = result['repository'].get('pullRequest')
+            if not pr_node or 'reviewThreads' not in pr_node:
+                break
+            
+            threads_data = pr_node['reviewThreads']
+            if not threads_data or 'nodes' not in threads_data:
+                break
+            
+            for thread_node in threads_data['nodes']:
+                comments = thread_node.get('comments', {}).get('nodes', [])
+                for comment_node in comments:
+                    if not comment_node.get('author'):
+                        continue
+                    
+                    # Create a review entry for each comment
+                    review = {
+                        'reviewer': comment_node['author']['login'],
+                        'state': 'COMMENTED',  # Review comments are always COMMENTED
+                        'submitted_at': comment_node.get('createdAt'),
+                        'body': comment_node.get('body', '') or '',
+                        'comment_path': comment_node.get('path'),  # File path
+                        'comment_line': comment_node.get('line')  # Line number
+                    }
+                    all_reviews.append(review)
+            
+            has_more_comments = threads_data['pageInfo']['hasNextPage']
+            comments_cursor = threads_data['pageInfo']['endCursor']
+            
+            # Rate limiting: small delay between pages
+            if has_more_comments:
+                time.sleep(0.3)
+        
+        return all_reviews
     
     def _get_issues(self, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """Get issues within date range"""
