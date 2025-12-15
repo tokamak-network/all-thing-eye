@@ -47,14 +47,22 @@ class Member:
         """
         Get total activity count for this member.
         
+        Uses DataLoader for batch loading when no source filter is specified.
+        
         Args:
             source: Optional filter by data source
             
         Returns:
             Total number of activities
         """
-        db = info.context['db']
+        # Use DataLoader for batch loading (all sources)
+        if not source:
+            dataloaders = info.context.get('dataloaders')
+            if dataloaders:
+                return await dataloaders['activity_counts'].load(self.name)
         
+        # Fallback to direct query if source filter is specified
+        db = info.context['db']
         count = 0
         
         # GitHub activities
@@ -92,6 +100,8 @@ class Member:
         """
         Get recent activities for this member.
         
+        Uses DataLoader for batch loading to prevent N+1 queries.
+        
         Args:
             limit: Maximum number of activities to return
             source: Optional filter by data source
@@ -99,6 +109,16 @@ class Member:
         Returns:
             List of recent activities
         """
+        # Use DataLoader for batch loading
+        dataloaders = info.context.get('dataloaders')
+        
+        if dataloaders:
+            # DataLoader key: (member_name, limit, source)
+            return await dataloaders['recent_activities'].load(
+                (self.name, limit, source)
+            )
+        
+        # Fallback to direct query if DataLoader not available
         from .queries import get_activities_for_member
         return await get_activities_for_member(
             db=info.context['db'],
@@ -172,14 +192,28 @@ class Project:
     slack_channel: Optional[str] = None
     repositories: List[str]
     is_active: bool = True
+    member_ids: List[str] = strawberry.field(default_factory=list)  # Internal field
     
     @strawberry.field
     async def member_count(self, info) -> int:
-        """Get number of members in this project"""
+        """
+        Get number of members in this project.
+        
+        Uses DataLoader for batch loading when querying multiple projects.
+        """
+        # Use DataLoader for batch loading
+        dataloaders = info.context.get('dataloaders')
+        if dataloaders and self.member_ids:
+            return await dataloaders['project_member_counts'].load(self.member_ids)
+        
+        # Fallback: just return length of member_ids
+        if self.member_ids:
+            return len(self.member_ids)
+        
+        # If member_ids not loaded, query database
         db = info.context['db']
         from bson import ObjectId
         
-        # Get project document
         project_doc = await db['projects'].find_one({'_id': ObjectId(self.id)})
         if not project_doc:
             return 0

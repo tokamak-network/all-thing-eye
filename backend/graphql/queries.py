@@ -445,7 +445,8 @@ class Query:
                 description=doc.get('description'),
                 slack_channel=doc.get('slack_channel'),
                 repositories=doc.get('repositories', []),
-                is_active=doc.get('is_active', True)
+                is_active=doc.get('is_active', True),
+                member_ids=doc.get('member_ids', [])
             ))
         
         return projects
@@ -488,7 +489,8 @@ class Query:
             description=doc.get('description'),
             slack_channel=doc.get('slack_channel'),
             repositories=doc.get('repositories', []),
-            is_active=doc.get('is_active', True)
+            is_active=doc.get('is_active', True),
+            member_ids=doc.get('member_ids', [])
         )
     
     @strawberry.field

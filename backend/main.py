@@ -228,13 +228,20 @@ app.include_router(
 try:
     from strawberry.fastapi import GraphQLRouter
     from backend.graphql.schema import schema
+    from backend.graphql.dataloaders import create_dataloaders
+    
+    def get_graphql_context():
+        """Create GraphQL context with database and dataloaders"""
+        db = mongo_manager.async_db
+        return {
+            'db': db,
+            'config': app.state.config,
+            'dataloaders': create_dataloaders(db),
+        }
     
     graphql_app = GraphQLRouter(
         schema,
-        context_getter=lambda: {
-            'db': mongo_manager.async_db,
-            'config': app.state.config
-        }
+        context_getter=get_graphql_context
     )
     app.include_router(graphql_app, prefix="/graphql", tags=["graphql"])
     logger.info("✅ GraphQL endpoint enabled at /graphql")
