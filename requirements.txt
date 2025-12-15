@@ -16,6 +16,9 @@ pymongo==4.6.1          # MongoDB sync driver
 motor==3.3.2            # MongoDB async driver
 mongoengine==0.27.0     # MongoDB ODM (optional)
 
+# GraphQL
+strawberry-graphql[fastapi]==0.235.0  # Modern GraphQL library with FastAPI integration
+
 # Data Processing
 pandas==2.1.3
 numpy==1.26.2

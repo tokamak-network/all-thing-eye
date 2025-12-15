@@ -224,6 +224,30 @@ app.include_router(
     tags=["custom-export"]
 )
 
+# GraphQL endpoint
+try:
+    from strawberry.fastapi import GraphQLRouter
+    from backend.graphql.schema import schema
+    
+    graphql_app = GraphQLRouter(
+        schema,
+        context_getter=lambda: {
+            'db': mongo_manager.async_db,
+            'config': app.state.config
+        }
+    )
+    app.include_router(graphql_app, prefix="/graphql", tags=["graphql"])
+    logger.info("✅ GraphQL endpoint enabled at /graphql")
+except ImportError as e:
+    logger.warning("⚠️  Strawberry GraphQL not installed. GraphQL endpoint disabled.")
+    logger.warning(f"   Error: {e}")
+    logger.warning("   Install with: pip install strawberry-graphql[fastapi]")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize GraphQL endpoint: {e}")
+    logger.error(f"   Error type: {type(e).__name__}")
+    import traceback
+    logger.error(f"   Traceback: {traceback.format_exc()}")
+
 
 # Error handlers
 @app.exception_handler(HTTPException)
