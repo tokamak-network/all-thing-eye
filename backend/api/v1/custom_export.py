@@ -822,10 +822,10 @@ async def export_custom_data(
             logger.info(f"[EXPORT] Using sources from body.sources: {sources_needed}")
         else:
             # Fall back to determining from selected_fields
-            for field in body.selected_fields:
-                source = get_source_from_field(field)
-                if source and source != "member":
-                    sources_needed.add(source)
+        for field in body.selected_fields:
+            source = get_source_from_field(field)
+            if source and source != "member":
+                sources_needed.add(source)
             logger.info(f"[EXPORT] Determined sources from fields: {sources_needed}")
         
         if not sources_needed:

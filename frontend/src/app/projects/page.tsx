@@ -175,7 +175,7 @@ export default function ProjectsPage() {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-+|-+$/g, "");
-
+        
         // Create new project (REST API - mutations not implemented yet)
         await apiClient.createProject({
           key: generatedKey,
@@ -297,8 +297,8 @@ export default function ProjectsPage() {
   // Filter members based on search term
   const filteredMembers = allMembers.filter(
     (member) =>
-      member.name.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
-      member.email?.toLowerCase().includes(memberSearchTerm.toLowerCase())
+    member.name.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+    member.email?.toLowerCase().includes(memberSearchTerm.toLowerCase())
   );
 
   if (loading && !data) {
@@ -309,13 +309,13 @@ export default function ProjectsPage() {
     );
   }
 
-  return (
+    return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
-        {/* TBD Banner */}
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
+      {/* TBD Banner */}
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+        <div className="flex items-center">
+          <div className="flex-shrink-0">
               <svg
                 className="h-5 w-5 text-yellow-400"
                 viewBox="0 0 20 20"
@@ -326,28 +326,28 @@ export default function ProjectsPage() {
                   d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
                   clipRule="evenodd"
                 />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
+            </svg>
+          </div>
+          <div className="ml-3">
+            <p className="text-sm text-yellow-700">
                 <span className="font-bold">TBD (To Be Determined)</span> - This
                 page is currently under development.
-              </p>
-            </div>
+            </p>
           </div>
         </div>
+      </div>
 
-        {/* Header */}
+      {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <div>
+      <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
               <FolderIcon className="h-8 w-8 text-blue-600" />
               Projects Management
             </h1>
             <p className="text-gray-600 mt-2">
               Manage project configurations and settings
-            </p>
-          </div>
+        </p>
+      </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2">
               <input
@@ -401,7 +401,7 @@ export default function ProjectsPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {data?.projects.map((project) => (
+        {data?.projects.map((project) => (
                   <tr key={project.key} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
@@ -411,7 +411,7 @@ export default function ProjectsPage() {
                           }
                           className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
                         >
-                          {project.name}
+                  {project.name}
                         </button>
                         <div className="text-sm text-gray-500">
                           {project.key}
@@ -492,8 +492,8 @@ export default function ProjectsPage() {
               </p>
             </div>
           )}
-        </div>
-
+              </div>
+              
         {/* Create/Edit Modal */}
         {showCreateModal && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -541,7 +541,7 @@ export default function ProjectsPage() {
                     />
                   </div>
 
-                  <div>
+                <div>
                     <label className="block text-sm font-medium text-gray-700">
                       Description
                     </label>
@@ -591,7 +591,7 @@ export default function ProjectsPage() {
                         placeholder="project-ooo"
                       />
                     </div>
-                  </div>
+                </div>
 
                   {/* GitHub Repositories */}
                   <div>
@@ -655,8 +655,8 @@ export default function ProjectsPage() {
                         team and they will be automatically synced at midnight
                         (KST).
                       </p>
-                    )}
-                  </div>
+                )}
+              </div>
 
                   {/* Google Drive Root Folder */}
                   <div>

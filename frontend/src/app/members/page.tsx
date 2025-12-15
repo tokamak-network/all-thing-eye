@@ -67,13 +67,13 @@ export default function MembersPage() {
   }));
 
   const error = graphqlError?.message || null;
-
+  
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [deletingMember, setDeletingMember] = useState<Member | null>(null);
-
+  
   // Form states
   const [formData, setFormData] = useState<MemberFormData>({
     name: "",
@@ -108,7 +108,7 @@ export default function MembersPage() {
   // Open modal for editing existing member
   const openEditModal = (member: Member) => {
     setEditingMember(member);
-
+    
     // Extract identifiers - handle both old format (identifier_type keys) and new format (source keys)
     const getIdentifier = (source: string): string => {
       // Try source key first (new format: github, slack, notion, drive)
@@ -132,7 +132,7 @@ export default function MembersPage() {
       }
       return "";
     };
-
+    
     setFormData({
       name: member.name,
       email: member.email,
@@ -168,7 +168,7 @@ export default function MembersPage() {
         // Create new member (REST API - mutations not implemented yet)
         await apiClient.createMember(formData);
       }
-
+      
       // Refetch members from GraphQL
       await refetch();
       closeModal();

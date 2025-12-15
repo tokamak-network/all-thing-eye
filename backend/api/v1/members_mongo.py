@@ -416,14 +416,14 @@ async def update_member(
                 else:
                     # Create new - check again to avoid race condition
                     try:
-                        await db["member_identifiers"].insert_one({
-                            "member_id": member_id,
-                            "member_name": member_name,
-                            "source": source,
-                            "identifier_type": sub_type,
-                            "identifier_value": identifier_value,
-                            "created_at": now
-                        })
+                    await db["member_identifiers"].insert_one({
+                        "member_id": member_id,
+                        "member_name": member_name,
+                        "source": source,
+                        "identifier_type": sub_type,
+                        "identifier_value": identifier_value,
+                        "created_at": now
+                    })
                     except Exception as e:
                         # If duplicate key error, it means another process created it
                         if "duplicate key" in str(e).lower() or "E11000" in str(e):
@@ -471,17 +471,17 @@ async def update_member(
                                 "member_id": {"$ne": member_id}
                             })
                             if not duplicate_user_id:
-                                member_name = update_data.get("name", existing_member.get("name"))
+                            member_name = update_data.get("name", existing_member.get("name"))
                                 try:
-                                    await db["member_identifiers"].insert_one({
-                                        "member_id": member_id,
-                                        "member_name": member_name,
-                                        "source": "slack",
-                                        "identifier_type": "user_id",
-                                        "identifier_value": actual_user_id,
-                                        "created_at": now
-                                    })
-                                    logger.info(f"Found Slack user_id {actual_user_id} for email {slack_email}")
+                            await db["member_identifiers"].insert_one({
+                                "member_id": member_id,
+                                "member_name": member_name,
+                                "source": "slack",
+                                "identifier_type": "user_id",
+                                "identifier_value": actual_user_id,
+                                "created_at": now
+                            })
+                            logger.info(f"Found Slack user_id {actual_user_id} for email {slack_email}")
                                 except Exception as e:
                                     if "duplicate key" in str(e).lower() or "E11000" in str(e):
                                         logger.warning(f"Duplicate key error when inserting Slack user_id {actual_user_id}: {e}")
@@ -535,17 +535,17 @@ async def update_member(
                                     "member_id": {"$ne": member_id}
                                 })
                                 if not duplicate_user_id:
-                                    member_name = update_data.get("name", existing_member.get("name"))
+                                member_name = update_data.get("name", existing_member.get("name"))
                                     try:
-                                        await db["member_identifiers"].insert_one({
-                                            "member_id": member_id,
-                                            "member_name": member_name,
-                                            "source": "notion",
-                                            "identifier_type": "user_id",
-                                            "identifier_value": notion_user_id,
-                                            "created_at": now
-                                        })
-                                        logger.info(f"Found Notion user_id {notion_user_id} for email {notion_email}")
+                                await db["member_identifiers"].insert_one({
+                                    "member_id": member_id,
+                                    "member_name": member_name,
+                                    "source": "notion",
+                                    "identifier_type": "user_id",
+                                    "identifier_value": notion_user_id,
+                                    "created_at": now
+                                })
+                                logger.info(f"Found Notion user_id {notion_user_id} for email {notion_email}")
                                     except Exception as e:
                                         if "duplicate key" in str(e).lower() or "E11000" in str(e):
                                             logger.warning(f"Duplicate key error when inserting Notion user_id {notion_user_id}: {e}")
@@ -618,7 +618,7 @@ async def get_member_detail(
         # Try as ObjectId
         try:
             member_obj_id = ObjectId(member_id)
-            member = await db["members"].find_one({"_id": member_obj_id})
+        member = await db["members"].find_one({"_id": member_obj_id})
         except Exception:
             # Not a valid ObjectId, try as name
             pass
@@ -769,10 +769,10 @@ async def get_member_detail(
                 all_slack_identifiers.add(identifier_value)
         
         slack_query = {}
-        or_conditions = []
+            or_conditions = []
         
         # Always include user_name as fallback (case-insensitive)
-        or_conditions.append({'user_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
+            or_conditions.append({'user_name': {'$regex': f'^{member_name}$', '$options': 'i'}})
         # Also try without case sensitivity for common name variations
         if member_name:
             or_conditions.append({'user_name': {'$regex': member_name, '$options': 'i'}})
@@ -1014,7 +1014,7 @@ async def get_member_activities(
         # Try as ObjectId
         try:
             member_obj_id = ObjectId(member_id)
-            member = await db["members"].find_one({"_id": member_obj_id})
+        member = await db["members"].find_one({"_id": member_obj_id})
         except Exception:
             # Not a valid ObjectId, try as name
             pass

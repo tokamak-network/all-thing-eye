@@ -640,8 +640,13 @@ class Query:
             source_value = source.value if hasattr(source, 'value') else source
             # Convert to lowercase for consistent comparison
             sources = [source_value.lower()]
+            print(f"🔍 GraphQL Activities Filter - Source: {source} → {source_value} → {sources}")
         else:
             sources = ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
+            print(f"🔍 GraphQL Activities Filter - No source filter, querying all sources")
+        
+        print(f"🔍 Member filter: {member_name}")
+        print(f"🔍 Project filter: {project_key}")
         
         activities = []
         
