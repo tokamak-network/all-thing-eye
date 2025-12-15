@@ -638,7 +638,8 @@ class Query:
         # Handle both enum and string values
         if source:
             source_value = source.value if hasattr(source, 'value') else source
-            sources = [source_value]
+            # Convert to lowercase for consistent comparison
+            sources = [source_value.lower()]
         else:
             sources = ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
         
