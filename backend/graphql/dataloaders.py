@@ -33,36 +33,68 @@ async def load_activity_counts_batch(
     Returns:
         List of activity counts in same order as keys
     """
-    logger.debug(f"📦 DataLoader: Batch loading activity counts for {len(keys)} members")
+    logger.info(f"📦 DataLoader: Batch loading activity counts for {len(keys)} members")
     
     # Initialize counts for all members
     counts: Dict[str, int] = {key: 0 for key in keys}
     
+    # Get member mappings (name -> github_id, slack_username, email, etc.)
+    member_mappings = {}
+    async for member_doc in db['members'].find({'name': {'$in': keys}}):
+        name = member_doc.get('name')
+        member_mappings[name] = {
+            'github_id': member_doc.get('github_id'),
+            'github_username': member_doc.get('github_username'),
+            'email': member_doc.get('email'),
+        }
+    
+    # Build list of GitHub IDs and Slack usernames to query
+    github_ids = [m.get('github_id') or m.get('github_username') for m in member_mappings.values() if m.get('github_id') or m.get('github_username')]
+    slack_usernames = [name.lower() for name in keys]  # Slack uses lowercase names
+    
+    logger.info(f"   GitHub IDs: {github_ids}")
+    logger.info(f"   Slack usernames: {slack_usernames}")
+    
     # Batch query for GitHub commits
     pipeline = [
-        {'$match': {'author_name': {'$in': keys}}},
+        {'$match': {'author_name': {'$in': github_ids}}},
         {'$group': {'_id': '$author_name', 'count': {'$sum': 1}}}
     ]
     async for doc in db['github_commits'].aggregate(pipeline):
-        counts[doc['_id']] += doc['count']
+        # Map GitHub ID back to member name
+        github_id = doc['_id']
+        for name, mapping in member_mappings.items():
+            if mapping.get('github_id') == github_id or mapping.get('github_username') == github_id:
+                counts[name] += doc['count']
+                break
     
     # Batch query for GitHub PRs
     pipeline = [
-        {'$match': {'author': {'$in': keys}}},
+        {'$match': {'author': {'$in': github_ids}}},
         {'$group': {'_id': '$author', 'count': {'$sum': 1}}}
     ]
     async for doc in db['github_pull_requests'].aggregate(pipeline):
-        counts[doc['_id']] += doc['count']
+        # Map GitHub ID back to member name
+        github_id = doc['_id']
+        for name, mapping in member_mappings.items():
+            if mapping.get('github_id') == github_id or mapping.get('github_username') == github_id:
+                counts[name] += doc['count']
+                break
     
     # Batch query for Slack messages
     pipeline = [
-        {'$match': {'user_name': {'$in': keys}}},
+        {'$match': {'user_name': {'$in': slack_usernames}}},
         {'$group': {'_id': '$user_name', 'count': {'$sum': 1}}}
     ]
     async for doc in db['slack_messages'].aggregate(pipeline):
-        counts[doc['_id']] += doc['count']
+        # Map Slack username back to member name (case-insensitive)
+        slack_username = doc['_id']
+        for name in keys:
+            if name.lower() == slack_username.lower():
+                counts[name] += doc['count']
+                break
     
-    # Batch query for Notion pages
+    # Batch query for Notion pages (uses member names directly)
     pipeline = [
         {
             '$match': {
@@ -89,21 +121,37 @@ async def load_activity_counts_batch(
         if doc['_id']:
             counts[doc['_id']] += doc['count']
     
-    # Batch query for Drive activities
+    # Batch query for Drive activities (uses actor_name which might be email or name)
+    # Try both member names and emails
+    all_identifiers = list(keys)
+    for mapping in member_mappings.values():
+        if mapping.get('email'):
+            all_identifiers.append(mapping['email'])
+    
     pipeline = [
-        {'$match': {'actor_name': {'$in': keys}}},
+        {'$match': {'actor_name': {'$in': all_identifiers}}},
         {'$group': {'_id': '$actor_name', 'count': {'$sum': 1}}}
     ]
     async for doc in db['drive_activities'].aggregate(pipeline):
-        counts[doc['_id']] += doc['count']
+        actor = doc['_id']
+        # Try to match by name first, then by email
+        if actor in counts:
+            counts[actor] += doc['count']
+        else:
+            # Try to find member by email
+            for name, mapping in member_mappings.items():
+                if mapping.get('email') == actor:
+                    counts[name] += doc['count']
+                    break
     
     # Return counts in same order as keys
     result = [counts[key] for key in keys]
     
-    logger.debug(
+    logger.info(
         f"✅ DataLoader: Loaded {len(keys)} activity counts "
         f"(total: {sum(result)} activities)"
     )
+    logger.info(f"   Individual counts: {dict(zip(keys, result))}")
     
     return result
 

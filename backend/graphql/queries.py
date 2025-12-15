@@ -498,6 +498,7 @@ class Query:
         self,
         info,
         source: Optional[SourceType] = None,
+        member_name: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> ActivitySummary:
@@ -506,6 +507,7 @@ class Query:
         
         Args:
             source: Filter by data source
+            member_name: Filter by member name
             start_date: Filter activities after this date
             end_date: Filter activities before this date
             
@@ -520,9 +522,20 @@ class Query:
         by_type = {}
         total = 0
         
+        # Get member mapping if member_name is provided
+        member_github_id = None
+        member_email = None
+        if member_name:
+            member_doc = await db['members'].find_one({'name': member_name})
+            if member_doc:
+                member_github_id = member_doc.get('github_id') or member_doc.get('github_username')
+                member_email = member_doc.get('email')
+        
         # GitHub
         if 'github' in sources:
             github_query = {}
+            if member_github_id:
+                github_query['author_name'] = member_github_id
             if start_date:
                 github_query['date'] = {'$gte': start_date}
             if end_date:
@@ -532,6 +545,8 @@ class Query:
             commits_count = await db['github_commits'].count_documents(github_query)
             
             pr_query = {}
+            if member_github_id:
+                pr_query['author'] = member_github_id
             if start_date:
                 pr_query['created_at'] = {'$gte': start_date}
             if end_date:
@@ -548,6 +563,8 @@ class Query:
         # Slack
         if 'slack' in sources:
             slack_query = {}
+            if member_name:
+                slack_query['user_name'] = member_name.lower()
             if start_date:
                 slack_query['posted_at'] = {'$gte': start_date}
             if end_date:
@@ -562,6 +579,13 @@ class Query:
         # Notion
         if 'notion' in sources:
             notion_query = {}
+            if member_name:
+                notion_query = {
+                    '$or': [
+                        {'created_by.name': member_name},
+                        {'last_edited_by.name': member_name}
+                    ]
+                }
             if start_date:
                 notion_query['last_edited_time'] = {'$gte': start_date}
             if end_date:
@@ -576,6 +600,14 @@ class Query:
         # Drive
         if 'drive' in sources:
             drive_query = {}
+            if member_name or member_email:
+                # Try both member name and email
+                identifiers = []
+                if member_name:
+                    identifiers.append(member_name)
+                if member_email:
+                    identifiers.append(member_email)
+                drive_query['actor_name'] = {'$in': identifiers}
             if start_date:
                 drive_query['time'] = {'$gte': start_date}
             if end_date:
