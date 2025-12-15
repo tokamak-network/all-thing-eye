@@ -946,20 +946,29 @@ class Query:
             print(f"🔍 [{request_id}] 📁 Drive query: {query}")
             
             async for doc in db['drive_activities'].find(query).sort('time', -1).limit(limit * 2):
-                target = doc.get('target', {})
-                # Safely get actor_name with fallback
-                actor_name = doc.get('actor_name') or doc.get('actor_email', 'Unknown')
+                # Get user email (Drive stores as 'user_email' field, following REST API pattern)
+                user_email = doc.get('user_email') or doc.get('actor_email')
+                actor_name = doc.get('actor_name')
                 
-                # Convert email to display name (Drive uses email, case-insensitive)
-                actor_email = doc.get('actor_email')
-                if actor_email:
-                    display_name = identifier_to_member.get(('email', actor_email.lower()), 
-                                                           identifier_to_member.get(('drive', actor_email.lower()), actor_name))
+                # Try to get display name from identifier mapping
+                display_name = None
+                if user_email:
+                    # First try email mapping
+                    display_name = identifier_to_member.get(('email', user_email.lower()))
+                    # Then try drive mapping
+                    if not display_name:
+                        display_name = identifier_to_member.get(('drive', user_email.lower()))
+                    # If still not found, extract name from email (like REST API)
+                    if not display_name or '@' in display_name:
+                        # Extract username from email and capitalize
+                        username = user_email.split('@')[0] if user_email else 'Unknown'
+                        display_name = username.capitalize() if username else 'Unknown'
                 else:
-                    display_name = actor_name
+                    # No email, use actor_name or fallback to Unknown
+                    display_name = actor_name or 'Unknown'
                 
                 # Capitalize first letter
-                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                if display_name and isinstance(display_name, str) and len(display_name) > 0 and display_name != display_name.capitalize():
                     display_name = display_name[0].upper() + display_name[1:]
                 
                 # Safely get timestamp (time field might not exist)
@@ -967,20 +976,32 @@ class Query:
                 if not timestamp:
                     continue  # Skip documents without timestamp
                 
+                # Get target object (if exists)
+                target = doc.get('target', {})
+                
                 activities.append(Activity(
                     id=str(doc['_id']),
                     member_name=display_name,
                     source_type='drive',
-                    activity_type=doc.get('type', 'unknown'),
+                    activity_type=doc.get('event_name', 'activity'),
                     timestamp=timestamp,
                     metadata=sanitize_metadata({
+                        # REST API style fields (primary)
+                        'action': doc.get('action'),
+                        'doc_title': doc.get('doc_title'),
+                        'doc_type': doc.get('doc_type'),
+                        'url': doc.get('link'),
+                        'file_id': doc.get('doc_id'),
+                        # Also include target object fields (for fallback)
+                        'target': target,
+                        'target_name': target.get('name') if target else doc.get('doc_title'),
+                        'target_type': target.get('type') if target else doc.get('doc_type'),
+                        'target_url': target.get('url') if target else doc.get('link'),
+                        # Additional metadata
                         'type': doc.get('type'),
-                        'target_name': target.get('name') if target else None,
-                        'target_type': target.get('type') if target else None,
-                        'target_url': target.get('url') if target else None,
-                        'actor_email': doc.get('actor_email'),
-                        'time': doc.get('time'),
-                        'target': doc.get('target')
+                        'event_name': doc.get('event_name'),
+                        'user_email': user_email,
+                        'time': doc.get('time')
                     })
                 ))
         
