@@ -18,6 +18,7 @@ export const MEMBER_FRAGMENT = gql`
     slackId
     notionId
     eoaAddress
+    recordingName
   }
 `;
 

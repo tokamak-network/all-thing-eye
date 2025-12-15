@@ -971,9 +971,10 @@ async def export_project_data(
         
         # Export Slack data
         if data_type in ['all', 'slack'] and slack_channel_id:
-            cursor = db['slack_messages'].find(
-                {'channel_id': slack_channel_id}
-            ).sort('timestamp', -1)
+            cursor = db['slack_messages'].find({
+                'channel_id': slack_channel_id,
+                'channel_name': {'$ne': 'tokamak-partners'}  # Exclude private channel
+            }).sort('timestamp', -1)
             
             messages_docs = await cursor.to_list(length=10000)
             

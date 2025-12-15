@@ -276,9 +276,10 @@ async def load_recent_activities_batch(
     slack_count = 0
     
     try:
-        async for doc in db['slack_messages'].find(
-            {'user_name': {'$in': slack_usernames}}
-        ).sort('posted_at', -1).limit(1000):
+        async for doc in db['slack_messages'].find({
+            'user_name': {'$in': slack_usernames},
+            'channel_name': {'$ne': 'tokamak-partners'}  # Exclude private channel
+        }).sort('posted_at', -1).limit(1000):
             slack_username = doc.get('user_name')
             timestamp = doc.get('posted_at')
             if slack_username and timestamp:

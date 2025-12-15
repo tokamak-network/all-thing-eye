@@ -35,6 +35,7 @@ class MemberCreate(BaseModel):
     role: Optional[str] = None
     project: Optional[str] = None
     eoa_address: Optional[str] = None  # Ethereum address for All-Thing-Eye beta access
+    recording_name: Optional[str] = None  # Name used in meeting recordings (e.g., "YEONGJU BAK" for Zena)
 
 
 class MemberUpdate(BaseModel):
@@ -47,6 +48,7 @@ class MemberUpdate(BaseModel):
     role: Optional[str] = None
     project: Optional[str] = None
     eoa_address: Optional[str] = None  # Ethereum address for All-Thing-Eye beta access
+    recording_name: Optional[str] = None  # Name used in meeting recordings (e.g., "YEONGJU BAK" for Zena)
 
 
 @router.get("/members")
@@ -121,6 +123,7 @@ async def get_members(
                     "role": member.get("role"),
                     "project": member.get("project"),
                     "eoa_address": member.get("eoa_address"),
+                    "recording_name": member.get("recording_name"),
                     "identifiers": identifiers,
                     "created_at": member.get("created_at"),
                     "updated_at": member.get("updated_at")
@@ -167,6 +170,7 @@ async def create_member(
             "role": member_data.role,
             "project": member_data.project,
             "eoa_address": member_data.eoa_address,
+            "recording_name": member_data.recording_name,
             "created_at": now,
             "updated_at": now
         }
@@ -295,6 +299,19 @@ async def create_member(
                     # If collection doesn't exist or query fails, just log and continue
                     logger.warning(f"Could not find Notion user_id for {notion_email}: {e}")
         
+        # Recording name identifier (for meeting recordings)
+        if member_data.recording_name:
+            await db["member_identifiers"].insert_one({
+                "member_id": member_id,
+                "member_name": member_data.name,
+                "source": "recordings",
+                "identifier_type": "recording_name",
+                "identifier_value": member_data.recording_name,
+                "created_at": now
+            })
+            identifiers.append({"type": "recording_name", "value": member_data.recording_name})
+            logger.info(f"Added recording_name '{member_data.recording_name}' for {member_data.name}")
+        
         # Clear member mapping cache to ensure fresh data after creation
         from backend.api.v1.activities_mongo import clear_member_mapping_cache
         clear_member_mapping_cache()
@@ -307,6 +324,8 @@ async def create_member(
             "email": member_data.email,
             "role": member_data.role,
             "project": member_data.project,
+            "eoa_address": member_data.eoa_address,
+            "recording_name": member_data.recording_name,
             "identifiers": identifiers,
             "created_at": now,
             "updated_at": now
@@ -356,6 +375,8 @@ async def update_member(
             update_data["project"] = member_data.project
         if member_data.eoa_address is not None:
             update_data["eoa_address"] = member_data.eoa_address
+        if member_data.recording_name is not None:
+            update_data["recording_name"] = member_data.recording_name
         
         if update_data:
             update_data["updated_at"] = datetime.utcnow().isoformat() + 'Z'
@@ -560,6 +581,11 @@ async def update_member(
         if member_data.email is not None:
             await update_identifier("drive", "email", member_data.email)
         
+        # Update recording_name identifier
+        if member_data.recording_name is not None:
+            await update_identifier("recordings", "recording_name", member_data.recording_name)
+            logger.info(f"Updated recording_name '{member_data.recording_name}' for member {member_id}")
+        
         # Clear member mapping cache to ensure fresh data after update
         from backend.api.v1.activities_mongo import clear_member_mapping_cache
         clear_member_mapping_cache()
@@ -583,6 +609,8 @@ async def update_member(
             "email": updated_member.get("email"),
             "role": updated_member.get("role"),
             "project": updated_member.get("project"),
+            "eoa_address": updated_member.get("eoa_address"),
+            "recording_name": updated_member.get("recording_name"),
             "identifiers": identifiers,
             "created_at": updated_member.get("created_at"),
             "updated_at": updated_member.get("updated_at")
@@ -793,6 +821,9 @@ async def get_member_detail(
         elif len(or_conditions) == 1:
             slack_query.update(or_conditions[0])
         
+        # Exclude tokamak-partners channel (private channel data)
+        slack_query['channel_name'] = {'$ne': 'tokamak-partners'}
+        
         logger.debug(f"Slack query for {member_name}: {slack_query}, all_identifiers: {all_slack_identifiers}, email: {slack_email}")
         slack_messages = await db["slack_messages"].count_documents(slack_query)
         if slack_messages > 0:
@@ -860,9 +891,10 @@ async def get_member_detail(
         
         # Recent Slack messages
         if slack_email:
-            slack_cursor = db["slack_messages"].find(
-                {"user_email": slack_email}
-            ).sort("timestamp", -1).limit(5)
+            slack_cursor = db["slack_messages"].find({
+                "user_email": slack_email,
+                "channel_name": {"$ne": "tokamak-partners"}  # Exclude private channel
+            }).sort("timestamp", -1).limit(5)
             async for msg in slack_cursor:
                 recent.append({
                     "source": "slack",
@@ -1152,6 +1184,10 @@ async def get_member_activities(
             elif source == 'slack':
                 messages = db["slack_messages"]
                 query = {}
+                
+                # Exclude tokamak-partners channel (private channel data)
+                query['channel_name'] = {'$ne': 'tokamak-partners'}
+                
                 identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
                 or_conditions = []
                 if identifiers:
@@ -1446,6 +1482,10 @@ async def generate_member_summary(
             elif source == 'slack':
                 messages = db["slack_messages"]
                 query = {}
+                
+                # Exclude tokamak-partners channel (private channel data)
+                query['channel_name'] = {'$ne': 'tokamak-partners'}
+                
                 identifiers = get_identifiers_for_member(member_mappings, 'slack', member_name)
                 or_conditions = []
                 if identifiers:

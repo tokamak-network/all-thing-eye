@@ -28,6 +28,7 @@ interface Member {
   role?: string;
   project?: string;
   eoa_address?: string;
+  recording_name?: string;
   identifiers: MemberIdentifiers;
   created_at?: string;
   updated_at?: string;
@@ -42,6 +43,7 @@ interface MemberFormData {
   role?: string;
   project?: string;
   eoa_address?: string;
+  recording_name?: string;
 }
 
 export default function MembersPage() {
@@ -84,6 +86,7 @@ export default function MembersPage() {
     role: "",
     project: "",
     eoa_address: "",
+    recording_name: "",
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +103,7 @@ export default function MembersPage() {
       role: "",
       project: "",
       eoa_address: "",
+      recording_name: "",
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -142,6 +146,7 @@ export default function MembersPage() {
       role: member.role || "",
       project: member.project || "",
       eoa_address: member.eoa_address || "",
+      recording_name: member.recording_name || "",
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -534,6 +539,25 @@ export default function MembersPage() {
                   />
                   <p className="mt-1 text-xs text-gray-500">
                     Ethereum address for All-Thing-Eye beta access
+                  </p>
+                </div>
+
+                {/* Recording Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Recording Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.recording_name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, recording_name: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g. YEONGJU BAK for Zena"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Name displayed in meeting recordings (if different from display name)
                   </p>
                 </div>
               </div>

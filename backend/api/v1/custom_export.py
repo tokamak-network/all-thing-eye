@@ -444,6 +444,9 @@ async def fetch_slack_data(db, members: List[str], date_filter: dict, member_inf
         
         query["$or"] = or_conditions
         
+        # Exclude tokamak-partners channel (private channel data)
+        query['channel_name'] = {'$ne': 'tokamak-partners'}
+        
         if date_filter:
             query["posted_at"] = date_filter
         

@@ -368,6 +368,10 @@ async def get_activities(
             elif source == 'slack':
                 messages = db["slack_messages"]
                 query = {}
+                
+                # Exclude tokamak-partners channel (private channel data)
+                query['channel_name'] = {'$ne': 'tokamak-partners'}
+                
                 if filter_member_name:
                     # Reverse lookup: Find user_ids and emails for this member name
                     identifiers = get_identifiers_for_member(member_mappings, 'slack', filter_member_name)
@@ -959,6 +963,10 @@ async def get_activities_summary(
             elif source == 'slack':
                 messages = db["slack_messages"]
                 query = {}
+                
+                # Exclude tokamak-partners channel (private channel data)
+                query['channel_name'] = {'$ne': 'tokamak-partners'}
+                
                 if date_filter:
                     query['posted_at'] = date_filter
                 

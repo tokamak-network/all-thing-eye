@@ -513,7 +513,8 @@ class Query:
                 github_username=doc.get('github_username'),
                 slack_id=doc.get('slack_id'),
                 notion_id=doc.get('notion_id'),
-                eoa_address=doc.get('eoa_address')
+                eoa_address=doc.get('eoa_address'),
+                recording_name=doc.get('recording_name')
             ))
         
         return members
@@ -558,7 +559,8 @@ class Query:
             github_username=doc.get('github_username'),
             slack_id=doc.get('slack_id'),
             notion_id=doc.get('notion_id'),
-            eoa_address=doc.get('eoa_address')
+            eoa_address=doc.get('eoa_address'),
+            recording_name=doc.get('recording_name')
         )
     
     @strawberry.field
@@ -781,6 +783,10 @@ class Query:
         # Slack messages
         if 'slack' in sources:
             query = {}
+            
+            # Exclude tokamak-partners channel (private channel data)
+            query['channel_name'] = {'$ne': 'tokamak-partners'}
+            
             if member_name:
                 # Use Slack identifiers (REST API pattern: user_id, user_email, user_name)
                 slack_identifiers = member_identifiers.get('slack', [])
@@ -1007,9 +1013,26 @@ class Query:
                     print(f"🔍 [{request_id}] 🎥 Sample created_by values in DB: {sample_creators[:5]}")
                     
                     # created_by stores display names (not emails)
-                    # Use case-insensitive regex to match member name
+                    # Use case-insensitive regex to match member name OR recording_name
                     print(f"🔍 [{request_id}] 🎥 Filtering by member name: {member_name}")
-                    query['created_by'] = {'$regex': f'^{member_name}$', '$options': 'i'}
+                    
+                    # Get recording_name for this member (if exists)
+                    recording_names = member_identifiers.get('recordings', [])
+                    print(f"🔍 [{request_id}] 🎥 Recording names for '{member_name}': {recording_names}")
+                    
+                    # Build OR conditions: match member_name or recording_name
+                    or_conditions = [
+                        {'created_by': {'$regex': f'^{member_name}$', '$options': 'i'}},
+                        {'created_by': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
+                    ]
+                    
+                    # Add recording_name patterns
+                    for rec_name in recording_names:
+                        if rec_name:
+                            or_conditions.append({'created_by': {'$regex': f'^{rec_name}$', '$options': 'i'}})
+                            or_conditions.append({'created_by': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}})
+                    
+                    query['$or'] = or_conditions
                 if start_date:
                     query['modifiedTime'] = {'$gte': start_date}
                 if end_date:
@@ -1106,11 +1129,28 @@ class Query:
                 # participants is array of dicts: [{'name': 'Ale Son', ...}, {'name': 'Jake Jang', ...}]
                 if member_name:
                     print(f"🔍 [{request_id}] 📅 Filtering recordings_daily by analysis.participants.name containing: {member_name}")
-                    # Search for member name in participant.name field (case-insensitive)
-                    # This will match "Ale" in "Ale Son", "Jake" in "Jake Jang", etc.
+                    
+                    # Get recording_name for this member (if exists)
+                    recording_names = member_identifiers.get('recordings', [])
+                    print(f"🔍 [{request_id}] 📅 Recording names for '{member_name}': {recording_names}")
+                    
+                    # Build search patterns: search for both member_name and recording_name
+                    name_patterns = [
+                        {'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
+                    ]
+                    
+                    # Add recording_name patterns
+                    for rec_name in recording_names:
+                        if rec_name:
+                            # Exact match for recording name (e.g., "YEONGJU BAK")
+                            name_patterns.append({'name': {'$regex': f'^{rec_name}$', '$options': 'i'}})
+                            # Also try word boundary match
+                            name_patterns.append({'name': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}})
+                    
+                    # Search for member name OR recording name in participants
                     query['analysis.participants'] = {
                         '$elemMatch': {
-                            'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}
+                            '$or': name_patterns
                         }
                     }
                 
@@ -1193,12 +1233,17 @@ class Query:
                         if not recording_name:
                             return recording_name
                         
-                        # Try exact match (case-insensitive) in identifier_to_member
+                        # 1. Try exact match in recordings source (from member_identifiers)
+                        display = identifier_to_member.get(('recordings', recording_name))
+                        if display:
+                            return display[0].upper() + display[1:] if display else display
+                        
+                        # 2. Try case-insensitive match across all sources
                         for (source, identifier), display in identifier_to_member.items():
                             if identifier.lower() == recording_name.lower():
                                 return display[0].upper() + display[1:] if display else display
                         
-                        # Try first word match (e.g., "Ale Son" -> "Ale", "Jason Hwang" -> "Jason")
+                        # 3. Try first word match (e.g., "Ale Son" -> "Ale", "Jason Hwang" -> "Jason")
                         first_word = recording_name.split()[0] if recording_name else ""
                         if first_word:
                             # Check if any member's display name starts with or matches first word

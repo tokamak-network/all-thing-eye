@@ -135,7 +135,9 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             }
         
         # Slack
-        slack_messages = await db["slack_messages"].count_documents({})
+        slack_messages = await db["slack_messages"].count_documents({
+            'channel_name': {'$ne': 'tokamak-partners'}  # Exclude private channel
+        })
         if slack_messages > 0:
             activity_summary["slack"] = {
                 "total_activities": slack_messages,

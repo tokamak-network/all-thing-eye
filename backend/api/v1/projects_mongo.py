@@ -295,7 +295,8 @@ async def get_project_activity(
             slack_messages = db[mongo_manager._collections_config.get("slack_messages", "slack_messages")]
             
             for msg in slack_messages.find({
-                "channel_id": slack_channel_id
+                "channel_id": slack_channel_id,
+                "channel_name": {"$ne": "tokamak-partners"}  # Exclude private channel
             }).sort("posted_at", -1).limit(limit):
                 from datetime import datetime
                 activities.append({

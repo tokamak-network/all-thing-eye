@@ -38,6 +38,7 @@ class Member:
     slack_id: Optional[str] = None
     notion_id: Optional[str] = None
     eoa_address: Optional[str] = None
+    recording_name: Optional[str] = None
     
     @strawberry.field
     async def activity_count(
@@ -73,7 +74,10 @@ class Member:
         
         # Slack activities
         if not source or source == SourceType.SLACK:
-            count += await db['slack_messages'].count_documents({'user_name': self.name})
+            count += await db['slack_messages'].count_documents({
+                'user_name': self.name,
+                'channel_name': {'$ne': 'tokamak-partners'}  # Exclude private channel
+            })
         
         # Notion activities
         if not source or source == SourceType.NOTION:
@@ -308,7 +312,7 @@ class Project:
         
         # Count Slack activities (if slack_channel exists)
         slack_count = 0
-        if self.slack_channel:
+        if self.slack_channel and self.slack_channel != 'tokamak-partners':
             slack_query = {'channel_name': self.slack_channel}
             if start_date:
                 slack_query['posted_at'] = {'$gte': start_date}

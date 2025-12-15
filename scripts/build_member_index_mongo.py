@@ -69,6 +69,7 @@ async def build_members_collection(db, members_config: List[Dict[str, Any]]) -> 
             'email': member_config.get('email'),
             'role': member_config.get('role'),
             'team': member_config.get('project'),
+            'recording_name': member_config.get('recording_name'),
             'is_active': True,
             'created_at': datetime.utcnow()
         }
@@ -235,6 +236,20 @@ async def build_identifiers_collection(
             })
             identifier_maps['drive'][email.lower()] = member_id
             identifier_count += 1
+        
+        # Recording name identifier (for meeting recordings)
+        if member_config.get('recording_name'):
+            recording_name = member_config['recording_name']
+            await identifiers_col.insert_one({
+                'member_id': member_id,
+                'member_name': name,
+                'source': 'recordings',
+                'identifier_type': 'recording_name',
+                'identifier_value': recording_name,
+                'created_at': datetime.utcnow()
+            })
+            identifier_count += 1
+            print(f"      ➕ Added recording_name: '{recording_name}' for {name}")
     
     print(f"   📊 Total: {identifier_count} identifiers created")
     
