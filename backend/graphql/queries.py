@@ -622,6 +622,8 @@ class Query:
         identifier_to_member = {}
         member_to_identifiers = {}  # For filtering: member_name -> {source: [identifiers]}
         
+        print(f"🔍 [{request_id}] 📍 BEFORE member_identifiers loop: source={source}, type={type(source).__name__}")
+        
         async for id_doc in db['member_identifiers'].find():
             id_source = id_doc.get('source')  # Renamed to avoid conflict with function parameter
             identifier_value = id_doc.get('identifier_value')
@@ -648,6 +650,9 @@ class Query:
         member_identifiers = {}
         if member_name and member_name in member_to_identifiers:
             member_identifiers = member_to_identifiers[member_name]
+        
+        # Checkpoint: Verify source variable hasn't been corrupted
+        print(f"🔍 [{request_id}] 📍 CHECKPOINT before sources logic: source={source}, type={type(source).__name__}")
         
         # Determine which sources to query
         # Handle both SourceType enum and string values
