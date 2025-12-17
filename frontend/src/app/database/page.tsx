@@ -62,9 +62,6 @@ export default function DatabasePage() {
   const [databaseStats, setDatabaseStats] = useState<{
     total_storage_size: number;
   } | null>(null);
-  const [lastCollected, setLastCollected] = useState<Record<string, string>>(
-    {}
-  );
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
     null
   );
@@ -119,18 +116,7 @@ export default function DatabasePage() {
     loadDatabaseStats();
   }, []);
 
-  // Load last collected times
-  useEffect(() => {
-    const loadLastCollected = async () => {
-      try {
-        const data = await api.getLastCollected();
-        setLastCollected(data.last_collected || {});
-      } catch (err) {
-        console.error("Failed to load last collected times:", err);
-      }
-    };
-    loadLastCollected();
-  }, []);
+  // Last collected times are now from appStats (unified with Dashboard)
 
   const handleCollectionClick = async (collectionName: string) => {
     setSelectedCollection(collectionName);
@@ -587,8 +573,8 @@ export default function DatabasePage() {
           </div>
         </div>
 
-        {/* Last Collection Times */}
-        {Object.keys(lastCollected).length > 0 && (
+        {/* Last Collection Times - Unified with Dashboard */}
+        {appStats && appStats.last_collected && (
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow p-4 mb-6 border border-blue-200">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
@@ -597,7 +583,10 @@ export default function DatabasePage() {
               </h3>
             </div>
             <div className="grid grid-cols-4 gap-4">
-              {Object.entries(lastCollected).map(([source, time]) => {
+              {/* Fixed order: GitHub, Slack, Notion, Drive (same as Dashboard) */}
+              {["github", "slack", "notion", "drive"].map((source) => {
+                const time = appStats.last_collected[source];
+                
                 const sourceIcons: Record<string, string> = {
                   github: "🐙",
                   slack: "💬",
@@ -656,7 +645,7 @@ export default function DatabasePage() {
 
                 const getStatus = (isoTime: string | null) => {
                   if (!isoTime)
-                    return { text: "No data", color: "text-gray-500" };
+                    return { text: "Never", color: "text-gray-500" };
                   const date = new Date(isoTime);
                   const now = new Date();
                   const diffMs = now.getTime() - date.getTime();
@@ -665,7 +654,7 @@ export default function DatabasePage() {
                   if (diffHours < 24)
                     return { text: "✓ Fresh", color: "text-green-600" };
                   if (diffHours < 48)
-                    return { text: "⚠ 1 day old", color: "text-yellow-600" };
+                    return { text: "⚠ 1d old", color: "text-yellow-600" };
                   return { text: "⚠ Stale", color: "text-red-600" };
                 };
 
