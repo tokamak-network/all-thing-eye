@@ -28,6 +28,7 @@ import {
   Legend,
 } from "recharts";
 import DateRangePicker from "@/components/DateRangePicker";
+import { CollaborationNetwork } from "@/components/CollaborationNetwork";
 // TODO: Fix issues with new GraphQL components before re-enabling
 // import { useMemberDetail } from "@/graphql/hooks";
 // import MemberCollaboration from "@/components/MemberCollaboration";
@@ -627,6 +628,9 @@ export default function MemberDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Collaboration Network */}
+        <CollaborationNetwork memberName={member.name} days={90} limit={10} />
 
         {/* Activity Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

@@ -9,7 +9,10 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime
 from bson import ObjectId
 
-from .types import Member, Activity, Project, SourceType, ActivitySummary
+from .types import (
+    Member, Activity, Project, SourceType, ActivitySummary,
+    Collaboration, CollaborationDetail, CollaborationNetwork
+)
 
 
 def ensure_datetime(value: Any) -> Optional[datetime]:
@@ -1576,3 +1579,468 @@ class Query:
             date_range_start=start_date,
             date_range_end=end_date
         )
+    
+    @strawberry.field
+    async def member_collaborations(
+        self,
+        info,
+        name: str,
+        days: int = 90,
+        limit: int = 10,
+        min_score: float = 5.0
+    ) -> CollaborationNetwork:
+        """
+        Get collaboration network for a member.
+        
+        Calculates collaboration scores based on:
+        - GitHub PR reviews (3.0x weight)
+        - Slack thread participation (2.0x weight)
+        - Meeting attendance (2.2x weight)
+        - GitHub issue discussions (1.5x weight)
+        
+        Args:
+            name: Member name
+            days: Time range in days (default: 90)
+            limit: Max number of top collaborators to return
+            min_score: Minimum collaboration score threshold
+            
+        Returns:
+            CollaborationNetwork with top collaborators
+        """
+        db = info.context['db']
+        
+        from datetime import timedelta
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        
+        collaborations = await calculate_member_collaborations(
+            db, name, start_date, end_date, min_score
+        )
+        
+        # Sort by total score descending
+        sorted_collaborations = sorted(
+            collaborations.values(),
+            key=lambda x: x['total_score'],
+            reverse=True
+        )[:limit]
+        
+        # Convert to Collaboration objects
+        collab_objects = []
+        for collab in sorted_collaborations:
+            details = [
+                CollaborationDetail(
+                    source=d['source'],
+                    activity_count=d['count'],
+                    score=d['score'],
+                    recent_activity=d.get('recent_activity')
+                )
+                for d in collab['details']
+            ]
+            
+            collab_objects.append(
+                Collaboration(
+                    collaborator_name=collab['name'],
+                    collaborator_id=collab.get('id'),
+                    total_score=collab['total_score'],
+                    collaboration_details=details,
+                    common_projects=collab.get('common_projects', []),
+                    interaction_count=collab['interaction_count'],
+                    first_interaction=collab.get('first_interaction'),
+                    last_interaction=collab.get('last_interaction')
+                )
+            )
+        
+        total_score = sum(c['total_score'] for c in collaborations.values())
+        
+        return CollaborationNetwork(
+            member_name=name,
+            member_id=None,
+            top_collaborators=collab_objects,
+            total_collaborators=len(collaborations),
+            time_range_days=days,
+            total_score=total_score,
+            generated_at=datetime.utcnow()
+        )
+
+
+async def calculate_member_collaborations(
+    db,
+    member_name: str,
+    start_date: datetime,
+    end_date: datetime,
+    min_score: float = 5.0
+) -> Dict[str, Dict]:
+    """
+    Calculate collaboration scores for a member with all other members.
+    
+    Returns:
+        Dict mapping collaborator names to their collaboration data
+    """
+    from collections import defaultdict
+    
+    collaborations = defaultdict(lambda: {
+        'name': '',
+        'total_score': 0.0,
+        'interaction_count': 0,
+        'details': [],
+        'common_projects': set(),
+        'first_interaction': None,
+        'last_interaction': None
+    })
+    
+    # 1. GitHub PR Reviews (weight: 3.0)
+    await calculate_github_pr_collaborations(
+        db, member_name, start_date, end_date, collaborations
+    )
+    
+    # 2. Slack Thread Participation (weight: 2.0)
+    await calculate_slack_thread_collaborations(
+        db, member_name, start_date, end_date, collaborations
+    )
+    
+    # 3. Meeting Attendance (weight: 2.2) - DISABLED: No recordings_daily collection
+    # await calculate_meeting_collaborations(
+    #     db, member_name, start_date, end_date, collaborations
+    # )
+    
+    # 4. GitHub Issue Discussions (weight: 1.5)
+    await calculate_github_issue_collaborations(
+        db, member_name, start_date, end_date, collaborations
+    )
+    
+    # Filter by minimum score and convert sets to lists
+    filtered = {}
+    for collab_name, data in collaborations.items():
+        if data['total_score'] >= min_score:
+            data['common_projects'] = list(data['common_projects'])
+            filtered[collab_name] = data
+    
+    return filtered
+
+
+async def calculate_github_pr_collaborations(
+    db, member_name: str, start_date: datetime, end_date: datetime, collaborations: Dict
+):
+    """Calculate collaborations from GitHub PR reviews."""
+    # Get member's GitHub username
+    member_id_doc = await db['member_identifiers'].find_one({
+        'member_name': member_name,
+        'source': 'github',
+        'identifier_type': 'username'
+    })
+    
+    if not member_id_doc:
+        return
+    
+    github_username = member_id_doc.get('identifier_value')
+    if not github_username:
+        return
+    
+    # Find PRs where member is author or reviewer
+    prs = db['github_pull_requests'].find({
+        'created_at': {'$gte': start_date, '$lte': end_date},
+        '$or': [
+            {'author_login': github_username},
+            {'reviews.user.login': github_username}
+        ]
+    })
+    
+    async for pr in prs:
+        author = pr.get('author_login', '')
+        reviewers = set()
+        
+        for review in pr.get('reviews', []):
+            reviewer = review.get('user', {}).get('login')
+            if reviewer:
+                reviewers.add(reviewer)
+        
+        # Get project from repository
+        repo = pr.get('repository_name', '')
+        project_key = await get_project_from_repo(db, repo)
+        
+        # If member is author, collaborators are reviewers
+        if author == github_username:
+            for reviewer in reviewers:
+                if reviewer != github_username:
+                    await add_collaboration(
+                        db, collaborations, reviewer, 'github_pr_review',
+                        3.0, pr.get('created_at'), project_key
+                    )
+        
+        # If member is reviewer, collaborator is author
+        if github_username in reviewers and author != github_username:
+            await add_collaboration(
+                db, collaborations, author, 'github_pr_review',
+                3.0, pr.get('created_at'), project_key
+            )
+
+
+async def calculate_slack_thread_collaborations(
+    db, member_name: str, start_date: datetime, end_date: datetime, collaborations: Dict
+):
+    """Calculate collaborations from Slack thread participation."""
+    # Find threads where member participated
+    member_threads = set()
+    async for msg in db['slack_messages'].find({
+        'user_name': member_name.lower(),
+        'posted_at': {'$gte': start_date, '$lte': end_date},
+        'thread_ts': {'$exists': True, '$ne': None}
+    }):
+        member_threads.add(msg['thread_ts'])
+    
+    # For each thread, find co-participants
+    for thread_ts in member_threads:
+        messages = db['slack_messages'].find({
+            'thread_ts': thread_ts,
+            'posted_at': {'$gte': start_date, '$lte': end_date}
+        })
+        
+        co_participants = set()
+        latest_time = None
+        channel_id = None
+        
+        async for msg in messages:
+            user = msg.get('user_name', '')
+            if user and user != member_name.lower():
+                co_participants.add(user)
+            
+            msg_time = msg.get('posted_at')
+            if msg_time and (not latest_time or msg_time > latest_time):
+                latest_time = msg_time
+            
+            if not channel_id:
+                channel_id = msg.get('channel_id')
+        
+        # Get project from channel
+        project_key = await get_project_from_channel(db, channel_id)
+        
+        # Add collaboration for each co-participant
+        for co_participant in co_participants:
+            await add_collaboration(
+                db, collaborations, co_participant, 'slack_thread',
+                2.0, latest_time, project_key
+            )
+
+
+async def calculate_meeting_collaborations(
+    db, member_name: str, start_date: datetime, end_date: datetime, collaborations: Dict
+):
+    """Calculate collaborations from meeting attendance."""
+    # Find recordings where member participated
+    recordings = db['recordings_daily'].find({
+        'target_date': {
+            '$gte': start_date.strftime('%Y-%m-%d'),
+            '$lte': end_date.strftime('%Y-%m-%d')
+        },
+        'analysis.participants.name': member_name
+    })
+    
+    async for recording in recordings:
+        participants = recording.get('analysis', {}).get('participants', [])
+        meeting_date_str = recording.get('target_date')
+        meeting_date = datetime.fromisoformat(meeting_date_str) if meeting_date_str else None
+        
+        # Extract project from title or metadata
+        title = recording.get('title', '')
+        project_key = extract_project_from_title(title)
+        
+        # Add collaboration with each co-participant
+        for participant in participants:
+            participant_name = participant.get('name', '')
+            if participant_name and participant_name != member_name:
+                await add_collaboration(
+                    db, collaborations, participant_name, 'meeting',
+                    2.2, meeting_date, project_key
+                )
+
+
+async def calculate_github_issue_collaborations(
+    db, member_name: str, start_date: datetime, end_date: datetime, collaborations: Dict
+):
+    """Calculate collaborations from GitHub issue discussions."""
+    # Get member's GitHub username
+    member_id_doc = await db['member_identifiers'].find_one({
+        'member_name': member_name,
+        'source': 'github',
+        'identifier_type': 'username'
+    })
+    
+    if not member_id_doc:
+        return
+    
+    github_username = member_id_doc.get('identifier_value')
+    if not github_username:
+        return
+    
+    # Find issues where member commented
+    issues = db['github_issues'].find({
+        'created_at': {'$gte': start_date, '$lte': end_date},
+        '$or': [
+            {'user.login': github_username},
+            {'assignees.login': github_username}
+        ]
+    })
+    
+    async for issue in issues:
+        author = issue.get('user', {}).get('login', '')
+        assignees = {a.get('login') for a in issue.get('assignees', [])}
+        
+        repo = issue.get('repository_name', '')
+        project_key = await get_project_from_repo(db, repo)
+        
+        # Collaborators are author + assignees (excluding self)
+        collaborators = {author} | assignees
+        collaborators.discard(github_username)
+        collaborators.discard('')
+        
+        for collaborator in collaborators:
+            await add_collaboration(
+                db, collaborations, collaborator, 'github_issue',
+                1.5, issue.get('created_at'), project_key
+            )
+
+
+async def add_collaboration(
+    db, collaborations: Dict, identifier: str, source: str,
+    weight: float, timestamp: Optional[datetime], project_key: Optional[str]
+):
+    """Add a collaboration interaction to the collaborations dict."""
+    # Convert GitHub username to member name if needed
+    if source.startswith('github'):
+        member_name = await get_member_name_from_github(db, identifier)
+    elif source.startswith('slack'):
+        member_name = await get_member_name_from_slack_username(db, identifier)
+    else:
+        member_name = identifier.title()
+    
+    if not member_name or member_name == identifier:
+        # Try to capitalize properly
+        member_name = identifier.title()
+    
+    # Calculate recency multiplier (recent = higher score)
+    recency_multiplier = 1.0
+    if timestamp:
+        days_ago = (datetime.utcnow() - timestamp).days
+        recency_multiplier = max(0.3, 1.0 - (days_ago / 90))
+    
+    score = weight * recency_multiplier
+    
+    # Update collaboration data
+    collab = collaborations[member_name]
+    if not collab['name']:
+        collab['name'] = member_name
+    
+    collab['total_score'] += score
+    collab['interaction_count'] += 1
+    
+    # Update timestamps
+    if timestamp:
+        if not collab['first_interaction'] or timestamp < collab['first_interaction']:
+            collab['first_interaction'] = timestamp
+        if not collab['last_interaction'] or timestamp > collab['last_interaction']:
+            collab['last_interaction'] = timestamp
+    
+    # Add project
+    if project_key:
+        collab['common_projects'].add(project_key)
+    
+    # Add to details
+    existing_detail = next((d for d in collab['details'] if d['source'] == source), None)
+    if existing_detail:
+        existing_detail['count'] += 1
+        existing_detail['score'] += score
+        if timestamp and (not existing_detail.get('recent_activity') or timestamp > existing_detail['recent_activity']):
+            existing_detail['recent_activity'] = timestamp
+    else:
+        collab['details'].append({
+            'source': source,
+            'count': 1,
+            'score': score,
+            'recent_activity': timestamp
+        })
+
+
+async def get_member_name_from_github(db, github_username: str) -> Optional[str]:
+    """Get member name from GitHub username."""
+    doc = await db['member_identifiers'].find_one({
+        'source': 'github',
+        'identifier_type': 'username',
+        'identifier_value': github_username
+    })
+    return doc.get('member_name') if doc else None
+
+
+async def get_member_name_from_slack_username(db, slack_username: str) -> Optional[str]:
+    """Get member name from Slack username."""
+    # Slack stores lowercase usernames
+    doc = await db['member_identifiers'].find_one({
+        'source': 'slack',
+        'identifier_value': {'$regex': f'^{slack_username}$', '$options': 'i'}
+    })
+    return doc.get('member_name') if doc else None
+
+
+async def get_project_from_repo(db, repo_name: str) -> Optional[str]:
+    """Get project key from repository name."""
+    if not repo_name:
+        return None
+    
+    # Projects collection is empty, so infer from repo name
+    repo_lower = repo_name.lower()
+    
+    if 'zk' in repo_lower or 'ooo' in repo_lower or 'zkp' in repo_lower:
+        return 'ooo'
+    elif 'rollup' in repo_lower or 'trh' in repo_lower:
+        return 'trh'
+    elif 'drb' in repo_lower:
+        return 'drb'
+    elif 'eco' in repo_lower or 'grants' in repo_lower:
+        return 'eco'
+    elif 'syb' in repo_lower or 'sybil' in repo_lower:
+        return 'syb'
+    
+    return None
+
+
+async def get_project_from_channel(db, channel_id: str) -> Optional[str]:
+    """Get project key from Slack channel ID."""
+    if not channel_id:
+        return None
+    
+    # Get channel name from channels collection
+    channel = await db['slack_channels'].find_one({'channel_id': channel_id})
+    if not channel:
+        return None
+    
+    channel_name = channel.get('name', '').lower()
+    
+    if 'ooo' in channel_name or 'zkp' in channel_name:
+        return 'ooo'
+    elif 'trh' in channel_name or 'rollup' in channel_name:
+        return 'trh'
+    elif 'drb' in channel_name:
+        return 'drb'
+    elif 'eco' in channel_name:
+        return 'eco'
+    elif 'syb' in channel_name or 'sybil' in channel_name:
+        return 'syb'
+    
+    return None
+
+
+def extract_project_from_title(title: str) -> Optional[str]:
+    """Extract project key from meeting title."""
+    title_lower = title.lower()
+    
+    if 'ooo' in title_lower or 'zk' in title_lower:
+        return 'ooo'
+    elif 'trh' in title_lower or 'rollup' in title_lower:
+        return 'trh'
+    elif 'drb' in title_lower:
+        return 'drb'
+    elif 'eco' in title_lower or 'ecosystem' in title_lower:
+        return 'eco'
+    elif 'syb' in title_lower or 'sybil' in title_lower:
+        return 'syb'
+    
+    return None

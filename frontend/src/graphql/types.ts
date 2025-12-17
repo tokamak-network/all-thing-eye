@@ -189,3 +189,47 @@ export interface GetMemberDetailVariables {
 export interface GetMemberDetailResponse {
   member: MemberDetail;
 }
+
+// Collaboration detail type
+export interface CollaborationDetail {
+  source: string;
+  activityCount: number;
+  score: number;
+  recentActivity?: string;
+}
+
+// Collaboration type (single collaborator relationship)
+export interface Collaboration {
+  collaboratorName: string;
+  collaboratorId?: string;
+  totalScore: number;
+  collaborationDetails: CollaborationDetail[];
+  commonProjects: string[];
+  interactionCount: number;
+  firstInteraction?: string;
+  lastInteraction?: string;
+}
+
+// Collaboration network type (full network for a member)
+export interface CollaborationNetwork {
+  memberName: string;
+  memberId?: string;
+  topCollaborators: Collaboration[];
+  totalCollaborators: number;
+  timeRangeDays: number;
+  totalScore: number;
+  generatedAt: string;
+}
+
+// Query variables for member collaborations
+export interface GetMemberCollaborationsVariables {
+  name: string;
+  days?: number;
+  limit?: number;
+  minScore?: number;
+}
+
+// Query response for member collaborations
+export interface GetMemberCollaborationsResponse {
+  memberCollaborations: CollaborationNetwork;
+}

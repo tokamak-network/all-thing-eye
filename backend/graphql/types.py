@@ -393,3 +393,43 @@ class ActivityStats:
     by_source: List[SourceStats]
     weekly_trend: List[WeeklyStats]
     last_30_days: int
+
+
+@strawberry.type
+class CollaborationDetail:
+    """
+    Detailed breakdown of collaboration by source/type.
+    """
+    source: str  # "github_pr_review", "slack_thread", "meeting", etc.
+    activity_count: int
+    score: float
+    recent_activity: Optional[datetime] = None
+
+
+@strawberry.type
+class Collaboration:
+    """
+    Represents collaboration relationship between two members.
+    """
+    collaborator_name: str
+    collaborator_id: Optional[str] = None
+    total_score: float
+    collaboration_details: List[CollaborationDetail]
+    common_projects: List[str]  # Projects they worked together on
+    interaction_count: int  # Total number of interactions
+    first_interaction: Optional[datetime] = None
+    last_interaction: Optional[datetime] = None
+
+
+@strawberry.type
+class CollaborationNetwork:
+    """
+    Complete collaboration network for a member.
+    """
+    member_name: str
+    member_id: Optional[str] = None
+    top_collaborators: List[Collaboration]
+    total_collaborators: int
+    time_range_days: int
+    total_score: float  # Sum of all collaboration scores
+    generated_at: datetime

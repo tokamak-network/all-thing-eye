@@ -14,6 +14,7 @@ import {
   GET_PROJECT,
   GET_MEMBERS_WITH_ACTIVITIES,
   GET_MEMBER_DETAIL,
+  GET_MEMBER_COLLABORATIONS,
 } from "./queries";
 import type {
   GetMembersVariables,
@@ -32,6 +33,8 @@ import type {
   GetMembersWithActivitiesResponse,
   GetMemberDetailVariables,
   GetMemberDetailResponse,
+  GetMemberCollaborationsVariables,
+  GetMemberCollaborationsResponse,
 } from "./types";
 
 /**
@@ -143,6 +146,22 @@ export function useMemberDetail(
       variables,
       // Skip if name is empty
       skip: !variables.name,
+    }
+  );
+}
+
+/**
+ * Hook to fetch member collaboration network
+ */
+export function useMemberCollaborations(
+  variables: GetMemberCollaborationsVariables
+): QueryResult<GetMemberCollaborationsResponse, GetMemberCollaborationsVariables> {
+  return useQuery<GetMemberCollaborationsResponse, GetMemberCollaborationsVariables>(
+    GET_MEMBER_COLLABORATIONS,
+    {
+      variables,
+      skip: !variables.name,
+      fetchPolicy: "cache-and-network", // Balance between fresh data and performance
     }
   );
 }

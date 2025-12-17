@@ -13,6 +13,7 @@ import {
   COLLABORATOR_FRAGMENT,
   REPOSITORY_ACTIVITY_FRAGMENT,
   ACTIVITY_STATS_FRAGMENT,
+  COLLABORATION_NETWORK_FRAGMENT,
 } from "./fragments";
 
 // Get all members
@@ -153,6 +154,26 @@ export const GET_MEMBER_DETAIL = gql`
       activityStats {
         ...ActivityStatsFields
       }
+    }
+  }
+`;
+
+// Get member collaboration network
+export const GET_MEMBER_COLLABORATIONS = gql`
+  ${COLLABORATION_NETWORK_FRAGMENT}
+  query GetMemberCollaborations(
+    $name: String!
+    $days: Int
+    $limit: Int
+    $minScore: Float
+  ) {
+    memberCollaborations(
+      name: $name
+      days: $days
+      limit: $limit
+      minScore: $minScore
+    ) {
+      ...CollaborationNetworkFields
     }
   }
 `;

@@ -100,3 +100,46 @@ export const ACTIVITY_STATS_FRAGMENT = gql`
     last30Days
   }
 `;
+
+// Collaboration detail fragment
+export const COLLABORATION_DETAIL_FRAGMENT = gql`
+  fragment CollaborationDetailFields on CollaborationDetail {
+    source
+    activityCount
+    score
+    recentActivity
+  }
+`;
+
+// Collaboration fragment (single collaborator)
+export const COLLABORATION_FRAGMENT = gql`
+  ${COLLABORATION_DETAIL_FRAGMENT}
+  fragment CollaborationFields on Collaboration {
+    collaboratorName
+    collaboratorId
+    totalScore
+    collaborationDetails {
+      ...CollaborationDetailFields
+    }
+    commonProjects
+    interactionCount
+    firstInteraction
+    lastInteraction
+  }
+`;
+
+// Collaboration network fragment (full network)
+export const COLLABORATION_NETWORK_FRAGMENT = gql`
+  ${COLLABORATION_FRAGMENT}
+  fragment CollaborationNetworkFields on CollaborationNetwork {
+    memberName
+    memberId
+    topCollaborators {
+      ...CollaborationFields
+    }
+    totalCollaborators
+    timeRangeDays
+    totalScore
+    generatedAt
+  }
+`;
