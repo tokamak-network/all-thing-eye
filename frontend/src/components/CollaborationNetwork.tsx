@@ -25,6 +25,7 @@ export function CollaborationNetwork({
   minScore = 5.0,
 }: CollaborationNetworkProps) {
   const [selectedTimeRange, setSelectedTimeRange] = useState(days);
+  const [showAll, setShowAll] = useState(false);
   
   const { data, loading, error } = useMemberCollaborations({
     name: memberName,
@@ -128,14 +129,36 @@ export function CollaborationNetwork({
             <p className="text-sm mt-2">Try selecting a longer time period.</p>
           </div>
         ) : (
-          network.topCollaborators.map((collab, index) => (
-            <CollaboratorCard
-              key={collab.collaboratorName}
-              collaboration={collab}
-              rank={index + 1}
-              maxScore={network.topCollaborators[0].totalScore}
-            />
-          ))
+          <>
+            {network.topCollaborators
+              .slice(0, showAll ? undefined : 3)
+              .map((collab, index) => (
+                <CollaboratorCard
+                  key={collab.collaboratorName}
+                  collaboration={collab}
+                  rank={index + 1}
+                  maxScore={network.topCollaborators[0].totalScore}
+                />
+              ))}
+            
+            {/* Show More/Less Button */}
+            {network.topCollaborators.length > 3 && (
+              <button
+                onClick={() => setShowAll(!showAll)}
+                className="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-all font-medium"
+              >
+                {showAll ? (
+                  <>
+                    ▲ Show Less
+                  </>
+                ) : (
+                  <>
+                    ▼ Show {network.topCollaborators.length - 3} More Collaborators
+                  </>
+                )}
+              </button>
+            )}
+          </>
         )}
       </div>
 

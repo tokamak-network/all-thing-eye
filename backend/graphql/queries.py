@@ -1740,22 +1740,22 @@ async def calculate_github_pr_collaborations(
     prs = db['github_pull_requests'].find({
         'created_at': {'$gte': start_date, '$lte': end_date},
         '$or': [
-            {'author_login': github_username},
-            {'reviews.user.login': github_username}
+            {'author': github_username},
+            {'reviews.reviewer': github_username}
         ]
     })
     
     async for pr in prs:
-        author = pr.get('author_login', '')
+        author = pr.get('author', '')
         reviewers = set()
         
         for review in pr.get('reviews', []):
-            reviewer = review.get('user', {}).get('login')
+            reviewer = review.get('reviewer')
             if reviewer:
                 reviewers.add(reviewer)
         
         # Get project from repository
-        repo = pr.get('repository_name', '')
+        repo = pr.get('repository', '')
         project_key = await get_project_from_repo(db, repo)
         
         # If member is author, collaborators are reviewers
