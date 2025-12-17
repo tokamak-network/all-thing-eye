@@ -311,40 +311,80 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
         # 7. Get last collection times (based on collector execution, not data timestamps)
         # This shows when the collector last ran, regardless of whether it found data
         last_collected = {}
-        collection_status_coll = db['collection_status']
+        
+        # Check if collection_status exists (for new tracking system)
+        collection_names_list = await db.list_collection_names()
+        has_collection_status = 'collection_status' in collection_names_list
         
         sources_list = ['github', 'slack', 'notion', 'drive']
         
-        for source in sources_list:
-            try:
-                # Find the most recent collection status for this source
-                status_doc = await collection_status_coll.find_one(
-                    {'source': source},
-                    sort=[('completed_at', -1)]
-                )
-                
-                if status_doc and 'completed_at' in status_doc:
-                    completed_time = status_doc['completed_at']
+        if has_collection_status:
+            # New method: Use collection_status tracking
+            collection_status_coll = db['collection_status']
+            
+            for source in sources_list:
+                try:
+                    # Find the most recent collection status for this source
+                    status_doc = await collection_status_coll.find_one(
+                        {'source': source},
+                        sort=[('completed_at', -1)]
+                    )
                     
-                    # Ensure it's a datetime object
-                    if isinstance(completed_time, datetime):
-                        last_collected[source] = completed_time.isoformat() + 'Z'
-                    elif isinstance(completed_time, str):
-                        # Try to parse if it's a string
-                        try:
-                            parsed_time = datetime.fromisoformat(completed_time.replace('Z', '+00:00'))
-                            last_collected[source] = parsed_time.isoformat() + 'Z'
-                        except:
-                            logger.warning(f"Could not parse timestamp {completed_time} for {source}")
+                    if status_doc and 'completed_at' in status_doc:
+                        completed_time = status_doc['completed_at']
+                        
+                        # Ensure it's a datetime object
+                        if isinstance(completed_time, datetime):
+                            last_collected[source] = completed_time.isoformat() + 'Z'
+                        elif isinstance(completed_time, str):
+                            # Try to parse if it's a string
+                            try:
+                                parsed_time = datetime.fromisoformat(completed_time.replace('Z', '+00:00'))
+                                last_collected[source] = parsed_time.isoformat() + 'Z'
+                            except:
+                                logger.warning(f"Could not parse timestamp {completed_time} for {source}")
+                                last_collected[source] = None
+                        else:
                             last_collected[source] = None
                     else:
                         last_collected[source] = None
+                        
+                except Exception as e:
+                    logger.warning(f"Error checking collection_status for {source}: {e}")
+                    last_collected[source] = None
+        else:
+            # Fallback: Use data timestamps (old method)
+            logger.info("collection_status not found, using fallback method")
+            
+            source_collections = {
+                'github': ['github_commits', 'github_pull_requests', 'github_issues'],
+                'slack': ['slack_messages'],
+                'notion': ['notion_pages'],
+                'drive': ['drive_files', 'drive_activities']
+            }
+            
+            for source, collections in source_collections.items():
+                latest_time = None
+                for coll_name in collections:
+                    try:
+                        if coll_name in collection_names_list:
+                            # Find most recent document
+                            doc = await db[coll_name].find_one(
+                                {},
+                                sort=[('collected_at', -1)]
+                            )
+                            if doc and 'collected_at' in doc:
+                                doc_time = doc['collected_at']
+                                if isinstance(doc_time, datetime):
+                                    if not latest_time or doc_time > latest_time:
+                                        latest_time = doc_time
+                    except Exception as e:
+                        logger.warning(f"Error checking {coll_name}: {e}")
+                
+                if latest_time:
+                    last_collected[source] = latest_time.isoformat() + 'Z'
                 else:
                     last_collected[source] = None
-                    
-            except Exception as e:
-                logger.warning(f"Error checking collection_status for {source}: {e}")
-                last_collected[source] = None
         
         # 8. Compile final response
         return {
