@@ -42,6 +42,49 @@ logger = get_logger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 
 
+async def record_collection_status(
+    mongo_manager: MongoDBManager,
+    source: str,
+    start_time: datetime,
+    status: str,
+    items_collected: int,
+    error_message: str = None
+):
+    """
+    Record collection status to MongoDB for tracking collector execution.
+    
+    Args:
+        mongo_manager: MongoDB manager instance
+        source: Data source name (github, slack, notion, drive)
+        start_time: When the collection started
+        status: success, failed, disabled
+        items_collected: Number of items collected
+        error_message: Error message if failed
+    """
+    try:
+        db = mongo_manager.async_db
+        collection = db['collection_status']
+        
+        end_time = datetime.utcnow()
+        duration_seconds = (end_time - start_time).total_seconds()
+        
+        status_doc = {
+            'source': source,
+            'started_at': start_time,
+            'completed_at': end_time,
+            'duration_seconds': duration_seconds,
+            'status': status,  # success, failed, disabled
+            'items_collected': items_collected,
+            'error_message': error_message
+        }
+        
+        await collection.insert_one(status_doc)
+        logger.debug(f"   📝 Recorded {source} collection status: {status}, {items_collected} items")
+        
+    except Exception as e:
+        logger.warning(f"   ⚠️  Failed to record collection status for {source}: {e}")
+
+
 def get_previous_day_range_kst():
     """
     Get the date range for the previous day in KST.
@@ -80,6 +123,11 @@ def get_previous_day_range_kst():
 
 async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime, target_members: List[str] = None):
     """Collect GitHub data for the specified date range"""
+    start_time = datetime.utcnow()
+    status = "failed"
+    items_collected = 0
+    error_message = None
+    
     try:
         logger.info("📂 Collecting GitHub data...")
         
@@ -88,6 +136,7 @@ async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, en
         
         if not plugin_config or not plugin_config.get('enabled', False):
             logger.info("   ⏭️  GitHub plugin disabled, skipping")
+            status = "disabled"
             return
         
         # If target members specified, add to plugin config
@@ -99,6 +148,7 @@ async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, en
         
         if not plugin.authenticate():
             logger.error("   ❌ GitHub authentication failed")
+            error_message = "Authentication failed"
             return
         
         # Collect data (GitHub plugin saves data internally during collect_data)
@@ -113,15 +163,28 @@ async def collect_github(mongo_manager: MongoDBManager, start_date: datetime, en
         commits_count = len(data.get('commits', []))
         prs_count = len(data.get('pull_requests', []))
         issues_count = len(data.get('issues', []))
+        items_collected = commits_count + prs_count + issues_count
         
         logger.info(f"   ✅ GitHub: {commits_count} commits, {prs_count} PRs, {issues_count} issues")
+        status = "success"
         
     except Exception as e:
         logger.error(f"   ❌ GitHub collection failed: {e}", exc_info=True)
+        error_message = str(e)
+    finally:
+        # Record collection status
+        await record_collection_status(
+            mongo_manager, "github", start_time, status, items_collected, error_message
+        )
 
 
 async def collect_slack(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime):
     """Collect Slack data for the specified date range"""
+    start_time = datetime.utcnow()
+    status = "failed"
+    items_collected = 0
+    error_message = None
+    
     try:
         logger.info("📂 Collecting Slack data...")
         
@@ -130,12 +193,14 @@ async def collect_slack(mongo_manager: MongoDBManager, start_date: datetime, end
         
         if not plugin_config or not plugin_config.get('enabled', False):
             logger.info("   ⏭️  Slack plugin disabled, skipping")
+            status = "disabled"
             return
         
         plugin = SlackPluginMongo(plugin_config, mongo_manager)
         
         if not plugin.authenticate():
             logger.error("   ❌ Slack authentication failed")
+            error_message = "Authentication failed"
             return
         
         # Collect data (returns a list with one dict)
@@ -146,16 +211,30 @@ async def collect_slack(mongo_manager: MongoDBManager, start_date: datetime, end
             data = data_list[0]
             await plugin.save_data(data)
             messages_count = len(data.get('messages', []))
+            items_collected = messages_count
             logger.info(f"   ✅ Slack: {messages_count} messages")
+            status = "success"
         else:
             logger.warning("   ⚠️  Slack collection returned empty data")
+            status = "success"  # Still success even if no data
         
     except Exception as e:
         logger.error(f"   ❌ Slack collection failed: {e}", exc_info=True)
+        error_message = str(e)
+    finally:
+        # Record collection status
+        await record_collection_status(
+            mongo_manager, "slack", start_time, status, items_collected, error_message
+        )
 
 
 async def collect_notion(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime):
     """Collect Notion data for the specified date range"""
+    start_time = datetime.utcnow()
+    status = "failed"
+    items_collected = 0
+    error_message = None
+    
     try:
         logger.info("📂 Collecting Notion data...")
         
@@ -164,12 +243,14 @@ async def collect_notion(mongo_manager: MongoDBManager, start_date: datetime, en
         
         if not plugin_config or not plugin_config.get('enabled', False):
             logger.info("   ⏭️  Notion plugin disabled, skipping")
+            status = "disabled"
             return
         
         plugin = NotionPluginMongo(plugin_config, mongo_manager)
         
         if not plugin.authenticate():
             logger.error("   ❌ Notion authentication failed")
+            error_message = "Authentication failed"
             return
         
         # Ensure start_date and end_date are timezone-aware
@@ -186,18 +267,32 @@ async def collect_notion(mongo_manager: MongoDBManager, start_date: datetime, en
             data = data_list[0]
             await plugin.save_data(data)
             pages_count = len(data.get('pages', []))
+            items_collected = pages_count
             logger.info(f"   ✅ Notion: {pages_count} pages")
+            status = "success"
         else:
             logger.warning("   ⚠️  Notion collection returned empty data")
+            status = "success"  # Still success even if no data
         
     except Exception as e:
         logger.error(f"   ❌ Notion collection failed: {e}", exc_info=True)
+        error_message = str(e)
+    finally:
+        # Record collection status
+        await record_collection_status(
+            mongo_manager, "notion", start_time, status, items_collected, error_message
+        )
 
 
 async def collect_google_drive(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime):
     """
     Collect Google Drive data for the specified date range.
     """
+    start_time = datetime.utcnow()
+    status = "failed"
+    items_collected = 0
+    error_message = None
+    
     try:
         logger.info("📂 Collecting Google Drive data...")
         
@@ -206,12 +301,14 @@ async def collect_google_drive(mongo_manager: MongoDBManager, start_date: dateti
         
         if not plugin_config or not plugin_config.get('enabled', False):
             logger.info("   ⏭️  Google Drive plugin disabled, skipping")
+            status = "disabled"
             return
         
         plugin = GoogleDrivePluginMongo(plugin_config, mongo_manager)
         
         if not plugin.authenticate():
             logger.error("   ❌ Google Drive authentication failed")
+            error_message = "Authentication failed"
             return
         
         # Ensure dates are timezone-aware (Google Drive plugin expects UTC)
@@ -228,12 +325,21 @@ async def collect_google_drive(mongo_manager: MongoDBManager, start_date: dateti
             data = data_list[0]
             await plugin.save_data(data)
             activities_count = len(data.get('activities', []))
+            items_collected = activities_count
             logger.info(f"   ✅ Google Drive: {activities_count} activities")
+            status = "success"
         else:
             logger.warning("   ⚠️  Google Drive collection returned empty data")
+            status = "success"  # Still success even if no data
         
     except Exception as e:
         logger.error(f"   ❌ Google Drive collection failed: {e}", exc_info=True)
+        error_message = str(e)
+    finally:
+        # Record collection status
+        await record_collection_status(
+            mongo_manager, "drive", start_time, status, items_collected, error_message
+        )
 
 
 async def main():

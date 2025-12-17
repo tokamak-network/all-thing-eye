@@ -308,56 +308,43 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
         except Exception as e:
             logger.warning(f"Failed to extract keywords: {e}")
 
-        # 7. Get last collection times (based on actual data timestamps, not script execution time)
-        sources = {
-            "github": {
-                "github_commits": "date",
-                "github_pull_requests": "created_at",
-                "github_issues": "created_at"
-            },
-            "slack": {
-                "slack_messages": "posted_at"
-            },
-            "notion": {
-                "notion_pages": "last_edited_time"  # Use last_edited_time as it's more recent
-            },
-            "drive": {
-                "drive_activities": "timestamp"
-            }
-        }
-        
+        # 7. Get last collection times (based on collector execution, not data timestamps)
+        # This shows when the collector last ran, regardless of whether it found data
         last_collected = {}
+        collection_status_coll = db['collection_status']
         
-        for source, collections in sources.items():
-            latest_time = None
-            for coll_name, timestamp_field in collections.items():
-                try:
-                    collection = db[coll_name]
-                    # Find the most recent document based on actual data timestamp
-                    result = await collection.find_one(
-                        {timestamp_field: {"$exists": True}},
-                        sort=[(timestamp_field, -1)]
-                    )
-                    if result and timestamp_field in result:
-                        data_time = result[timestamp_field]
-                        # Ensure it's a datetime object
-                        if isinstance(data_time, datetime):
-                            if latest_time is None or data_time > latest_time:
-                                latest_time = data_time
-                        elif isinstance(data_time, str):
-                            # Try to parse if it's a string
-                            try:
-                                parsed_time = datetime.fromisoformat(data_time.replace('Z', '+00:00'))
-                                if latest_time is None or parsed_time > latest_time:
-                                    latest_time = parsed_time
-                            except:
-                                logger.warning(f"Could not parse timestamp {data_time} from {coll_name}")
-                                continue
-                except Exception as e:
-                    logger.warning(f"Error checking {coll_name}: {e}")
-                    continue
-            
-            last_collected[source] = latest_time.isoformat() + 'Z' if latest_time else None
+        sources_list = ['github', 'slack', 'notion', 'drive']
+        
+        for source in sources_list:
+            try:
+                # Find the most recent collection status for this source
+                status_doc = await collection_status_coll.find_one(
+                    {'source': source},
+                    sort=[('completed_at', -1)]
+                )
+                
+                if status_doc and 'completed_at' in status_doc:
+                    completed_time = status_doc['completed_at']
+                    
+                    # Ensure it's a datetime object
+                    if isinstance(completed_time, datetime):
+                        last_collected[source] = completed_time.isoformat() + 'Z'
+                    elif isinstance(completed_time, str):
+                        # Try to parse if it's a string
+                        try:
+                            parsed_time = datetime.fromisoformat(completed_time.replace('Z', '+00:00'))
+                            last_collected[source] = parsed_time.isoformat() + 'Z'
+                        except:
+                            logger.warning(f"Could not parse timestamp {completed_time} for {source}")
+                            last_collected[source] = None
+                    else:
+                        last_collected[source] = None
+                else:
+                    last_collected[source] = None
+                    
+            except Exception as e:
+                logger.warning(f"Error checking collection_status for {source}: {e}")
+                last_collected[source] = None
         
         # 8. Compile final response
         return {
