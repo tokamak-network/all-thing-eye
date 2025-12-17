@@ -71,7 +71,8 @@ export function useActivities(
     GET_ACTIVITIES,
     {
       variables,
-      fetchPolicy: "network-only", // Always fetch fresh data for activities
+      fetchPolicy: "no-cache", // Disable cache completely for keyword search
+      notifyOnNetworkStatusChange: true, // Notify on refetch
     }
   );
 }

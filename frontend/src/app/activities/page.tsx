@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { format } from "date-fns";
 import { api as apiClient } from "@/lib/api";
 import { useMembers, useProjects, useActivities } from "@/graphql/hooks";
@@ -762,24 +762,30 @@ export default function ActivitiesPage() {
     return source.toUpperCase();
   };
 
-  const activitiesVariables = {
-    source: normalizeSourceType(sourceFilter) as any,
-    memberName: memberFilter && memberFilter !== "" ? memberFilter : undefined,
-    keyword: searchKeyword && searchKeyword !== "" ? searchKeyword : undefined,
-    projectKey:
-      projectFilter && projectFilter !== "" ? projectFilter : undefined,
-          limit: loadLimit,
-    offset: 0,
-  };
-
-  // Debug: Log filter values
-  console.log("🔍 Frontend Filters:", {
-    sourceFilter,
-    normalizedSource: normalizeSourceType(sourceFilter),
-    memberFilter,
-    projectFilter,
-  });
-  console.log("🔍 GraphQL Variables being sent:", JSON.stringify(activitiesVariables, null, 2));
+  // Memoize activitiesVariables to prevent unnecessary re-renders
+  const activitiesVariables = useMemo(() => {
+    const vars = {
+      source: normalizeSourceType(sourceFilter) as any,
+      memberName: memberFilter && memberFilter !== "" ? memberFilter : undefined,
+      keyword: searchKeyword && searchKeyword !== "" ? searchKeyword : undefined,
+      projectKey:
+        projectFilter && projectFilter !== "" ? projectFilter : undefined,
+      limit: loadLimit,
+      offset: 0,
+    };
+    
+    // Debug: Log filter values
+    console.log("🔍 Frontend Filters:", {
+      sourceFilter,
+      normalizedSource: normalizeSourceType(sourceFilter),
+      memberFilter,
+      projectFilter,
+      searchKeyword,
+    });
+    console.log("🔍 GraphQL Variables being sent:", JSON.stringify(vars, null, 2));
+    
+    return vars;
+  }, [sourceFilter, memberFilter, searchKeyword, projectFilter, loadLimit]);
 
   const {
     data: activitiesData,

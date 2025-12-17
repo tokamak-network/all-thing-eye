@@ -942,6 +942,8 @@ class Query:
             if end_date:
                 query['time'] = query.get('time', {})
                 query['time']['$lte'] = end_date
+            if keyword:
+                query['title'] = {'$regex': keyword, '$options': 'i'}
             
             print(f"🔍 [{request_id}] 📁 Drive query: {query}")
             
@@ -1145,6 +1147,9 @@ class Query:
                 if end_date:
                     query['target_date'] = query.get('target_date', {})
                     query['target_date']['$lte'] = end_date.strftime('%Y-%m-%d')
+                if keyword:
+                    # Search in analysis.summary.overview field
+                    query['analysis.summary.overview'] = {'$regex': keyword, '$options': 'i'}
                 
                 # If member filter is specified, filter by analysis.participants
                 # participants is array of dicts: [{'name': 'Ale Son', ...}, {'name': 'Jake Jang', ...}]
