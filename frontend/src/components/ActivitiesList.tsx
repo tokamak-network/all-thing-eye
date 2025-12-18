@@ -229,7 +229,7 @@ export default function ActivitiesList({
               )}
               {searchKeyword && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-                  🔍 "{searchKeyword}"
+                  🔍 &quot;{searchKeyword}&quot;
                 </span>
               )}
             </div>
