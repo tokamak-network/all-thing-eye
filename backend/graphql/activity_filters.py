@@ -364,9 +364,16 @@ def build_recordings_query(
     project_key: Optional[str] = None,
     keyword: Optional[str] = None,
     start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None,
+    gemini_db = None
 ) -> Dict[str, Any]:
-    """Build MongoDB query for Google Drive recordings"""
+    """
+    Build MongoDB query for Google Drive recordings.
+    
+    Note: For member filtering, this function queries gemini.recordings 
+    to find meetings where the member is a participant, then returns
+    a query filtering by those meeting_ids.
+    """
     query = {}
     
     # Filter by project key in recording name (title)
@@ -382,31 +389,86 @@ def build_recordings_query(
     elif keyword:
         query['name'] = {'$regex': keyword, '$options': 'i'}
     
-    # Filter by member (created_by, name, or participants)
-    if member_name:
+    # Filter by member using gemini.recordings participants
+    if member_name and gemini_db:
         recording_names = member_identifiers.get('recordings', []) if member_identifiers else []
         
-        or_conditions = [
-            {'created_by': {'$regex': f'^{member_name}$', '$options': 'i'}},
-            {'created_by': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}},
-            {'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}},
-            {'participants': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
-        ]
+        try:
+            gemini_recordings_col = gemini_db["recordings"]
+            
+            # Build participant query (participants is a string array)
+            participant_query = {
+                'participants': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}
+            }
+            
+            # Add recording_name patterns
+            if recording_names:
+                or_conditions = [
+                    {'participants': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
+                ]
+                for rec_name in recording_names:
+                    if rec_name:
+                        or_conditions.append(
+                            {'participants': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}}
+                        )
+                participant_query = {'$or': or_conditions}
+            
+            # Get meeting_ids where member is a participant
+            gemini_docs = list(gemini_recordings_col.find(
+                participant_query,
+                {'meeting_id': 1}
+            ))
+            
+            meeting_ids = [doc.get('meeting_id') for doc in gemini_docs if doc.get('meeting_id')]
+            
+            if meeting_ids:
+                # Filter by _id matching meeting_ids
+                from bson import ObjectId
+                object_ids = []
+                for mid in meeting_ids:
+                    try:
+                        if isinstance(mid, str):
+                            object_ids.append(ObjectId(mid))
+                        elif isinstance(mid, ObjectId):
+                            object_ids.append(mid)
+                    except:
+                        pass
+                
+                if object_ids:
+                    # Combine with existing query conditions
+                    if '$and' in query:
+                        query['$and'].append({'_id': {'$in': object_ids}})
+                    else:
+                        query['_id'] = {'$in': object_ids}
+                else:
+                    # No valid ObjectIds, return empty results
+                    query['_id'] = {'$in': []}
+            else:
+                # No meetings found for this member
+                query['_id'] = {'$in': []}
         
-        for rec_name in recording_names:
-            if rec_name:
-                or_conditions.extend([
-                    {'created_by': {'$regex': f'^{rec_name}$', '$options': 'i'}},
-                    {'created_by': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}},
-                    {'name': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}},
-                    {'participants': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}}
-                ])
-        
-        # Combine with keyword filter if exists
-        if '$and' in query:
-            query['$and'].append({'$or': or_conditions})
-        else:
-            query['$or'] = or_conditions
+        except Exception as e:
+            print(f"⚠️  Error querying gemini.recordings for participants: {e}")
+            # Fallback to old method (created_by and name only)
+            or_conditions = [
+                {'created_by': {'$regex': f'^{member_name}$', '$options': 'i'}},
+                {'created_by': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}},
+                {'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
+            ]
+            
+            for rec_name in recording_names:
+                if rec_name:
+                    or_conditions.extend([
+                        {'created_by': {'$regex': f'^{rec_name}$', '$options': 'i'}},
+                        {'created_by': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}},
+                        {'name': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}}
+                    ])
+            
+            # Combine with keyword filter if exists
+            if '$and' in query:
+                query['$and'].append({'$or': or_conditions})
+            else:
+                query['$or'] = or_conditions
     
     # Date range
     if start_date:
