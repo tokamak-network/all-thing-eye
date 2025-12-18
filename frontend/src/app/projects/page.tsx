@@ -67,7 +67,7 @@ export default function ProjectsPage() {
     description: p.description,
     slack_channel: p.slackChannel,
     slack_channel_id: undefined,
-    lead: undefined,
+    lead: p.lead,
     repositories: p.repositories || [],
     repositories_synced_at: undefined,
     github_team_slug: undefined,
@@ -113,6 +113,8 @@ export default function ProjectsPage() {
   const [newNotionRoot, setNewNotionRoot] = useState("");
   const [memberSearchTerm, setMemberSearchTerm] = useState("");
   const [showMemberSelector, setShowMemberSelector] = useState(false);
+  const [leadSearchTerm, setLeadSearchTerm] = useState("");
+  const [showLeadSelector, setShowLeadSelector] = useState(false);
 
   function openCreateModal() {
     setEditingProject(null);
@@ -169,6 +171,9 @@ export default function ProjectsPage() {
           member_ids: formData.member_ids,
           is_active: formData.is_active,
         });
+        
+        // Show success message for update
+        alert(`✅ Project "${formData.name}" has been updated successfully!`);
       } else {
         // Generate key from name: "Project OOO" -> "project-ooo"
         const generatedKey = formData.name
@@ -189,6 +194,9 @@ export default function ProjectsPage() {
           member_ids: formData.member_ids,
           is_active: formData.is_active,
         });
+        
+        // Show success message for creation
+        alert(`✅ Project "${formData.name}" has been created successfully!`);
       }
       setShowCreateModal(false);
 
@@ -299,6 +307,13 @@ export default function ProjectsPage() {
     (member) =>
     member.name.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
     member.email?.toLowerCase().includes(memberSearchTerm.toLowerCase())
+  );
+
+  // Filter members for lead selection
+  const filteredLeadMembers = allMembers.filter(
+    (member) =>
+    member.name.toLowerCase().includes(leadSearchTerm.toLowerCase()) ||
+    member.email?.toLowerCase().includes(leadSearchTerm.toLowerCase())
   );
 
   if (loading && !data) {
@@ -559,39 +574,90 @@ export default function ProjectsPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Project Lead
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.lead}
-                        onChange={(e) =>
-                          setFormData({ ...formData, lead: e.target.value })
-                        }
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="John Doe"
-                      />
+                  {/* Project Lead */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Project Lead
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Select the member who leads this project.
+                    </p>
+                    <div className="relative">
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={leadSearchTerm}
+                          onChange={(e) => setLeadSearchTerm(e.target.value)}
+                          onFocus={() => setShowLeadSelector(true)}
+                          onBlur={() =>
+                            setTimeout(() => setShowLeadSelector(false), 200)
+                          }
+                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                          placeholder="Search members..."
+                        />
+                      </div>
+                      {showLeadSelector && filteredLeadMembers.length > 0 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          {filteredLeadMembers.map((member) => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              onClick={() => {
+                                setFormData({ ...formData, lead: member.name });
+                                setLeadSearchTerm("");
+                                setShowLeadSelector(false);
+                              }}
+                              className={`w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-left ${
+                                formData.lead === member.name ? "bg-blue-50" : ""
+                              }`}
+                            >
+                              <span className="text-sm text-gray-900">
+                                {member.name}
+                              </span>
+                              {member.email && (
+                                <span className="text-xs text-gray-500">
+                                  ({member.email})
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        GitHub Team Slug
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.github_team_slug}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            github_team_slug: e.target.value,
-                          })
-                        }
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="project-ooo"
-                      />
-                    </div>
-                </div>
+                    {formData.lead && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
+                          {formData.lead}
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, lead: "" })}
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* GitHub Team Slug */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      GitHub Team Slug
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.github_team_slug}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          github_team_slug: e.target.value,
+                        })
+                      }
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                      placeholder="project-ooo"
+                    />
+                  </div>
 
                   {/* GitHub Repositories */}
                   <div>

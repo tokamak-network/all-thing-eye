@@ -56,6 +56,7 @@ export const PROJECT_FRAGMENT = gql`
     name
     description
     slackChannel
+    lead
     repositories
     isActive
   }

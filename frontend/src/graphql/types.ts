@@ -58,6 +58,7 @@ export interface Project {
   name: string;
   description?: string;
   slackChannel?: string;
+  lead?: string;
   repositories: string[];
   isActive: boolean;
   memberCount?: number;

@@ -258,6 +258,7 @@ class Project:
     name: str
     description: Optional[str] = None
     slack_channel: Optional[str] = None
+    lead: Optional[str] = None
     repositories: List[str]
     is_active: bool = True
     member_ids: List[str] = strawberry.field(default_factory=list)  # Internal field

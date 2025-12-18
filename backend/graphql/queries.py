@@ -1393,6 +1393,7 @@ class Query:
                 name=doc['name'],
                 description=doc.get('description'),
                 slack_channel=doc.get('slack_channel'),
+                lead=doc.get('lead'),
                 repositories=doc.get('repositories', []),
                 is_active=doc.get('is_active', True),
                 member_ids=doc.get('member_ids', [])
@@ -1437,6 +1438,7 @@ class Query:
             name=doc['name'],
             description=doc.get('description'),
             slack_channel=doc.get('slack_channel'),
+            lead=doc.get('lead'),
             repositories=doc.get('repositories', []),
             is_active=doc.get('is_active', True),
             member_ids=doc.get('member_ids', [])
