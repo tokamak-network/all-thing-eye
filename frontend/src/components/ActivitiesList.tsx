@@ -71,9 +71,27 @@ export default function ActivitiesList({
 }: ActivitiesListProps) {
   // Filter states
   const [sourceFilter, setSourceFilter] = useState(initialSource);
-  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchInput, setSearchInput] = useState(""); // User input
+  const [searchKeyword, setSearchKeyword] = useState(""); // Actual search query
   const [localMemberFilter, setLocalMemberFilter] = useState(memberName || "");
-  const [localProjectFilter, setLocalProjectFilter] = useState(projectKey || "");
+  const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
+
+  // Handle search
+  const handleSearch = () => {
+    setSearchKeyword(searchInput);
+  };
+
+  // Handle Enter key in search input
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
+  // Toggle activity expansion
+  const toggleActivity = (activityId: string) => {
+    setExpandedActivity(expandedActivity === activityId ? null : activityId);
+  };
 
   // Normalize source type for GraphQL
   const normalizeSourceType = (source: string) => {
@@ -95,7 +113,7 @@ export default function ActivitiesList({
       source: normalizeSourceType(sourceFilter),
       memberName: memberName || (localMemberFilter !== "" ? localMemberFilter : undefined),
       keyword: searchKeyword !== "" ? searchKeyword : undefined,
-      projectKey: projectKey || (localProjectFilter !== "" ? localProjectFilter : undefined),
+      projectKey: projectKey || undefined,
       limit,
       offset: 0,
     };
@@ -103,7 +121,7 @@ export default function ActivitiesList({
     console.log("🔍 ActivitiesList GraphQL Variables:", JSON.stringify(vars, null, 2));
 
     return vars;
-  }, [sourceFilter, memberName, localMemberFilter, searchKeyword, projectKey, localProjectFilter, limit]);
+  }, [sourceFilter, memberName, localMemberFilter, searchKeyword, projectKey, limit]);
 
   // Fetch activities
   const { data, loading, error } = useActivities(activitiesVariables);
@@ -150,23 +168,30 @@ export default function ActivitiesList({
       {/* Filters */}
       {showFilters && (
         <div className="bg-white rounded-lg shadow p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Search */}
-            <div className="md:col-span-2">
+          <div className="flex gap-4 items-center">
+            {/* Search Input with Button */}
+            <div className="flex-1 flex gap-2">
               <input
                 type="text"
                 placeholder="Search by keyword..."
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              <button
+                onClick={handleSearch}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors font-medium"
+              >
+                🔍 Search
+              </button>
             </div>
 
             {/* Source Filter */}
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[200px]"
             >
               <option value="">📂 All Sources</option>
               <option value="github">🐙 GitHub</option>
@@ -184,33 +209,17 @@ export default function ActivitiesList({
                 placeholder="Filter by member..."
                 value={localMemberFilter}
                 onChange={(e) => setLocalMemberFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            )}
-
-            {/* Project Filter (only if not fixed by props) */}
-            {!projectKey && (
-              <input
-                type="text"
-                placeholder="Filter by project..."
-                value={localProjectFilter}
-                onChange={(e) => setLocalProjectFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[200px]"
               />
             )}
           </div>
 
           {/* Active Filters Display */}
-          {(memberName || projectKey || sourceFilter || searchKeyword) && (
+          {(memberName || sourceFilter || searchKeyword) && (
             <div className="mt-3 flex flex-wrap gap-2">
               {memberName && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
                   👤 {memberName}
-                </span>
-              )}
-              {projectKey && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                  📁 {projectKey}
                 </span>
               )}
               {sourceFilter && (
@@ -251,55 +260,475 @@ export default function ActivitiesList({
               const sourceConfig = getSourceConfig(activity.sourceType);
 
               return (
-                <div
-                  key={activity.id}
-                  className="p-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      {/* Header */}
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`text-2xl ${sourceConfig.color}`}>
-                          {sourceConfig.icon}
-                        </span>
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${activityConfig.bgColor}`}
-                        >
-                          {activityConfig.icon} {activityConfig.label}
-                        </span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {activity.memberName}
-                        </span>
-                      </div>
-
-                      {/* Content */}
-                      <div className="text-sm text-gray-700">
-                        {activity.metadata?.title ||
-                          activity.metadata?.name ||
-                          activity.metadata?.message ||
-                          activity.metadata?.text ||
-                          activity.metadata?.file_name ||
-                          "No title"}
-                      </div>
-
-                      {/* Metadata */}
-                      {activity.metadata && (
-                        <div className="mt-2 text-xs text-gray-500 space-y-1">
-                          {activity.metadata.repository && (
-                            <div>📦 {activity.metadata.repository}</div>
+                <div key={activity.id} className="hover:bg-gray-50">
+                  {/* Activity Header */}
+                  <div
+                    className="px-4 py-4 sm:px-6 cursor-pointer"
+                    onClick={() => toggleActivity(activity.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-2xl">{sourceConfig.icon}</span>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${activityConfig.bgColor}`}
+                          >
+                            {activityConfig.icon} {activityConfig.label}
+                          </span>
+                          <p className="text-sm font-medium text-gray-900">
+                            {activity.memberName}
+                          </p>
+                        </div>
+                        <div className="mt-2 text-sm text-gray-600">
+                          {activity.metadata?.title && (
+                            <p className="line-clamp-1 font-medium">
+                              {activity.metadata.title}
+                            </p>
                           )}
-                          {activity.metadata.channel_name && (
-                            <div>💬 #{activity.metadata.channel_name}</div>
+                          {activity.metadata?.name && (
+                            <p className="line-clamp-1 font-medium">
+                              {activity.metadata.name}
+                            </p>
+                          )}
+                          {activity.metadata?.message && (
+                            <p className="line-clamp-1">
+                              {activity.metadata.message}
+                            </p>
+                          )}
+                          {activity.metadata?.text && (
+                            <p className="line-clamp-1">
+                              {activity.metadata.text}
+                            </p>
+                          )}
+                          {activity.metadata?.repository && (
+                            <p className="line-clamp-1 font-mono text-xs mt-1">
+                              📦 {activity.metadata.repository}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <div className="text-right min-w-[160px]">
+                          <p className="text-sm font-medium text-gray-900">
+                            {new Date(activity.timestamp).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {new Date(activity.timestamp).toLocaleTimeString(
+                              "en-US",
+                              {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              }
+                            )}
+                          </p>
+                        </div>
+                        <svg
+                          className={`h-5 w-5 text-gray-400 transition-transform ${
+                            expandedActivity === activity.id
+                              ? "transform rotate-180"
+                              : ""
+                          }`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {expandedActivity === activity.id && (
+                    <div className="px-4 py-4 sm:px-6 bg-gray-50 border-t border-gray-200">
+                      {/* GitHub Details */}
+                      {activity.sourceType === "github" && (
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-2">
+                            {activity.activityType === "commit" && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                💾 Commit
+                              </span>
+                            )}
+                            {activity.activityType === "pull_request" && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                🔀 Pull Request
+                              </span>
+                            )}
+                            {activity.activityType === "issue" && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                ⚠️ Issue
+                              </span>
+                            )}
+                            {activity.metadata?.state && (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  activity.metadata.state === "open"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {activity.metadata.state}
+                              </span>
+                            )}
+                          </div>
+
+                          <div>
+                            <span className="text-xs font-medium text-gray-500">
+                              Time:
+                            </span>
+                            <p className="text-sm text-gray-900">
+                              {new Date(activity.timestamp).toLocaleString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                }
+                              )}
+                            </p>
+                          </div>
+
+                          {activity.metadata?.repository && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Repository:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                tokamak-network/{activity.metadata.repository}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.sha && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Commit SHA:
+                              </span>
+                              <p className="text-sm font-mono text-gray-900">
+                                {activity.metadata.sha.substring(0, 7)}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.number && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                {activity.activityType === "pull_request"
+                                  ? "PR Number:"
+                                  : "Issue Number:"}
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                #{activity.metadata.number}
+                              </p>
+                            </div>
+                          )}
+
+                          {(activity.metadata?.additions !== undefined ||
+                            activity.metadata?.deletions !== undefined) && (
+                            <div className="flex items-center space-x-4">
+                              <div className="flex items-center space-x-1">
+                                <span className="text-xs font-medium text-gray-500">
+                                  Changes:
+                                </span>
+                                <span className="text-xs font-medium text-green-600">
+                                  +{activity.metadata.additions || 0}
+                                </span>
+                                <span className="text-xs font-medium text-red-600">
+                                  -{activity.metadata.deletions || 0}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {activity.metadata?.url && (
+                            <div className="mt-3">
+                              <a
+                                href={activity.metadata.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center px-3 py-1.5 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                              >
+                                🔗 View on GitHub →
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Slack Details */}
+                      {activity.sourceType === "slack" && (
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-2">
+                            {activity.activityType === "message" && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                💬 Message
+                              </span>
+                            )}
+                          </div>
+
+                          <div>
+                            <span className="text-xs font-medium text-gray-500">
+                              Time:
+                            </span>
+                            <p className="text-sm text-gray-900">
+                              {new Date(activity.timestamp).toLocaleString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                }
+                              )}
+                            </p>
+                          </div>
+
+                          {activity.metadata?.channel_name && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Channel:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                #{activity.metadata.channel_name}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.text && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Message:
+                              </span>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap bg-white p-3 rounded border border-gray-200 mt-1">
+                                {activity.metadata.text}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.url && (
+                            <div className="mt-3">
+                              <a
+                                href={activity.metadata.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors"
+                              >
+                                🔗 View on Slack →
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Notion Details */}
+                      {activity.sourceType === "notion" && (
+                        <div className="space-y-3">
+                          <div>
+                            <span className="text-xs font-medium text-gray-500">
+                              Time:
+                            </span>
+                            <p className="text-sm text-gray-900">
+                              {new Date(activity.timestamp).toLocaleString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                }
+                              )}
+                            </p>
+                          </div>
+
+                          {activity.metadata?.title && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Title:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                {activity.metadata.title}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.url && (
+                            <div className="mt-3">
+                              <a
+                                href={activity.metadata.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                              >
+                                🔗 View on Notion →
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Google Drive Details */}
+                      {(activity.sourceType === "drive" ||
+                        activity.sourceType === "google_drive") && (
+                        <div className="space-y-3">
+                          <div>
+                            <span className="text-xs font-medium text-gray-500">
+                              Time:
+                            </span>
+                            <p className="text-sm text-gray-900">
+                              {new Date(activity.timestamp).toLocaleString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                }
+                              )}
+                            </p>
+                          </div>
+
+                          {activity.metadata?.primary_action && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Action:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                {activity.metadata.primary_action}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.target_name && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                File:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                {activity.metadata.target_name}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Recordings Details */}
+                      {activity.sourceType === "recordings" && (
+                        <div className="space-y-3">
+                          <div>
+                            <span className="text-xs font-medium text-gray-500">
+                              Time:
+                            </span>
+                            <p className="text-sm text-gray-900">
+                              {new Date(activity.timestamp).toLocaleString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                }
+                              )}
+                            </p>
+                          </div>
+
+                          {activity.metadata?.name && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Recording:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                {activity.metadata.name}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.participants && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Participants:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                {Array.isArray(activity.metadata.participants)
+                                  ? activity.metadata.participants.join(", ")
+                                  : activity.metadata.participants}
+                              </p>
+                            </div>
+                          )}
+
+                          {activity.metadata?.size && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Size:
+                              </span>
+                              <p className="text-sm text-gray-900">
+                                {(
+                                  activity.metadata.size /
+                                  (1024 * 1024)
+                                ).toFixed(2)}{" "}
+                                MB
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Recordings Daily (Analysis) Details */}
+                      {activity.sourceType === "recordings_daily" && (
+                        <div className="space-y-3">
+                          <div>
+                            <span className="text-xs font-medium text-gray-500">
+                              Date:
+                            </span>
+                            <p className="text-sm text-gray-900">
+                              {activity.metadata?.target_date ||
+                                new Date(activity.timestamp).toLocaleDateString()}
+                            </p>
+                          </div>
+
+                          {activity.metadata?.summary && (
+                            <div>
+                              <span className="text-xs font-medium text-gray-500">
+                                Summary:
+                              </span>
+                              <div className="text-sm text-gray-700 bg-white p-3 rounded border border-gray-200 mt-1">
+                                {typeof activity.metadata.summary === "string"
+                                  ? activity.metadata.summary
+                                  : JSON.stringify(activity.metadata.summary)}
+                              </div>
+                            </div>
                           )}
                         </div>
                       )}
                     </div>
-
-                    {/* Timestamp */}
-                    <div className="ml-4 text-xs text-gray-500 text-right whitespace-nowrap">
-                      {formatTimestamp(activity.timestamp)}
-                    </div>
-                  </div>
+                  )}
                 </div>
               );
             })}

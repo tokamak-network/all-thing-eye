@@ -1459,6 +1459,11 @@ export default function ActivitiesPage() {
                       {activity.metadata?.text && (
                         <p className="line-clamp-1">{activity.metadata.text}</p>
                       )}
+                      {activity.metadata?.repository && (
+                        <p className="line-clamp-1 font-mono text-xs mt-1">
+                          📦 {activity.metadata.repository}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center space-x-4">
