@@ -51,6 +51,14 @@ export default function DateRangePicker({
         start.setDate(today.getDate() - 7);
         end = today;
         break;
+      case 'thisweek':
+        // This week (Monday to today)
+        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Convert Sunday (0) to 6
+        start = new Date(today);
+        start.setDate(today.getDate() - daysToMonday);
+        end = today;
+        break;
       case 'lastmonth':
         // Last month (first day to last day)
         const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -164,6 +172,12 @@ export default function DateRangePicker({
             className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
           >
             Last Week
+          </button>
+          <button
+            onClick={() => handlePreset('thisweek')}
+            className="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
+          >
+            This Week
           </button>
           <button
             onClick={() => handlePreset('lastmonth')}

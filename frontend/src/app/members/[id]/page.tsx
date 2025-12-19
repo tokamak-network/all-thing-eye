@@ -29,7 +29,7 @@ import {
 } from "recharts";
 import DateRangePicker from "@/components/DateRangePicker";
 import { CollaborationNetwork } from "@/components/CollaborationNetwork";
-import { ActivitiesView } from "@/app/activities/page";
+import ActivitiesView from "@/components/ActivitiesView";
 // TODO: Fix issues with new GraphQL components before re-enabling
 // import { useMemberDetail } from "@/graphql/hooks";
 // import MemberCollaboration from "@/components/MemberCollaboration";
