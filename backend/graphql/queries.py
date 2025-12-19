@@ -841,6 +841,15 @@ class Query:
                 if display_name and isinstance(display_name, str) and len(display_name) > 0:
                     display_name = display_name[0].upper() + display_name[1:]
                 
+                # Build Slack message URL (same logic as REST API)
+                channel_id = doc.get('channel_id', '')
+                ts = doc.get('ts', '')
+                slack_url = None
+                if channel_id and ts:
+                    # Convert ts (1763525860.094349) to Slack URL format (p1763525860094349)
+                    ts_formatted = ts.replace('.', '')
+                    slack_url = f"https://tokamak-network.slack.com/archives/{channel_id}/p{ts_formatted}"
+                
                 activities.append(Activity(
                     id=str(doc['_id']),
                     member_name=display_name,
@@ -853,7 +862,8 @@ class Query:
                         'channel_id': doc.get('channel_id'),
                         'thread_ts': doc.get('thread_ts'),
                         'posted_at': doc.get('posted_at'),
-                        'reactions': doc.get('reactions', [])
+                        'reactions': doc.get('reactions', []),
+                        'url': slack_url
                     })
                 ))
             
@@ -876,10 +886,18 @@ class Query:
                 print(f"🔍 [{request_id}] 📝 Notion identifiers for '{member_name}': {notion_ids}")
             
             if start_date:
-                query['last_edited_time'] = {'$gte': start_date}
+                # Notion stores last_edited_time as timezone-naive datetime
+                # Convert timezone-aware datetime to timezone-naive UTC for comparison
+                from datetime import timezone as tz
+                start_date_naive = start_date.astimezone(tz.utc).replace(tzinfo=None)
+                query['last_edited_time'] = {'$gte': start_date_naive}
             if end_date:
+                # Notion stores last_edited_time as timezone-naive datetime
+                # Convert timezone-aware datetime to timezone-naive UTC for comparison
+                from datetime import timezone as tz
+                end_date_naive = end_date.astimezone(tz.utc).replace(tzinfo=None)
                 query['last_edited_time'] = query.get('last_edited_time', {})
-                query['last_edited_time']['$lte'] = end_date
+                query['last_edited_time']['$lte'] = end_date_naive
             if keyword:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
             
@@ -941,16 +959,24 @@ class Query:
                     # Fallback to regex search (case-insensitive)
                     query['user_email'] = {'$regex': member_name, '$options': 'i'}
             if start_date:
-                query['time'] = {'$gte': start_date}
+                # Drive uses 'timestamp' field (not 'time'), and it's timezone-naive
+                # Convert timezone-aware datetime to timezone-naive UTC for comparison
+                from datetime import timezone as tz
+                start_date_naive = start_date.astimezone(tz.utc).replace(tzinfo=None)
+                query['timestamp'] = {'$gte': start_date_naive}
             if end_date:
-                query['time'] = query.get('time', {})
-                query['time']['$lte'] = end_date
+                # Drive uses 'timestamp' field (not 'time'), and it's timezone-naive
+                # Convert timezone-aware datetime to timezone-naive UTC for comparison
+                from datetime import timezone as tz
+                end_date_naive = end_date.astimezone(tz.utc).replace(tzinfo=None)
+                query['timestamp'] = query.get('timestamp', {})
+                query['timestamp']['$lte'] = end_date_naive
             if keyword:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
             
             print(f"🔍 [{request_id}] 📁 Drive query: {query}")
             
-            async for doc in db['drive_activities'].find(query).sort('time', -1).limit(limit * 2):
+            async for doc in db['drive_activities'].find(query).sort('timestamp', -1).limit(limit * 2):
                 # Get user email (Drive stores as 'user_email' field, following REST API pattern)
                 user_email = doc.get('user_email') or doc.get('actor_email')
                 actor_name = doc.get('actor_name')
@@ -1110,10 +1136,12 @@ class Query:
                     
                     query['$or'] = or_conditions
                 if start_date:
-                    query['modifiedTime'] = {'$gte': start_date}
+                    # modifiedTime is stored as ISO string, convert datetime to ISO string for comparison
+                    query['modifiedTime'] = {'$gte': start_date.isoformat()}
                 if end_date:
+                    # modifiedTime is stored as ISO string, convert datetime to ISO string for comparison
                     query['modifiedTime'] = query.get('modifiedTime', {})
-                    query['modifiedTime']['$lte'] = end_date
+                    query['modifiedTime']['$lte'] = end_date.isoformat()
                 if keyword:
                     query['name'] = {'$regex': keyword, '$options': 'i'}
                 
