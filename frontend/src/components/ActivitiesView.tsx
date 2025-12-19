@@ -639,6 +639,7 @@ export default function ActivitiesView({
   const [searchKeyword, setSearchKeyword] = useState<string>(""); // Actual search keyword used in API
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [showDateFilter, setShowDateFilter] = useState<boolean>(false);
   const [projects, setProjects] = useState<
     Array<{ key: string; name: string }>
   >([]);
@@ -1277,15 +1278,56 @@ export default function ActivitiesView({
 
         {/* Second Row: Date Range Picker */}
         <div className="border-t border-gray-200 pt-4">
-          <DateRangePicker
-            startDate={startDate}
-            endDate={endDate}
-            onDateChange={(start, end) => {
-              setStartDate(start);
-              setEndDate(end);
-            }}
-            className="w-full"
-          />
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => setShowDateFilter(!showDateFilter)}
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+            >
+              <svg
+                className={`h-4 w-4 transition-transform ${
+                  showDateFilter ? "transform rotate-180" : ""
+                }`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+              <span>📅 Date Range Filter</span>
+              {(startDate || endDate) && (
+                <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                  Active
+                </span>
+              )}
+            </button>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {showDateFilter && (
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onDateChange={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+              }}
+              className="w-full"
+            />
+          )}
         </div>
       </div>
 
