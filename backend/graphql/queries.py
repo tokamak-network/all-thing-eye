@@ -1094,21 +1094,21 @@ class Query:
                     except Exception as e:
                         print(f"🔍 [{request_id}] ⚠️  Error querying gemini.recordings: {e}")
                         # Fallback to old method (created_by and name)
-                        or_conditions = [
-                            {'created_by': {'$regex': f'^{member_name}$', '$options': 'i'}},
+                    or_conditions = [
+                        {'created_by': {'$regex': f'^{member_name}$', '$options': 'i'}},
                             {'created_by': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}},
                             {'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
-                        ]
-                        
-                        for rec_name in recording_names:
-                            if rec_name:
+                    ]
+                    
+                    for rec_name in recording_names:
+                        if rec_name:
                                 or_conditions.extend([
                                     {'created_by': {'$regex': f'^{rec_name}$', '$options': 'i'}},
                                     {'created_by': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}},
                                     {'name': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}}
                                 ])
-                        
-                        query['$or'] = or_conditions
+                    
+                    query['$or'] = or_conditions
                 if start_date:
                     query['modifiedTime'] = {'$gte': start_date}
                 if end_date:

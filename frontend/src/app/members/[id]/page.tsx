@@ -29,7 +29,7 @@ import {
 } from "recharts";
 import DateRangePicker from "@/components/DateRangePicker";
 import { CollaborationNetwork } from "@/components/CollaborationNetwork";
-import ActivitiesList from "@/components/ActivitiesList";
+import { ActivitiesView } from "@/app/activities/page";
 // TODO: Fix issues with new GraphQL components before re-enabling
 // import { useMemberDetail } from "@/graphql/hooks";
 // import MemberCollaboration from "@/components/MemberCollaboration";
@@ -41,6 +41,18 @@ function formatTimestamp(timestamp: string, formatStr: string): string {
   const date = new Date(timestamp);
   if (isNaN(date.getTime())) return "N/A";
   return format(date, formatStr);
+}
+
+// Helper to check if string is UUID format
+function isUUID(str: string): boolean {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+// Helper to check if string is Notion-prefixed
+function isNotionPrefix(str: string): boolean {
+  return str.startsWith("Notion-");
 }
 
 interface MemberIdentifiers {
@@ -247,30 +259,6 @@ export default function MemberDetailPage() {
     }
   };
 
-  const getSourceColor = (source: string) => {
-    const colors: Record<string, string> = {
-      github: "bg-gray-100 text-gray-800",
-      slack: "bg-purple-100 text-purple-800",
-      notion: "bg-blue-100 text-blue-800",
-      drive: "bg-green-100 text-green-800",
-      google_drive: "bg-green-100 text-green-800",
-      recordings: "bg-red-100 text-red-800",
-    };
-    return colors[source] || "bg-gray-100 text-gray-800";
-  };
-
-  const getSourceIcon = (source: string) => {
-    const icons: Record<string, string> = {
-      github: "🐙",
-      slack: "💬",
-      notion: "📝",
-      drive: "📁",
-      google_drive: "📁",
-      recordings: "📹",
-    };
-    return icons[source] || "📋";
-  };
-
   // Filter activities by source
   const filteredActivities = selectedSource
     ? activities.filter((a) => {
@@ -295,6 +283,57 @@ export default function MemberDetailPage() {
       )
     )
   ).sort();
+
+  // Helper functions for activity display
+  const getSourceColor = (source: string) => {
+    const colors: Record<string, string> = {
+      github: "bg-gray-100 text-gray-800",
+      slack: "bg-purple-100 text-purple-800",
+      notion: "bg-blue-100 text-blue-800",
+      drive: "bg-green-100 text-green-800",
+      google_drive: "bg-green-100 text-green-800",
+      recordings: "bg-red-100 text-red-800",
+      recordings_daily: "bg-orange-100 text-orange-800",
+    };
+    return colors[source] || "bg-gray-100 text-gray-800";
+  };
+
+  const getSourceIcon = (source: string) => {
+    const icons: Record<string, string> = {
+      github: "🐙",
+      slack: "💬",
+      notion: "📝",
+      drive: "📁",
+      google_drive: "📁",
+      recordings: "📹",
+      recordings_daily: "📊",
+    };
+    return icons[source] || "📋";
+  };
+
+  const resolveMemberName = (
+    memberName: string,
+    sourceType: string
+  ): string => {
+    // Only apply conversion for Notion source
+    if (sourceType !== "notion") return memberName;
+
+    // Check if it's a full UUID
+    if (isUUID(memberName)) {
+      // For now, just return the memberName as-is
+      // TODO: Add notion UUID map if needed
+      return memberName;
+    }
+
+    // Check if it's "Notion-xxx" format
+    if (isNotionPrefix(memberName)) {
+      // For now, just return the memberName as-is
+      // TODO: Add notion UUID map if needed
+      return memberName;
+    }
+
+    return memberName;
+  };
 
   if (loading) {
     return (
@@ -342,7 +381,8 @@ export default function MemberDetailPage() {
           </button>
           <h1 className="text-3xl font-bold text-gray-900">{member.name}</h1>
           <p className="mt-2 text-gray-600">
-            {totalItems.toLocaleString()} activities recorded across all sources
+            {member.activity_stats?.total_activities?.toLocaleString() || 0}{" "}
+            activities recorded across all sources
           </p>
         </div>
 
@@ -707,18 +747,15 @@ export default function MemberDetailPage() {
           )}
         </div>
 
-        {/* Activities Section - Use ActivitiesList Component with GraphQL */}
-        <div className="mt-8">
-          <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-            <span className="text-3xl">📋</span>
-            Recent Activities
-          </h2>
-          <ActivitiesList
-            memberName={member.name}
-            showFilters={true}
-            limit={500}
-          />
-        </div>
+        {/* Activities Section */}
+        {member && (
+          <div className="mt-8">
+            <ActivitiesView
+              initialMemberFilter={member.name}
+              showProjectFilter={false}
+            />
+          </div>
+        )}
 
         {/* TODO: Fix issues with new GraphQL components before re-enabling */}
         {/* GraphQL-Powered Collaboration and Repository Analysis */}

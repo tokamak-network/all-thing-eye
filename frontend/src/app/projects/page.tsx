@@ -575,27 +575,27 @@ export default function ProjectsPage() {
                   </div>
 
                   {/* Project Lead */}
-                  <div>
+                    <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Project Lead
-                    </label>
+                        Project Lead
+                      </label>
                     <p className="text-xs text-gray-500 mb-2">
                       Select the member who leads this project.
                     </p>
                     <div className="relative">
                       <div className="flex gap-2 mb-2">
-                        <input
-                          type="text"
+                      <input
+                        type="text"
                           value={leadSearchTerm}
                           onChange={(e) => setLeadSearchTerm(e.target.value)}
                           onFocus={() => setShowLeadSelector(true)}
                           onBlur={() =>
                             setTimeout(() => setShowLeadSelector(false), 200)
-                          }
+                        }
                           className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                           placeholder="Search members..."
-                        />
-                      </div>
+                      />
+                    </div>
                       {showLeadSelector && filteredLeadMembers.length > 0 && (
                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                           {filteredLeadMembers.map((member) => (
@@ -641,23 +641,23 @@ export default function ProjectsPage() {
                   </div>
 
                   {/* GitHub Team Slug */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      GitHub Team Slug
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.github_team_slug}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          github_team_slug: e.target.value,
-                        })
-                      }
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                      placeholder="project-ooo"
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        GitHub Team Slug
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.github_team_slug}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            github_team_slug: e.target.value,
+                          })
+                        }
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                        placeholder="project-ooo"
+                      />
+                </div>
 
                   {/* GitHub Repositories */}
                   <div>

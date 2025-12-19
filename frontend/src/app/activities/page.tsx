@@ -613,10 +613,18 @@ function parseRawAnalysis(analysisData: any): any {
   return analysisData;
 }
 
-export default function ActivitiesPage() {
+interface ActivitiesViewProps {
+  initialMemberFilter?: string;
+  showProjectFilter?: boolean;
+}
+
+export function ActivitiesView({
+  initialMemberFilter = "",
+  showProjectFilter = true,
+}: ActivitiesViewProps) {
   // Note: allActivities, loading, error are now computed from GraphQL query below
   const [sourceFilter, setSourceFilter] = useState<string>("");
-  const [memberFilter, setMemberFilter] = useState<string>("");
+  const [memberFilter, setMemberFilter] = useState<string>(initialMemberFilter);
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [keywordFilter, setKeywordFilter] = useState<string>(""); // Input field value
   const [searchKeyword, setSearchKeyword] = useState<string>(""); // Actual search keyword used in API
@@ -693,8 +701,8 @@ export default function ActivitiesPage() {
       const memberNames = membersData.members
         .map((m) => m.name)
         .filter((name) => name)
-          .sort();
-        setAllMembers(memberNames);
+        .sort();
+      setAllMembers(memberNames);
     }
   }, [membersData]);
 
@@ -712,32 +720,32 @@ export default function ActivitiesPage() {
     async function fetchNotionMappings() {
       try {
         // Fetch member_identifiers for Notion UUID mapping
-          const identifiersResponse = await apiClient.get(
-            "/database/collections/member_identifiers/documents",
-            {
-              limit: 100,
-            }
-          );
-          const documents = identifiersResponse.documents || [];
+        const identifiersResponse = await apiClient.get(
+          "/database/collections/member_identifiers/documents",
+          {
+            limit: 100,
+          }
+        );
+        const documents = identifiersResponse.documents || [];
 
-          // Build UUID -> member_name mapping for Notion
-          const uuidMap: Record<string, string> = {};
-          documents.forEach((doc: any) => {
-            if (
-              doc.source === "notion" &&
-              doc.identifier_value &&
-              doc.member_name
-            ) {
-              // Map full UUID
-              uuidMap[doc.identifier_value.toLowerCase()] = doc.member_name;
-              // Also map short UUID (first 8 chars) for "Notion-xxx" format
+        // Build UUID -> member_name mapping for Notion
+        const uuidMap: Record<string, string> = {};
+        documents.forEach((doc: any) => {
+          if (
+            doc.source === "notion" &&
+            doc.identifier_value &&
+            doc.member_name
+          ) {
+            // Map full UUID
+            uuidMap[doc.identifier_value.toLowerCase()] = doc.member_name;
+            // Also map short UUID (first 8 chars) for "Notion-xxx" format
             const shortUuid = doc.identifier_value.split("-")[0].toLowerCase();
-              uuidMap[shortUuid] = doc.member_name;
-            }
-          });
-          setNotionUuidMap(uuidMap);
-        } catch (err) {
-          console.error("Error fetching member identifiers:", err);
+            uuidMap[shortUuid] = doc.member_name;
+          }
+        });
+        setNotionUuidMap(uuidMap);
+      } catch (err) {
+        console.error("Error fetching member identifiers:", err);
       }
     }
 
@@ -766,14 +774,16 @@ export default function ActivitiesPage() {
   const activitiesVariables = useMemo(() => {
     const vars = {
       source: normalizeSourceType(sourceFilter) as any,
-      memberName: memberFilter && memberFilter !== "" ? memberFilter : undefined,
-      keyword: searchKeyword && searchKeyword !== "" ? searchKeyword : undefined,
+      memberName:
+        memberFilter && memberFilter !== "" ? memberFilter : undefined,
+      keyword:
+        searchKeyword && searchKeyword !== "" ? searchKeyword : undefined,
       projectKey:
         projectFilter && projectFilter !== "" ? projectFilter : undefined,
       limit: loadLimit,
       offset: 0,
     };
-    
+
     // Debug: Log filter values
     console.log("🔍 Frontend Filters:", {
       sourceFilter,
@@ -782,8 +792,11 @@ export default function ActivitiesPage() {
       projectFilter,
       searchKeyword,
     });
-    console.log("🔍 GraphQL Variables being sent:", JSON.stringify(vars, null, 2));
-    
+    console.log(
+      "🔍 GraphQL Variables being sent:",
+      JSON.stringify(vars, null, 2)
+    );
+
     return vars;
   }, [sourceFilter, memberFilter, searchKeyword, projectFilter, loadLimit]);
 
@@ -1109,20 +1122,20 @@ export default function ActivitiesPage() {
               </>
             ) : (
               <>
-            <svg
-              className="mr-2 h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
-            Export CSV
+                <svg
+                  className="mr-2 h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+                Export CSV
               </>
             )}
           </button>
@@ -1174,18 +1187,20 @@ export default function ActivitiesPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <select
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-                className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg"
-              >
-                <option value="">📂 All Projects</option>
-                {projects.map((project) => (
-                  <option key={project.key} value={project.key}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
+              {showProjectFilter && (
+                <select
+                  value={projectFilter}
+                  onChange={(e) => setProjectFilter(e.target.value)}
+                  className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg"
+                >
+                  <option value="">📂 All Projects</option>
+                  {projects.map((project) => (
+                    <option key={project.key} value={project.key}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               <select
                 value={sourceFilter}
@@ -1201,18 +1216,20 @@ export default function ActivitiesPage() {
                 <option value="recordings_daily">📊 Analysis</option>
               </select>
 
-              <select
-                value={memberFilter}
-                onChange={(e) => setMemberFilter(e.target.value)}
-                className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg"
-              >
-                <option value="">👤 All Members</option>
-                {allMembers.map((member) => (
-                  <option key={member} value={member}>
-                    {member}
-                  </option>
-                ))}
-              </select>
+              {!initialMemberFilter && (
+                <select
+                  value={memberFilter}
+                  onChange={(e) => setMemberFilter(e.target.value)}
+                  className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-lg"
+                >
+                  <option value="">👤 All Members</option>
+                  {allMembers.map((member) => (
+                    <option key={member} value={member}>
+                      {member}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
         </div>
@@ -1250,7 +1267,7 @@ export default function ActivitiesPage() {
               </p>
             </div>
             <div className="flex items-center gap-4">
-               <select
+              <select
                 value={itemsPerPage}
                 onChange={(e) => {
                   setItemsPerPage(Number(e.target.value));
@@ -4794,9 +4811,9 @@ export default function ActivitiesPage() {
                                 ),
                               }}
                             >
-                            {translations[
-                              `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
-                            ]?.text ||
+                              {translations[
+                                `daily_analysis_full_${selectedDailyAnalysis?.target_date}`
+                              ]?.text ||
                                 selectedDailyAnalysis.analysis
                                   .full_analysis_text}
                             </ReactMarkdown>
@@ -4850,4 +4867,8 @@ export default function ActivitiesPage() {
       )}
     </div>
   );
+}
+
+export default function ActivitiesPage() {
+  return <ActivitiesView showProjectFilter={true} />;
 }
