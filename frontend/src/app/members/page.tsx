@@ -273,9 +273,6 @@ export default function MembersPage() {
                   Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   GitHub
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -283,9 +280,6 @@ export default function MembersPage() {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Project
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  EOA Address
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -296,7 +290,7 @@ export default function MembersPage() {
               {members.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={5}
                     className="px-6 py-12 text-center text-gray-500"
                   >
                     No members found. Click &quot;Add Member&quot; to create
@@ -313,11 +307,6 @@ export default function MembersPage() {
                       >
                         {member.name}
                       </button>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">
-                        {member.email}
-                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {member.identifiers.github ? (
@@ -346,15 +335,6 @@ export default function MembersPage() {
                       <div className="text-sm text-gray-600">
                         {member.project || "-"}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {member.eoa_address ? (
-                        <div className="text-sm font-mono text-gray-800">
-                          {member.eoa_address}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">-</span>
-                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
