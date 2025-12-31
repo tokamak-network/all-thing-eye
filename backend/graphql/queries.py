@@ -507,15 +507,49 @@ class Query:
         members = []
         # Sort by name alphabetically (case-insensitive)
         async for doc in db['members'].find().sort('name', 1).skip(offset).limit(limit):
+            member_name = doc['name']
+            member_id = str(doc['_id'])
+            
+            # Get github_username: first from member doc, then from member_identifiers
+            github_username = doc.get('github_username')
+            if not github_username:
+                github_id_doc = await db['member_identifiers'].find_one({
+                    'member_name': member_name,
+                    'source': 'github',
+                    'identifier_type': 'username'
+                })
+                if github_id_doc:
+                    github_username = github_id_doc.get('identifier_value')
+            
+            # Get slack_id: first from member doc, then from member_identifiers
+            slack_id = doc.get('slack_id')
+            if not slack_id:
+                slack_id_doc = await db['member_identifiers'].find_one({
+                    'member_name': member_name,
+                    'source': 'slack'
+                })
+                if slack_id_doc:
+                    slack_id = slack_id_doc.get('identifier_value')
+            
+            # Get notion_id: first from member doc, then from member_identifiers
+            notion_id = doc.get('notion_id')
+            if not notion_id:
+                notion_id_doc = await db['member_identifiers'].find_one({
+                    'member_name': member_name,
+                    'source': 'notion'
+                })
+                if notion_id_doc:
+                    notion_id = notion_id_doc.get('identifier_value')
+            
             members.append(Member(
-                id=str(doc['_id']),
-                name=doc['name'],
+                id=member_id,
+                name=member_name,
                 email=doc['email'],
                 role=doc.get('role'),
                 team=doc.get('team'),
-                github_username=doc.get('github_username'),
-                slack_id=doc.get('slack_id'),
-                notion_id=doc.get('notion_id'),
+                github_username=github_username,
+                slack_id=slack_id,
+                notion_id=notion_id,
                 eoa_address=doc.get('eoa_address'),
                 recording_name=doc.get('recording_name')
             ))
@@ -553,15 +587,48 @@ class Query:
         if not doc:
             return None
         
+        member_name = doc['name']
+        
+        # Get github_username: first from member doc, then from member_identifiers
+        github_username = doc.get('github_username')
+        if not github_username:
+            github_id_doc = await db['member_identifiers'].find_one({
+                'member_name': member_name,
+                'source': 'github',
+                'identifier_type': 'username'
+            })
+            if github_id_doc:
+                github_username = github_id_doc.get('identifier_value')
+        
+        # Get slack_id: first from member doc, then from member_identifiers
+        slack_id = doc.get('slack_id')
+        if not slack_id:
+            slack_id_doc = await db['member_identifiers'].find_one({
+                'member_name': member_name,
+                'source': 'slack'
+            })
+            if slack_id_doc:
+                slack_id = slack_id_doc.get('identifier_value')
+        
+        # Get notion_id: first from member doc, then from member_identifiers
+        notion_id = doc.get('notion_id')
+        if not notion_id:
+            notion_id_doc = await db['member_identifiers'].find_one({
+                'member_name': member_name,
+                'source': 'notion'
+            })
+            if notion_id_doc:
+                notion_id = notion_id_doc.get('identifier_value')
+        
         return Member(
             id=str(doc['_id']),
-            name=doc['name'],
+            name=member_name,
             email=doc['email'],
             role=doc.get('role'),
             team=doc.get('team'),
-            github_username=doc.get('github_username'),
-            slack_id=doc.get('slack_id'),
-            notion_id=doc.get('notion_id'),
+            github_username=github_username,
+            slack_id=slack_id,
+            notion_id=notion_id,
             eoa_address=doc.get('eoa_address'),
             recording_name=doc.get('recording_name')
         )

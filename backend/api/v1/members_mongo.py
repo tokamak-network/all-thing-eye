@@ -171,6 +171,9 @@ async def create_member(
             "project": member_data.project,
             "eoa_address": member_data.eoa_address,
             "recording_name": member_data.recording_name,
+            "github_username": member_data.github_id,  # Store github_id as github_username
+            "slack_id": member_data.slack_id,
+            "notion_id": member_data.notion_id,
             "created_at": now,
             "updated_at": now
         }
@@ -377,6 +380,12 @@ async def update_member(
             update_data["eoa_address"] = member_data.eoa_address
         if member_data.recording_name is not None:
             update_data["recording_name"] = member_data.recording_name
+        if member_data.github_id is not None:
+            update_data["github_username"] = member_data.github_id
+        if member_data.slack_id is not None:
+            update_data["slack_id"] = member_data.slack_id
+        if member_data.notion_id is not None:
+            update_data["notion_id"] = member_data.notion_id
         
         if update_data:
             update_data["updated_at"] = datetime.utcnow().isoformat() + 'Z'
