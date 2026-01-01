@@ -375,8 +375,6 @@ def create_dataloaders(db):
         'recent_activities': DataLoader(
             load_fn=lambda keys: load_recent_activities_batch(keys, db)
         ),
-        'project_member_counts': DataLoader(
-            load_fn=lambda keys: load_project_member_counts_batch(keys, db)
-        ),
+        # Note: project_member_counts DataLoader removed - member count is calculated directly from member_ids
     }
 

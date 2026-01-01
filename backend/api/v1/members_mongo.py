@@ -33,7 +33,8 @@ class MemberCreate(BaseModel):
     slack_id: Optional[str] = None
     notion_id: Optional[str] = None
     role: Optional[str] = None
-    project: Optional[str] = None
+    project: Optional[str] = None  # Backward compatibility: single project
+    projects: Optional[List[str]] = None  # New: array of project keys
     eoa_address: Optional[str] = None  # Ethereum address for All-Thing-Eye beta access
     recording_name: Optional[str] = None  # Name used in meeting recordings (e.g., "YEONGJU BAK" for Zena)
 
@@ -46,7 +47,8 @@ class MemberUpdate(BaseModel):
     slack_id: Optional[str] = None
     notion_id: Optional[str] = None
     role: Optional[str] = None
-    project: Optional[str] = None
+    project: Optional[str] = None  # Backward compatibility: single project
+    projects: Optional[List[str]] = None  # New: array of project keys
     eoa_address: Optional[str] = None  # Ethereum address for All-Thing-Eye beta access
     recording_name: Optional[str] = None  # Name used in meeting recordings (e.g., "YEONGJU BAK" for Zena)
 
@@ -164,11 +166,18 @@ async def create_member(
         
         # Create member document
         now = datetime.utcnow().isoformat() + 'Z'
+        # Use projects array if provided, otherwise fallback to project field
+        projects = member_data.projects if member_data.projects is not None else []
+        if not projects and member_data.project:
+            # If projects array is empty but project field has value, convert to array
+            projects = [member_data.project]
+        
         member_doc = {
             "name": member_data.name,
             "email": member_data.email,
             "role": member_data.role,
-            "project": member_data.project,
+            "project": member_data.project,  # Backward compatibility
+            "projects": projects,  # New: array of project keys
             "eoa_address": member_data.eoa_address,
             "recording_name": member_data.recording_name,
             "github_username": member_data.github_id,  # Store github_id as github_username
@@ -376,6 +385,12 @@ async def update_member(
             update_data["role"] = member_data.role
         if member_data.project is not None:
             update_data["project"] = member_data.project
+        if member_data.projects is not None:
+            # Update projects array
+            update_data["projects"] = member_data.projects
+        elif member_data.project is not None:
+            # If projects array not provided but project field is, convert to array
+            update_data["projects"] = [member_data.project]
         if member_data.eoa_address is not None:
             update_data["eoa_address"] = member_data.eoa_address
         if member_data.recording_name is not None:
@@ -997,12 +1012,18 @@ async def get_member_detail(
 
         logger.info(f"Retrieved member detail: {member_name} ({actual_member_id})")
         
+        # Get projects array from member document
+        projects = member.get("projects", [])
+        # For backward compatibility, also include single project field
+        project = member.get("project") or (projects[0] if projects else None)
+        
         return {
             "id": actual_member_id,
             "name": member.get("name"),
             "email": member.get("email"),
             "role": member.get("role"),
-            "project": member.get("project"),
+            "project": project,  # Backward compatibility: single project
+            "projects": projects,  # New: array of project keys
             "eoa_address": member.get("eoa_address"),
             "identifiers": identifiers,
             "activity_stats": activity_stats,

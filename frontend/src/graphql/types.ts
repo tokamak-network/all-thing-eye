@@ -25,6 +25,8 @@ export interface Member {
   slackId?: string;
   notionId?: string;
   eoaAddress?: string;
+  projectKeys?: string[];
+  projectDetails?: Project[];
   activityCount?: number;
   recentActivities?: Activity[];
 }
@@ -61,6 +63,7 @@ export interface Project {
   lead?: string;
   repositories: string[];
   isActive: boolean;
+  memberIds: string[];
   memberCount?: number;
   members?: Member[];
 }

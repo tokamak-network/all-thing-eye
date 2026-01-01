@@ -551,7 +551,8 @@ class Query:
                 slack_id=slack_id,
                 notion_id=notion_id,
                 eoa_address=doc.get('eoa_address'),
-                recording_name=doc.get('recording_name')
+                recording_name=doc.get('recording_name'),
+                projects=doc.get('projects', [])
             ))
         
         return members
@@ -630,7 +631,8 @@ class Query:
             slack_id=slack_id,
             notion_id=notion_id,
             eoa_address=doc.get('eoa_address'),
-            recording_name=doc.get('recording_name')
+            recording_name=doc.get('recording_name'),
+            projects=doc.get('projects', [])
         )
     
     @strawberry.field
@@ -682,12 +684,23 @@ class Query:
         print(f"🔍 [{request_id}]   - limit: {limit}")
         print(f"🔍 [{request_id}]   - offset: {offset}")
         
-        # Get project repositories if project_key is specified
+        # Get project configuration if project_key is specified
         project_repositories = []
+        project_slack_channel_id = None
+        project_drive_folders = []
+        project_notion_page_ids = []
         if project_key:
             project_doc = await db['projects'].find_one({'key': project_key})
             if project_doc:
                 project_repositories = project_doc.get('repositories', [])
+                project_slack_channel_id = project_doc.get('slack_channel_id')
+                project_drive_folders = project_doc.get('drive_folders', [])
+                project_notion_page_ids = project_doc.get('notion_page_ids', [])
+                print(f"🔍 [{request_id}] 📁 Project '{project_key}' config:")
+                print(f"🔍 [{request_id}]   - repositories: {len(project_repositories)} repos")
+                print(f"🔍 [{request_id}]   - slack_channel_id: {project_slack_channel_id}")
+                print(f"🔍 [{request_id}]   - drive_folders: {project_drive_folders}")
+                print(f"🔍 [{request_id}]   - notion_page_ids: {project_notion_page_ids}")
         
         # Build mapping: identifier -> display name for ALL members (to resolve "Unknown")
         # Uses the same structure as REST API's load_member_mappings
@@ -857,6 +870,11 @@ class Query:
             # Exclude tokamak-partners channel (private channel data)
             query['channel_name'] = {'$ne': 'tokamak-partners'}
             
+            # Filter by project's Slack channel if project_key is specified
+            if project_slack_channel_id:
+                query['channel_id'] = project_slack_channel_id
+                print(f"🔍 [{request_id}] 💬 Filtering Slack by project channel: {project_slack_channel_id}")
+            
             if member_name:
                 # Use Slack identifiers (REST API pattern: user_id, user_email, user_name)
                 slack_identifiers = member_identifiers.get('slack', [])
@@ -938,6 +956,8 @@ class Query:
             print(f"🔍 [{request_id}] 💬 Slack activities added: {slack_after - slack_before}")
         
         # Notion pages
+        # TODO: Add project filtering for Notion (filter by parent page hierarchy)
+        # Currently, project_notion_page_ids is available but matching requires parent traversal
         if 'notion' in sources:
             query = {}
             if member_name:
@@ -1013,6 +1033,8 @@ class Query:
                 ))
         
         # Drive activities
+        # TODO: Add project filtering for Drive (filter by folder hierarchy)
+        # Currently, project_drive_folders is available but matching requires parent traversal
         if 'drive' in sources:
             query = {}
             if member_name:

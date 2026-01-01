@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import apiClient from "@/lib/api";
 import { useProjects, useMembers } from "@/graphql/hooks";
+import { getAuthSession, isAdmin } from "@/lib/auth";
 import {
   PlusIcon,
   PencilIcon,
@@ -27,6 +28,7 @@ interface Project {
   notion_parent_page_id?: string;
   sub_projects: string[];
   member_ids: string[];
+  members?: Member[]; // Members from GraphQL
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -36,6 +38,8 @@ interface Member {
   id: string;
   name: string;
   email?: string;
+  role?: string;
+  eoa_address?: string;
 }
 
 interface ProjectListResponse {
@@ -75,7 +79,8 @@ export default function ProjectsPage() {
     notion_page_ids: [],
     notion_parent_page_id: undefined,
     sub_projects: [],
-    member_ids: [],
+    member_ids: p.memberIds || [],
+    members: p.members || [], // Store members from GraphQL
     is_active: p.isActive,
     created_at: "",
     updated_at: "",
@@ -93,7 +98,66 @@ export default function ProjectsPage() {
     id: m.id,
     name: m.name,
     email: m.email,
+    role: m.role,
+    eoa_address: m.eoaAddress,
   }));
+
+  // Get current user from auth session
+  const currentUser = useMemo(() => {
+    const session = getAuthSession();
+    if (!session) return null;
+    
+    // Find member by EOA address
+    return allMembers.find(
+      (m) => m.eoa_address?.toLowerCase() === session.address.toLowerCase()
+    );
+  }, [allMembers]);
+
+  // Check if current user can edit projects
+  const canEditProjects = useMemo(() => {
+    const session = getAuthSession();
+    
+    // Admin can always edit
+    if (session && isAdmin(session.address)) {
+      return true;
+    }
+    
+    if (!currentUser) return false;
+    
+    // Check if user is Project Lead or HR
+    const role = currentUser.role?.toLowerCase() || "";
+    const isProjectLead = role.includes("project lead");
+    const isHR = role.includes("hr") || role.includes("human resource");
+    
+    return isProjectLead || isHR;
+  }, [currentUser]);
+
+  // Check if current user can edit specific project
+  const canEditProject = useCallback((project: Project) => {
+    const session = getAuthSession();
+    
+    // Admin can always edit all projects
+    if (session && isAdmin(session.address)) {
+      return true;
+    }
+    
+    if (!currentUser) return false;
+    
+    // Check if user is Project Lead or HR
+    const role = currentUser.role?.toLowerCase() || "";
+    const isProjectLead = role.includes("project lead");
+    const isHR = role.includes("hr") || role.includes("human resource");
+    
+    // If user is HR, can edit all projects
+    if (isHR) return true;
+    
+    // If user is Project Lead, can edit if they are the lead of this project
+    if (isProjectLead && project.lead) {
+      return currentUser.name === project.lead;
+    }
+    
+    return false;
+  }, [currentUser]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -373,13 +437,15 @@ export default function ProjectsPage() {
               />
               <span className="text-sm text-gray-700">Active only</span>
             </label>
-            <button
-              onClick={openCreateModal}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <PlusIcon className="h-5 w-5" />
-              Add Project
-            </button>
+            {canEditProjects && (
+              <button
+                onClick={openCreateModal}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <PlusIcon className="h-5 w-5" />
+                Add Project
+              </button>
+            )}
           </div>
         </div>
 
@@ -472,20 +538,24 @@ export default function ProjectsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEditModal(project)}
-                          className="text-indigo-600 hover:text-indigo-900"
-                          title="Edit project"
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(project.key)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Delete project"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
+                        {canEditProject(project) && (
+                          <button
+                            onClick={() => openEditModal(project)}
+                            className="text-indigo-600 hover:text-indigo-900"
+                            title="Edit project"
+                          >
+                            <PencilIcon className="h-5 w-5" />
+                          </button>
+                        )}
+                        {canEditProject(project) && (
+                          <button
+                            onClick={() => handleDelete(project.key)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete project"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -511,438 +581,172 @@ export default function ProjectsPage() {
               
         {/* Create/Edit Modal */}
         {showCreateModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
-              <div className="mt-3">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    {editingProject ? "Edit Project" : "Create New Project"}
-                  </h3>
-                  <button
-                    onClick={() => setShowCreateModal(false)}
-                    className="text-gray-400 hover:text-gray-500"
-                  >
-                    <span className="sr-only">Close</span>
-                    <svg
-                      className="h-6 w-6"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Project Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value })
-                      }
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                      placeholder="Project OOO"
-                    />
-                  </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Description
-                    </label>
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          description: e.target.value,
-                        })
-                      }
-                      rows={3}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                      placeholder="Project description..."
-                    />
-                  </div>
-
-                  {/* Project Lead */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Project Lead
-                      </label>
-                    <p className="text-xs text-gray-500 mb-2">
-                      Select the member who leads this project.
-                    </p>
-                    <div className="relative">
-                      <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                          value={leadSearchTerm}
-                          onChange={(e) => setLeadSearchTerm(e.target.value)}
-                          onFocus={() => setShowLeadSelector(true)}
-                          onBlur={() =>
-                            setTimeout(() => setShowLeadSelector(false), 200)
-                        }
-                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                          placeholder="Search members..."
-                      />
-                    </div>
-                      {showLeadSelector && filteredLeadMembers.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                          {filteredLeadMembers.map((member) => (
-                            <button
-                              key={member.id}
-                              type="button"
-                              onClick={() => {
-                                setFormData({ ...formData, lead: member.name });
-                                setLeadSearchTerm("");
-                                setShowLeadSelector(false);
-                              }}
-                              className={`w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-left ${
-                                formData.lead === member.name ? "bg-blue-50" : ""
-                              }`}
-                            >
-                              <span className="text-sm text-gray-900">
-                                {member.name}
-                              </span>
-                              {member.email && (
-                                <span className="text-xs text-gray-500">
-                                  ({member.email})
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {formData.lead && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
-                          {formData.lead}
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, lead: "" })}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* GitHub Team Slug */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        GitHub Team Slug
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.github_team_slug}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            github_team_slug: e.target.value,
-                          })
-                        }
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="project-ooo"
-                      />
-                </div>
-
-                  {/* GitHub Repositories */}
-                  <div>
-                    <div className="mb-2">
-                      <label className="block text-sm font-medium text-gray-700">
-                        GitHub Repositories
-                      </label>
-                    </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-3">
-                      <div className="flex items-start gap-2">
-                        <svg
-                          className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        <div className="flex-1">
-                          <p className="text-sm text-blue-800 font-medium mb-1">
-                            Repositories are automatically synced from GitHub
-                            Teams
-                          </p>
-                          <p className="text-xs text-blue-700 mb-2">
-                            Repositories are managed on{" "}
-                            <a
-                              href="https://github.com/orgs/tokamak-network/teams"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="underline hover:text-blue-900 font-medium"
-                            >
-                              GitHub Teams page
-                            </a>{" "}
-                            for the team &quot;
-                            {formData.github_team_slug || formData.key}&quot;.
-                            The data collector automatically syncs repositories
-                            from GitHub Teams to the database every day at
-                            midnight (KST).
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {formData.repositories.map((repo, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 rounded text-sm"
-                        >
-                          {repo}
-                        </span>
-                      ))}
-                    </div>
-                    {formData.repositories.length === 0 && (
-                      <p className="text-xs text-gray-500 mt-2">
-                        No repositories found. Add repositories to the GitHub
-                        team and they will be automatically synced at midnight
-                        (KST).
-                      </p>
-                )}
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex justify-between items-center px-6 py-4 border-b">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {editingProject ? "Edit Project" : "Create New Project"}
+                </h3>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="text-gray-400 hover:text-gray-500"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
 
-                  {/* Google Drive Root Folder */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Google Drive Root Folder
-                    </label>
-                    <p className="text-xs text-gray-500 mb-2">
-                      Enter the root folder URL or ID for this project. All
-                      activities in this folder and its subfolders will be
-                      associated with this project.
-                    </p>
-                    <div className="flex gap-2 mb-2">
+              {/* Modal Content - Scrollable */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                <form id="project-form" onSubmit={handleSubmit} className="space-y-4">
+                  {/* Row 1: Name & Lead (Read-only) */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Project Name *
+                      </label>
                       <input
                         type="text"
-                        value={newDriveFolder}
-                        onChange={(e) => setNewDriveFolder(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addDriveFolder();
-                          }
-                        }}
-                        onBlur={addDriveFolder}
-                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="https://drive.google.com/drive/folders/FOLDER_ID or folder ID"
-                      />
-                      <button
-                        type="button"
-                        onClick={addDriveFolder}
-                        className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-                      >
-                        Add
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {formData.drive_folders.map((folder, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
-                        >
-                          <a
-                            href={`https://drive.google.com/drive/folders/${folder}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline"
-                          >
-                            {folder}
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => removeDriveFolder(index)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Notion Root Page */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notion Root Page
-                    </label>
-                    <p className="text-xs text-gray-500 mb-2">
-                      Enter the root page URL or ID for this project. All pages
-                      under this root page will be associated with this project.
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newNotionRoot}
-                        onChange={(e) => setNewNotionRoot(e.target.value)}
-                        onBlur={updateNotionRoot}
-                        className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        placeholder="https://www.notion.so/workspace/Page-Title-PAGE_ID or page ID"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                        placeholder="Project OOO"
                       />
                     </div>
-                    {formData.notion_parent_page_id && (
-                      <div className="mt-2">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
-                          <a
-                            href={`https://www.notion.so/${formData.notion_parent_page_id.replace(
-                              /-/g,
-                              ""
-                            )}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline"
-                          >
-                            {formData.notion_parent_page_id}
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNewNotionRoot("");
-                              setFormData({
-                                ...formData,
-                                notion_parent_page_id: "",
-                              });
-                            }}
-                            className="text-purple-600 hover:text-purple-800"
-                          >
-                            ×
-                          </button>
-                        </span>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Project Lead
+                      </label>
+                      <div className="block w-full rounded-md border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        {formData.lead || <span className="text-gray-400">Not set</span>}
                       </div>
-                    )}
+                      <p className="text-xs text-gray-500 mt-1">Set in member page</p>
+                    </div>
                   </div>
 
-                  {/* Project Members */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Project Members
-                    </label>
-                    <p className="text-xs text-gray-500 mb-2">
-                      Select members who are part of this project.
-                    </p>
+                  {/* Row 2: GitHub Repos & Project Members */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* GitHub Repositories */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        GitHub Repositories ({formData.repositories.length})
+                      </label>
+                      <div className="h-32 overflow-y-auto border border-gray-200 rounded-md p-2 bg-gray-50">
+                        {formData.repositories.length > 0 ? (
+                          <div className="space-y-1">
+                            {[...formData.repositories].sort().map((repo, index) => (
+                              <a
+                                key={index}
+                                href={`https://github.com/tokamak-network/${repo}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block px-2 py-1 bg-white text-gray-700 rounded text-xs border border-gray-200 hover:bg-blue-50 hover:text-blue-700 truncate"
+                              >
+                                {repo}
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 text-center py-4">Auto-synced from GitHub Teams</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Project Members */}
                     <div className="relative">
-                      <div className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          value={memberSearchTerm}
-                          onChange={(e) => setMemberSearchTerm(e.target.value)}
-                          onFocus={() => setShowMemberSelector(true)}
-                          onBlur={() =>
-                            setTimeout(() => setShowMemberSelector(false), 200)
-                          }
-                          className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                          placeholder="Search members..."
-                        />
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Project Members ({formData.member_ids.length})
+                      </label>
+                      <input
+                        type="text"
+                        value={memberSearchTerm}
+                        onChange={(e) => setMemberSearchTerm(e.target.value)}
+                        onFocus={() => setShowMemberSelector(true)}
+                        onBlur={() => setTimeout(() => setShowMemberSelector(false), 200)}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm mb-2"
+                        placeholder="Search members..."
+                      />
                       {showMemberSelector && filteredMembers.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        <div className="absolute z-20 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
                           {filteredMembers.map((member) => (
-                            <label
-                              key={member.id}
-                              className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer"
-                            >
+                            <label key={member.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                               <input
                                 type="checkbox"
-                                checked={formData.member_ids.includes(
-                                  member.id
-                                )}
+                                checked={formData.member_ids.includes(member.id)}
                                 onChange={() => toggleMember(member.id)}
-                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                className="rounded border-gray-300 text-primary-600"
                               />
-                              <span className="text-sm text-gray-900">
-                                {member.name}
-                              </span>
-                              {member.email && (
-                                <span className="text-xs text-gray-500">
-                                  ({member.email})
-                                </span>
-                              )}
+                              <span className="text-sm">{member.name}</span>
                             </label>
                           ))}
                         </div>
                       )}
-                    </div>
-                    {formData.member_ids.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {formData.member_ids.map((memberId) => {
-                          const member = allMembers.find(
-                            (m) => m.id === memberId
-                          );
-                          return member ? (
-                            <span
-                              key={memberId}
-                              className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded text-sm"
-                            >
-                              {member.name}
-                              <button
-                                type="button"
-                                onClick={() => toggleMember(memberId)}
-                                className="text-green-600 hover:text-green-800"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ) : null;
-                        })}
+                      <div className="h-20 overflow-y-auto border border-gray-200 rounded-md p-2 bg-gray-50">
+                        {formData.member_ids.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {formData.member_ids.map((memberId) => {
+                              // First try to find in project's members (from GraphQL)
+                              let member = editingProject?.members?.find((m) => m.id === memberId);
+                              // Fallback to allMembers if not found
+                              if (!member) {
+                                member = allMembers.find((m) => m.id === memberId);
+                              }
+                              if (!member) {
+                                console.warn(`⚠️ Member not found for ID: ${memberId}`);
+                                return (
+                                  <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                                    Unknown ({memberId.slice(0, 8)}...)
+                                    <button type="button" onClick={() => toggleMember(memberId)} className="text-gray-600 hover:text-gray-800">×</button>
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">
+                                  {member.name}
+                                  <button type="button" onClick={() => toggleMember(memberId)} className="text-green-600 hover:text-green-800">×</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 text-center py-2">No members selected</p>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
 
+                  {/* Active Checkbox */}
                   <div className="flex items-center">
                     <input
                       type="checkbox"
                       checked={formData.is_active}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          is_active: e.target.checked,
-                        })
-                      }
+                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                       className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
-                    <label className="ml-2 block text-sm text-gray-700">
-                      Active
-                    </label>
-                  </div>
-
-                  <div className="flex justify-end gap-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(false)}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    >
-                      {editingProject ? "Update" : "Create"}
-                    </button>
+                    <label className="ml-2 text-sm text-gray-700">Active</label>
                   </div>
                 </form>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="project-form"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  {editingProject ? "Update" : "Create"}
+                </button>
               </div>
             </div>
           </div>

@@ -30,6 +30,7 @@ import {
 import DateRangePicker from "@/components/DateRangePicker";
 import { CollaborationNetwork } from "@/components/CollaborationNetwork";
 import ActivitiesView from "@/components/ActivitiesView";
+import { useProjects } from "@/graphql/hooks";
 // TODO: Fix issues with new GraphQL components before re-enabling
 // import { useMemberDetail } from "@/graphql/hooks";
 // import MemberCollaboration from "@/components/MemberCollaboration";
@@ -94,7 +95,8 @@ interface MemberDetail {
   name: string;
   email: string;
   role?: string;
-  project?: string;
+  project?: string;  // Backward compatibility: single project
+  projects?: string[];  // New: array of project keys
   identifiers: MemberIdentifiers;
   activity_stats: ActivityStats;
   created_at?: string;
@@ -115,6 +117,10 @@ export default function MemberDetailPage() {
   const params = useParams();
   const router = useRouter();
   const memberId = params.id as string;
+
+  // GraphQL query for projects (to get project names)
+  const { data: projectsData } = useProjects({ isActive: true });
+  const projects = projectsData?.projects || [];
 
   const [member, setMember] = useState<MemberDetail | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -410,15 +416,32 @@ export default function MemberDetailPage() {
               </div>
             )}
 
-            {member.project && (
+            {(member.projects && member.projects.length > 0) || member.project ? (
               <div className="flex items-center gap-3">
                 <FolderIcon className="h-5 w-5 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-500">Project</p>
-                  <p className="text-gray-900">{member.project}</p>
+                  <p className="text-sm text-gray-500">Projects</p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {(member.projects && member.projects.length > 0
+                      ? member.projects
+                      : member.project
+                      ? [member.project]
+                      : []
+                    ).map((projectKey, idx) => {
+                      const project = projects.find(p => p.key === projectKey);
+                      return (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                        >
+                          {project ? project.name : projectKey}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            )}
+            ) : null}
 
             {member.identifiers.github && (
               <div className="flex items-center gap-3">

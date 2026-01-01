@@ -19,6 +19,7 @@ export const MEMBER_FRAGMENT = gql`
     notionId
     eoaAddress
     recordingName
+    projectKeys
   }
 `;
 
@@ -50,6 +51,7 @@ export const ACTIVITY_SUMMARY_FRAGMENT = gql`
 
 // Project fragment
 export const PROJECT_FRAGMENT = gql`
+  ${MEMBER_FRAGMENT}
   fragment ProjectFields on Project {
     id
     key
@@ -59,6 +61,10 @@ export const PROJECT_FRAGMENT = gql`
     lead
     repositories
     isActive
+    memberIds
+    members {
+      ...MemberFields
+    }
   }
 `;
 

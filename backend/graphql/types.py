@@ -39,6 +39,37 @@ class Member:
     notion_id: Optional[str] = None
     eoa_address: Optional[str] = None
     recording_name: Optional[str] = None
+    projects: List[str] = strawberry.field(default_factory=list)  # Internal field
+    
+    @strawberry.field
+    def projectKeys(self) -> List[str]:
+        """Get list of project keys this member belongs to."""
+        return self.projects
+    
+    @strawberry.field
+    async def projectDetails(self, info) -> List['Project']:
+        """Get detailed project information for projects this member belongs to."""
+        if not self.projects:
+            return []
+        
+        db = info.context['db']
+        projects = []
+        
+        # Find projects by keys
+        async for doc in db['projects'].find({'key': {'$in': self.projects}}):
+            projects.append(Project(
+                id=str(doc['_id']),
+                key=doc['key'],
+                name=doc.get('name', doc['key']),
+                description=doc.get('description'),
+                slack_channel=doc.get('slack_channel'),
+                lead=doc.get('lead'),
+                repositories=doc.get('repositories', []),
+                is_active=doc.get('is_active', True),
+                member_ids=doc.get('member_ids', [])
+            ))
+        
+        return projects
     
     @strawberry.field
     async def activity_count(
@@ -264,18 +295,74 @@ class Project:
     member_ids: List[str] = strawberry.field(default_factory=list)  # Internal field
     
     @strawberry.field
+    def memberIds(self) -> List[str]:
+        """Get list of member IDs for this project."""
+        return self.member_ids
+    
+    @strawberry.field
+    async def members(self, info) -> List['Member']:
+        """Get list of members in this project."""
+        if not self.member_ids:
+            return []
+        
+        db = info.context['db']
+        from bson import ObjectId
+        
+        # Convert string IDs to ObjectIds for MongoDB query
+        object_ids = []
+        for member_id in self.member_ids:
+            try:
+                object_ids.append(ObjectId(member_id))
+            except Exception as e:
+                print(f"⚠️ Failed to convert member_id to ObjectId: {member_id}, error: {e}")
+                continue
+        
+        if not object_ids:
+            print(f"⚠️ No valid ObjectIds for project {self.key}, member_ids: {self.member_ids}")
+            return []
+        
+        print(f"🔍 Project {self.key}: Looking for {len(object_ids)} members with ObjectIds: {[str(oid) for oid in object_ids[:3]]}...")
+        
+        # Fetch members from database
+        members = []
+        found_count = 0
+        async for doc in db['members'].find({'_id': {'$in': object_ids}}):
+            found_count += 1
+            members.append(Member(
+                id=str(doc['_id']),
+                name=doc.get('name', 'Unknown'),
+                email=doc.get('email', ''),
+                role=doc.get('role'),
+                team=doc.get('team'),
+                github_username=doc.get('github_username'),
+                slack_id=doc.get('slack_id'),
+                notion_id=doc.get('notion_id'),
+                eoa_address=doc.get('eoa_address'),
+                recording_name=doc.get('recording_name')
+            ))
+        
+        print(f"✅ Project {self.key}: Found {found_count} members out of {len(object_ids)} requested")
+        
+        # If not all members found, check what's in the database
+        if found_count < len(object_ids):
+            print(f"⚠️ Missing {len(object_ids) - found_count} members. Checking database...")
+            # Sample check: get first few members to see their IDs
+            sample_members = []
+            async for doc in db['members'].find().limit(5):
+                sample_members.append({
+                    'id': str(doc['_id']),
+                    'name': doc.get('name', 'Unknown')
+                })
+            print(f"📋 Sample member IDs in DB: {sample_members}")
+        
+        return members
+    
+    @strawberry.field
     async def member_count(self, info) -> int:
         """
         Get number of members in this project.
-        
-        Uses DataLoader for batch loading when querying multiple projects.
         """
-        # Use DataLoader for batch loading
-        dataloaders = info.context.get('dataloaders')
-        if dataloaders and self.member_ids:
-            return await dataloaders['project_member_counts'].load(self.member_ids)
-        
-        # Fallback: just return length of member_ids
+        # Simply return length of member_ids if available
         if self.member_ids:
             return len(self.member_ids)
         

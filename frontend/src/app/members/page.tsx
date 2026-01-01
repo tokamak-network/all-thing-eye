@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { api as apiClient } from "@/lib/api";
-import { useMembers } from "@/graphql/hooks";
+import { useMembers, useProjects } from "@/graphql/hooks";
 import {
   UserGroupIcon,
   PlusIcon,
@@ -26,7 +26,8 @@ interface Member {
   name: string;
   email: string;
   role?: string;
-  project?: string;
+  project?: string; // Backward compatibility: single project or comma-separated
+  projectKeys?: string[]; // New: array of project keys
   eoa_address?: string;
   recording_name?: string;
   identifiers: MemberIdentifiers;
@@ -41,7 +42,8 @@ interface MemberFormData {
   slack_id?: string;
   notion_id?: string;
   role?: string;
-  project?: string;
+  project?: string; // Backward compatibility
+  projectKeys?: string[]; // New: array of project keys
   eoa_address?: string;
   recording_name?: string;
 }
@@ -52,13 +54,45 @@ export default function MembersPage() {
   // GraphQL query for members (READ operation)
   const { data, loading, error: graphqlError, refetch } = useMembers();
 
+  // GraphQL query for projects (for project selection)
+  const { data: projectsData, loading: projectsLoading } = useProjects({
+    isActive: true,
+  });
+  const projects = useMemo(
+    () => projectsData?.projects || [],
+    [projectsData?.projects]
+  );
+
+  // Debug: Log projects and members data
+  useEffect(() => {
+    if (projects.length > 0) {
+      console.log(
+        "📋 Projects loaded:",
+        projects.map((p) => ({ key: p.key, name: p.name }))
+      );
+    }
+    if (data?.members) {
+      const praveen = data.members.find((m) => m.name === "Praveen");
+      if (praveen) {
+        console.log("👤 Praveen data:", {
+          projectKeys: praveen.projectKeys,
+          team: praveen.team,
+        });
+      }
+    }
+  }, [projects, data]);
+
   // Transform GraphQL members to REST API format
   const members: Member[] = (data?.members || []).map((gqlMember) => ({
     id: gqlMember.id, // MongoDB ObjectId from GraphQL
     name: gqlMember.name,
     email: gqlMember.email || "",
     role: gqlMember.role,
-    project: gqlMember.team, // GraphQL uses 'team' instead of 'project'
+    project:
+      gqlMember.projectKeys && gqlMember.projectKeys.length > 0
+        ? gqlMember.projectKeys.join(", ") // Use projectKeys array, join with comma (for backward compatibility)
+        : gqlMember.team || "", // Fallback to team if projectKeys not available
+    projectKeys: gqlMember.projectKeys || [], // Store projectKeys array
     eoa_address: gqlMember.eoaAddress, // Convert camelCase to snake_case
     identifiers: {
       email: gqlMember.email,
@@ -69,13 +103,13 @@ export default function MembersPage() {
   }));
 
   const error = graphqlError?.message || null;
-  
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [deletingMember, setDeletingMember] = useState<Member | null>(null);
-  
+
   // Form states
   const [formData, setFormData] = useState<MemberFormData>({
     name: "",
@@ -85,6 +119,7 @@ export default function MembersPage() {
     notion_id: "",
     role: "",
     project: "",
+    projectKeys: [],
     eoa_address: "",
     recording_name: "",
   });
@@ -102,6 +137,7 @@ export default function MembersPage() {
       notion_id: "",
       role: "",
       project: "",
+      projectKeys: [],
       eoa_address: "",
       recording_name: "",
     });
@@ -112,7 +148,7 @@ export default function MembersPage() {
   // Open modal for editing existing member
   const openEditModal = (member: Member) => {
     setEditingMember(member);
-    
+
     // Extract identifiers - handle both old format (identifier_type keys) and new format (source keys)
     const getIdentifier = (source: string): string => {
       // Try source key first (new format: github, slack, notion, drive)
@@ -136,7 +172,7 @@ export default function MembersPage() {
       }
       return "";
     };
-    
+
     setFormData({
       name: member.name,
       email: member.email,
@@ -145,6 +181,7 @@ export default function MembersPage() {
       notion_id: getIdentifier("notion"),
       role: member.role || "",
       project: member.project || "",
+      projectKeys: member.projectKeys || [],
       eoa_address: member.eoa_address || "",
       recording_name: member.recording_name || "",
     });
@@ -166,14 +203,22 @@ export default function MembersPage() {
     setSubmitting(true);
 
     try {
+      // Prepare data for API: convert projectKeys to projects array
+      const submitData = {
+        ...formData,
+        projects: formData.projectKeys || [],
+      };
+      // Remove projectKeys from submit data (backend expects 'projects')
+      delete (submitData as any).projectKeys;
+
       if (editingMember) {
         // Update existing member (REST API - mutations not implemented yet)
-        await apiClient.updateMember(editingMember.id, formData);
+        await apiClient.updateMember(editingMember.id, submitData);
       } else {
         // Create new member (REST API - mutations not implemented yet)
-        await apiClient.createMember(formData);
+        await apiClient.createMember(submitData);
       }
-      
+
       // Refetch members from GraphQL
       await refetch();
       closeModal();
@@ -331,9 +376,43 @@ export default function MembersPage() {
                         <span className="text-sm text-gray-400">-</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">
-                        {member.project || "-"}
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {(() => {
+                          // Get project keys from either projectKeys array or project string
+                          let projectKeys: string[] = [];
+                          if (
+                            member.projectKeys &&
+                            member.projectKeys.length > 0
+                          ) {
+                            projectKeys = member.projectKeys;
+                          } else if (member.project) {
+                            // Parse comma-separated project string
+                            projectKeys = member.project
+                              .split(",")
+                              .map((p) => p.trim())
+                              .filter(Boolean);
+                          }
+
+                          if (projectKeys.length > 0) {
+                            return projectKeys.map((projectKey, idx) => {
+                              const project = projects.find(
+                                (p) => p.key === projectKey
+                              );
+                              return (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                                >
+                                  {project ? project.name : projectKey}
+                                </span>
+                              );
+                            });
+                          }
+                          return (
+                            <span className="text-sm text-gray-400">-</span>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -490,17 +569,65 @@ export default function MembersPage() {
                 {/* Project */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Project
+                    Projects
                   </label>
-                  <input
-                    type="text"
-                    value={formData.project}
-                    onChange={(e) =>
-                      setFormData({ ...formData, project: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g. project-ooo, project-eco"
-                  />
+                  <div className="relative">
+                    <select
+                      multiple
+                      value={formData.projectKeys || []}
+                      onChange={(e) => {
+                        const selected = Array.from(
+                          e.target.selectedOptions,
+                          (option) => option.value
+                        );
+                        setFormData({ ...formData, projectKeys: selected });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[100px]"
+                      size={Math.min(projects.length || 1, 5)}
+                    >
+                      {projects.map((project) => (
+                        <option key={project.key} value={project.key}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Hold Ctrl (Windows) or Cmd (Mac) to select multiple
+                      projects
+                    </p>
+                    {formData.projectKeys &&
+                      formData.projectKeys.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {formData.projectKeys.map((projectKey) => {
+                            const project = projects.find(
+                              (p) => p.key === projectKey
+                            );
+                            return (
+                              <span
+                                key={projectKey}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                              >
+                                {project ? project.name : projectKey}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      projectKeys: (
+                                        formData.projectKeys || []
+                                      ).filter((k) => k !== projectKey),
+                                    });
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                  </div>
                 </div>
 
                 {/* EOA Address */}
@@ -531,13 +658,17 @@ export default function MembersPage() {
                     type="text"
                     value={formData.recording_name}
                     onChange={(e) =>
-                      setFormData({ ...formData, recording_name: e.target.value })
+                      setFormData({
+                        ...formData,
+                        recording_name: e.target.value,
+                      })
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="e.g. YEONGJU BAK for Zena"
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    Name displayed in meeting recordings (if different from display name)
+                    Name displayed in meeting recordings (if different from
+                    display name)
                   </p>
                 </div>
               </div>
