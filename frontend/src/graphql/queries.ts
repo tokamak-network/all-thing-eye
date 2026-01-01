@@ -93,10 +93,14 @@ export const GET_ACTIVITY_SUMMARY = gql`
 // Get projects
 export const GET_PROJECTS = gql`
   ${PROJECT_FRAGMENT}
+  ${MEMBER_FRAGMENT}
   query GetProjects($isActive: Boolean) {
     projects(isActive: $isActive) {
       ...ProjectFields
       memberCount
+      members {
+        ...MemberFields
+      }
     }
   }
 `;

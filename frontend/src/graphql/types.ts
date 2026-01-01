@@ -60,6 +60,7 @@ export interface Project {
   name: string;
   description?: string;
   slackChannel?: string;
+  slackChannelId?: string;
   lead?: string;
   repositories: string[];
   isActive: boolean;

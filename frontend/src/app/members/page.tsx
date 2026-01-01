@@ -571,63 +571,87 @@ export default function MembersPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Projects
                   </label>
-                  <div className="relative">
-                    <select
-                      multiple
-                      value={formData.projectKeys || []}
-                      onChange={(e) => {
-                        const selected = Array.from(
-                          e.target.selectedOptions,
-                          (option) => option.value
-                        );
-                        setFormData({ ...formData, projectKeys: selected });
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[100px]"
-                      size={Math.min(projects.length || 1, 5)}
-                    >
-                      {projects.map((project) => (
-                        <option key={project.key} value={project.key}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Hold Ctrl (Windows) or Cmd (Mac) to select multiple
-                      projects
-                    </p>
-                    {formData.projectKeys &&
-                      formData.projectKeys.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {formData.projectKeys.map((projectKey) => {
-                            const project = projects.find(
-                              (p) => p.key === projectKey
-                            );
-                            return (
-                              <span
-                                key={projectKey}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                              >
-                                {project ? project.name : projectKey}
-                                <button
-                                  type="button"
-                                  onClick={() => {
+                  <div className="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto bg-white">
+                    {projects.length > 0 ? (
+                      <div className="space-y-2">
+                        {projects.map((project) => {
+                          const isSelected = (
+                            formData.projectKeys || []
+                          ).includes(project.key);
+                          return (
+                            <label
+                              key={project.key}
+                              className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const currentKeys =
+                                    formData.projectKeys || [];
+                                  if (e.target.checked) {
                                     setFormData({
                                       ...formData,
-                                      projectKeys: (
-                                        formData.projectKeys || []
-                                      ).filter((k) => k !== projectKey),
+                                      projectKeys: [
+                                        ...currentKeys,
+                                        project.key,
+                                      ],
                                     });
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800"
-                                >
-                                  ×
-                                </button>
+                                  } else {
+                                    setFormData({
+                                      ...formData,
+                                      projectKeys: currentKeys.filter(
+                                        (k) => k !== project.key
+                                      ),
+                                    });
+                                  }
+                                }}
+                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-gray-700">
+                                {project.name}
                               </span>
-                            );
-                          })}
-                        </div>
-                      )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 text-center py-2">
+                        No projects available
+                      </p>
+                    )}
                   </div>
+                  {formData.projectKeys && formData.projectKeys.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {formData.projectKeys.map((projectKey) => {
+                        const project = projects.find(
+                          (p) => p.key === projectKey
+                        );
+                        return (
+                          <span
+                            key={projectKey}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                          >
+                            {project ? project.name : projectKey}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData({
+                                  ...formData,
+                                  projectKeys: (
+                                    formData.projectKeys || []
+                                  ).filter((k) => k !== projectKey),
+                                });
+                              }}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* EOA Address */}

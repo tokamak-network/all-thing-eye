@@ -70,7 +70,7 @@ export default function ProjectsPage() {
     name: p.name,
     description: p.description,
     slack_channel: p.slackChannel,
-    slack_channel_id: undefined,
+    slack_channel_id: p.slackChannelId,
     lead: p.lead,
     repositories: p.repositories || [],
     repositories_synced_at: undefined,
@@ -79,8 +79,13 @@ export default function ProjectsPage() {
     notion_page_ids: [],
     notion_parent_page_id: undefined,
     sub_projects: [],
-    member_ids: p.memberIds || [],
-    members: p.members || [], // Store members from GraphQL
+    // Ensure member_ids are strings
+    member_ids: (p.memberIds || []).map(id => String(id)),
+    // Store members from GraphQL with normalized IDs
+    members: (p.members || []).map(m => ({
+      ...m,
+      id: String(m.id)
+    })),
     is_active: p.isActive,
     created_at: "",
     updated_at: "",
@@ -166,6 +171,7 @@ export default function ProjectsPage() {
     description: "",
     lead: "",
     github_team_slug: "",
+    slack_channel: "",
     repositories: [] as string[],
     drive_folders: [] as string[],
     notion_parent_page_id: "",
@@ -188,6 +194,7 @@ export default function ProjectsPage() {
       description: "",
       lead: "",
       github_team_slug: "",
+      slack_channel: "",
       repositories: [],
       drive_folders: [],
       notion_parent_page_id: "",
@@ -207,6 +214,7 @@ export default function ProjectsPage() {
       description: project.description || "",
       lead: project.lead || "",
       github_team_slug: project.github_team_slug || "",
+      slack_channel: project.slack_channel || "",
       repositories: project.repositories || [],
       drive_folders: project.drive_folders || [],
       notion_parent_page_id: project.notion_parent_page_id || "",
@@ -222,6 +230,16 @@ export default function ProjectsPage() {
     e.preventDefault();
     try {
       setLocalError(null);
+      
+      // Find Slack channel ID from channel name
+      let slack_channel_id: string | undefined = undefined;
+      if (formData.slack_channel && formData.slack_channel.trim()) {
+        slack_channel_id = await apiClient.findSlackChannelId(formData.slack_channel);
+        if (!slack_channel_id) {
+          alert(`⚠️ Warning: Slack channel "${formData.slack_channel}" not found. Project will be saved without channel ID.`);
+        }
+      }
+      
       if (editingProject) {
         // Update existing project (REST API - mutations not implemented yet)
         await apiClient.updateProject(editingProject.key, {
@@ -229,6 +247,8 @@ export default function ProjectsPage() {
           description: formData.description || undefined,
           lead: formData.lead || undefined,
           github_team_slug: formData.github_team_slug || undefined,
+          slack_channel: formData.slack_channel || undefined,
+          slack_channel_id: slack_channel_id,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
           notion_parent_page_id: formData.notion_parent_page_id || undefined,
@@ -252,6 +272,8 @@ export default function ProjectsPage() {
           description: formData.description || undefined,
           lead: formData.lead || undefined,
           github_team_slug: formData.github_team_slug || generatedKey,
+          slack_channel: formData.slack_channel || undefined,
+          slack_channel_id: slack_channel_id,
           // repositories are automatically synced from GitHub Teams by data collector
           drive_folders: formData.drive_folders,
           notion_parent_page_id: formData.notion_parent_page_id || undefined,
@@ -468,9 +490,6 @@ export default function ProjectsPage() {
                     Lead
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Slack Channel
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Repositories
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -506,11 +525,6 @@ export default function ProjectsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {project.lead || "-"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {project.slack_channel
-                        ? `#${project.slack_channel}`
-                        : "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -627,6 +641,23 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
+                  {/* Row 1.5: Slack Channel */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Slack Channel Name
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.slack_channel}
+                      onChange={(e) => setFormData({ ...formData, slack_channel: e.target.value })}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                      placeholder="project-ooo"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Enter channel name (e.g., "project-ooo"). Channel ID will be automatically found and mapped.
+                    </p>
+                  </div>
+
                   {/* Row 2: GitHub Repos & Project Members */}
                   <div className="grid grid-cols-2 gap-4">
                     {/* GitHub Repositories */}
@@ -688,21 +719,18 @@ export default function ProjectsPage() {
                         {formData.member_ids.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {formData.member_ids.map((memberId) => {
-                              // First try to find in project's members (from GraphQL)
-                              let member = editingProject?.members?.find((m) => m.id === memberId);
-                              // Fallback to allMembers if not found
+                              // Use members from GraphQL (editingProject.members)
+                              const member = editingProject?.members?.find((m) => String(m.id) === String(memberId));
+                              
                               if (!member) {
-                                member = allMembers.find((m) => m.id === memberId);
-                              }
-                              if (!member) {
-                                console.warn(`⚠️ Member not found for ID: ${memberId}`);
                                 return (
                                   <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                                    Unknown ({memberId.slice(0, 8)}...)
+                                    Unknown ({String(memberId).slice(0, 8)}...)
                                     <button type="button" onClick={() => toggleMember(memberId)} className="text-gray-600 hover:text-gray-800">×</button>
                                   </span>
                                 );
                               }
+                              
                               return (
                                 <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">
                                   {member.name}

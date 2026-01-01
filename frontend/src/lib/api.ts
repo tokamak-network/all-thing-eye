@@ -255,6 +255,38 @@ class ApiClient {
     return response.data;
   }
 
+  async findSlackChannelId(channelName: string): Promise<string | undefined> {
+    if (!channelName || !channelName.trim()) {
+      return undefined;
+    }
+    
+    try {
+      // Query slack_channels collection via database API
+      const response = await this.client.get(
+        `/database/collections/slack_channels/documents`,
+        {
+          params: {
+            limit: 100,
+            filter: JSON.stringify({
+              name: { $regex: channelName.trim(), $options: "i" }
+            })
+          }
+        }
+      );
+      
+      const channels = response.data?.documents || [];
+      if (channels.length > 0) {
+        // Return channel_id or slack_id
+        return channels[0].channel_id || channels[0].slack_id;
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.error("Error finding Slack channel ID:", error);
+      return undefined;
+    }
+  }
+
   // Export API
   async getTables() {
     const response = await this.client.get("/exports/tables");

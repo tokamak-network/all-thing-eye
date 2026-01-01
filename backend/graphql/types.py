@@ -289,10 +289,16 @@ class Project:
     name: str
     description: Optional[str] = None
     slack_channel: Optional[str] = None
+    slack_channel_id: Optional[str] = None  # Internal field
     lead: Optional[str] = None
     repositories: List[str]
     is_active: bool = True
     member_ids: List[str] = strawberry.field(default_factory=list)  # Internal field
+    
+    @strawberry.field
+    def slackChannelId(self) -> Optional[str]:
+        """Get Slack channel ID for this project."""
+        return self.slack_channel_id
     
     @strawberry.field
     def memberIds(self) -> List[str]:
@@ -308,26 +314,39 @@ class Project:
         db = info.context['db']
         from bson import ObjectId
         
+        print(f"🔍 [Project.members] Project {self.key}: Looking for {len(self.member_ids)} members")
+        print(f"🔍 [Project.members] member_ids: {self.member_ids[:3]}...")
+        
         # Convert string IDs to ObjectIds for MongoDB query
         object_ids = []
+        invalid_ids = []
         for member_id in self.member_ids:
             try:
-                object_ids.append(ObjectId(member_id))
+                # Handle both string and ObjectId formats
+                if isinstance(member_id, ObjectId):
+                    object_ids.append(member_id)
+                else:
+                    object_ids.append(ObjectId(str(member_id)))
             except Exception as e:
-                print(f"⚠️ Failed to convert member_id to ObjectId: {member_id}, error: {e}")
+                invalid_ids.append(str(member_id))
+                print(f"⚠️ [Project.members] Invalid member_id: {member_id}, error: {e}")
                 continue
         
         if not object_ids:
-            print(f"⚠️ No valid ObjectIds for project {self.key}, member_ids: {self.member_ids}")
+            if invalid_ids:
+                print(f"⚠️ [Project.members] Project {self.key}: All member_ids are invalid: {invalid_ids}")
             return []
         
-        print(f"🔍 Project {self.key}: Looking for {len(object_ids)} members with ObjectIds: {[str(oid) for oid in object_ids[:3]]}...")
+        if invalid_ids:
+            print(f"⚠️ [Project.members] Project {self.key}: {len(invalid_ids)} invalid member_ids: {invalid_ids}")
+        
+        print(f"🔍 [Project.members] Querying with {len(object_ids)} ObjectIds: {[str(oid) for oid in object_ids[:3]]}...")
         
         # Fetch members from database
         members = []
-        found_count = 0
+        found_ids = set()
         async for doc in db['members'].find({'_id': {'$in': object_ids}}):
-            found_count += 1
+            found_ids.add(str(doc['_id']))
             members.append(Member(
                 id=str(doc['_id']),
                 name=doc.get('name', 'Unknown'),
@@ -341,19 +360,21 @@ class Project:
                 recording_name=doc.get('recording_name')
             ))
         
-        print(f"✅ Project {self.key}: Found {found_count} members out of {len(object_ids)} requested")
+        print(f"✅ [Project.members] Project {self.key}: Found {len(members)}/{len(object_ids)} members")
         
-        # If not all members found, check what's in the database
-        if found_count < len(object_ids):
-            print(f"⚠️ Missing {len(object_ids) - found_count} members. Checking database...")
-            # Sample check: get first few members to see their IDs
+        if len(members) < len(object_ids):
+            missing_ids = [str(oid) for oid in object_ids if str(oid) not in found_ids]
+            print(f"⚠️ [Project.members] Project {self.key}: Missing {len(missing_ids)} members. IDs: {missing_ids[:3]}...")
+            
+            # Check if members exist with different ID format
+            print(f"🔍 [Project.members] Checking sample members in database...")
             sample_members = []
             async for doc in db['members'].find().limit(5):
                 sample_members.append({
                     'id': str(doc['_id']),
                     'name': doc.get('name', 'Unknown')
                 })
-            print(f"📋 Sample member IDs in DB: {sample_members}")
+            print(f"📋 [Project.members] Sample member IDs in DB: {sample_members}")
         
         return members
     

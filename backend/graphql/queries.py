@@ -689,6 +689,7 @@ class Query:
         project_slack_channel_id = None
         project_drive_folders = []
         project_notion_page_ids = []
+        project_name = None
         if project_key:
             project_doc = await db['projects'].find_one({'key': project_key})
             if project_doc:
@@ -696,7 +697,9 @@ class Query:
                 project_slack_channel_id = project_doc.get('slack_channel_id')
                 project_drive_folders = project_doc.get('drive_folders', [])
                 project_notion_page_ids = project_doc.get('notion_page_ids', [])
+                project_name = project_doc.get('name')  # Get project name for title filtering
                 print(f"🔍 [{request_id}] 📁 Project '{project_key}' config:")
+                print(f"🔍 [{request_id}]   - name: {project_name}")
                 print(f"🔍 [{request_id}]   - repositories: {len(project_repositories)} repos")
                 print(f"🔍 [{request_id}]   - slack_channel_id: {project_slack_channel_id}")
                 print(f"🔍 [{request_id}]   - drive_folders: {project_drive_folders}")
@@ -758,7 +761,17 @@ class Query:
         # GitHub commits
         if 'github' in sources:
             query = {}
-            if member_name:
+            # When project filter is active, ignore member filter (filter by repositories only)
+            if project_key:
+                # Project filter is active - only filter by repositories, ignore member
+                if project_repositories:
+                    query['repository'] = {'$in': project_repositories}
+                    print(f"🔍 [{request_id}] 🐙 Filtering GitHub by project repositories: {len(project_repositories)} repos")
+                else:
+                    # Project has no repositories configured - return empty results
+                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no repositories configured - returning empty results")
+                    query['repository'] = {'$in': []}  # Return no results
+            elif member_name:
                 # Use GitHub usernames from identifiers if available (REST API pattern)
                 github_usernames = member_identifiers.get('github', [])
                 if github_usernames:
@@ -773,8 +786,7 @@ class Query:
                 query['date']['$lte'] = end_date
             if keyword:
                 query['message'] = {'$regex': keyword, '$options': 'i'}
-            if project_repositories:
-                query['repository'] = {'$in': project_repositories}
+            # project_repositories filter is already applied above
             
             async for doc in db['github_commits'].find(query).sort('date', -1).limit(limit * 2):
                 # Safely get required fields
@@ -811,7 +823,17 @@ class Query:
         # GitHub PRs
         if 'github' in sources:
             query = {}
-            if member_name:
+            # When project filter is active, ignore member filter (filter by repositories only)
+            if project_key:
+                # Project filter is active - only filter by repositories, ignore member
+                if project_repositories:
+                    query['repository'] = {'$in': project_repositories}
+                    print(f"🔍 [{request_id}] 🐙 Filtering GitHub PRs by project repositories: {len(project_repositories)} repos")
+                else:
+                    # Project has no repositories configured - return empty results
+                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no repositories configured - returning empty results")
+                    query['repository'] = {'$in': []}  # Return no results
+            elif member_name:
                 # Use GitHub usernames from identifiers if available
                 github_usernames = member_identifiers.get('github', [])
                 if github_usernames:
@@ -826,8 +848,7 @@ class Query:
                 query['created_at']['$lte'] = end_date
             if keyword:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
-            if project_repositories:
-                query['repository'] = {'$in': project_repositories}
+            # project_repositories filter is already applied above
             
             async for doc in db['github_pull_requests'].find(query).sort('created_at', -1).limit(limit * 2):
                 # Safely get required fields
@@ -871,11 +892,17 @@ class Query:
             query['channel_name'] = {'$ne': 'tokamak-partners'}
             
             # Filter by project's Slack channel if project_key is specified
-            if project_slack_channel_id:
-                query['channel_id'] = project_slack_channel_id
-                print(f"🔍 [{request_id}] 💬 Filtering Slack by project channel: {project_slack_channel_id}")
-            
-            if member_name:
+            # When project filter is active, ignore member filter (filter by channel only)
+            if project_key:
+                # Project filter is active - only filter by channel, ignore member
+                if project_slack_channel_id:
+                    query['channel_id'] = project_slack_channel_id
+                    print(f"🔍 [{request_id}] 💬 Filtering Slack by project channel: {project_slack_channel_id}")
+                else:
+                    # Project has no slack_channel_id configured - return empty results
+                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no slack_channel_id configured - returning empty results")
+                    query['channel_id'] = {'$in': []}  # Return no results
+            elif member_name:
                 # Use Slack identifiers (REST API pattern: user_id, user_email, user_name)
                 slack_identifiers = member_identifiers.get('slack', [])
                 print(f"🔍 [{request_id}] 💬 Slack identifiers for '{member_name}': {slack_identifiers}")
@@ -956,11 +983,18 @@ class Query:
             print(f"🔍 [{request_id}] 💬 Slack activities added: {slack_after - slack_before}")
         
         # Notion pages
-        # TODO: Add project filtering for Notion (filter by parent page hierarchy)
-        # Currently, project_notion_page_ids is available but matching requires parent traversal
+        # Filter by project name in title if project_key is specified
+        # When project filter is active, ignore member filter (filter by title only)
         if 'notion' in sources:
             query = {}
-            if member_name:
+            # When project filter is active, ignore member filter (filter by title only)
+            if project_key:
+                # Project filter is active - only filter by project name in title, ignore member
+                if not project_name:
+                    # Project has no name configured - return empty results
+                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no name configured - returning empty results")
+                    query['title'] = {'$regex': '^$'}  # Match nothing
+            elif member_name:
                 # REST API pattern: only created_by (not last_edited_by)
                 notion_ids = member_identifiers.get('notion', [])
                 or_conditions = []
@@ -987,6 +1021,22 @@ class Query:
                 query['last_edited_time']['$lte'] = end_date_naive
             if keyword:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
+            
+            # Filter by project name in title if project_key is specified
+            if project_name:
+                # Add project name to title filter (case-insensitive)
+                if 'title' in query:
+                    # If keyword already exists, combine with $and
+                    existing_title_regex = query['title']
+                    query = {
+                        '$and': [
+                            query,
+                            {'title': {'$regex': project_name, '$options': 'i'}}
+                        ]
+                    }
+                else:
+                    query['title'] = {'$regex': project_name, '$options': 'i'}
+                print(f"🔍 [{request_id}] 📝 Filtering Notion by project name in title: {project_name}")
             
             print(f"🔍 [{request_id}] 📝 Notion query: {query}")
             
@@ -1033,11 +1083,19 @@ class Query:
                 ))
         
         # Drive activities
-        # TODO: Add project filtering for Drive (filter by folder hierarchy)
-        # Currently, project_drive_folders is available but matching requires parent traversal
+        # Filter by project name in title/doc_title if project_key is specified
+        # When project filter is active, ignore member filter (filter by title only)
         if 'drive' in sources:
             query = {}
-            if member_name:
+            # When project filter is active, ignore member filter (filter by title only)
+            if project_key:
+                # Project filter is active - only filter by project name in title, ignore member
+                if not project_name:
+                    # Project has no name configured - return empty results
+                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no name configured - returning empty results")
+                    query['title'] = {'$regex': '^$'}  # Match nothing
+                    query['doc_title'] = {'$regex': '^$'}  # Match nothing
+            elif member_name:
                 # Try to use emails from identifiers (REST API pattern: user_email field)
                 emails = member_identifiers.get('email', []) or member_identifiers.get('drive', [])
                 print(f"🔍 [{request_id}] 📁 Drive emails for '{member_name}': {emails}")
@@ -1062,6 +1120,31 @@ class Query:
                 query['timestamp']['$lte'] = end_date_naive
             if keyword:
                 query['title'] = {'$regex': keyword, '$options': 'i'}
+            
+            # Filter by project name in title/doc_title if project_key is specified
+            if project_name:
+                # Drive activities may have 'title' or 'doc_title' field
+                # Use $or to check both fields
+                project_title_filter = {
+                    '$or': [
+                        {'title': {'$regex': project_name, '$options': 'i'}},
+                        {'doc_title': {'$regex': project_name, '$options': 'i'}}
+                    ]
+                }
+                if 'title' in query or keyword:
+                    # If keyword already exists, combine with $and
+                    existing_conditions = {k: v for k, v in query.items() if k != 'title'}
+                    if 'title' in query:
+                        existing_conditions['title'] = query['title']
+                    query = {
+                        '$and': [
+                            existing_conditions,
+                            project_title_filter
+                        ]
+                    }
+                else:
+                    query.update(project_title_filter)
+                print(f"🔍 [{request_id}] 📁 Filtering Drive by project name in title/doc_title: {project_name}")
             
             print(f"🔍 [{request_id}] 📁 Drive query: {query}")
             
@@ -1144,7 +1227,14 @@ class Query:
                     print(f"🔍 [{request_id}] 🎥   - owner: {sample_doc.get('owner')}")
                     print(f"🔍 [{request_id}] 🎥   - lastModifyingUser: {sample_doc.get('lastModifyingUser')}")
                 
-                if member_name:
+                # When project filter is active, ignore member filter (filter by title only)
+                if project_key:
+                    # Project filter is active - only filter by project name in title, ignore member
+                    if not project_name:
+                        # Project has no name configured - return empty results
+                        print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no name configured - returning empty results")
+                        query['name'] = {'$regex': '^$'}  # Match nothing
+                elif member_name:
                     print(f"🔍 [{request_id}] 🎥 Filtering by member name: {member_name}")
                     
                     # Get recording_name for this member (if exists)
@@ -1233,6 +1323,22 @@ class Query:
                     query['modifiedTime']['$lte'] = end_date.isoformat()
                 if keyword:
                     query['name'] = {'$regex': keyword, '$options': 'i'}
+                
+                # Filter by project name in title if project_key is specified
+                if project_name:
+                    # Add project name to title filter (case-insensitive)
+                    if 'name' in query:
+                        # If keyword already exists, combine with $and
+                        existing_conditions = {k: v for k, v in query.items() if k != 'name'}
+                        query = {
+                            '$and': [
+                                existing_conditions,
+                                {'name': {'$regex': project_name, '$options': 'i'}}
+                            ]
+                        }
+                    else:
+                        query['name'] = {'$regex': project_name, '$options': 'i'}
+                    print(f"🔍 [{request_id}] 🎥 Filtering Recordings by project name in title: {project_name}")
                 
                 print(f"🔍 [{request_id}] 🎥 Recordings query: {query}")
                 
@@ -1553,17 +1659,26 @@ class Query:
             query['is_active'] = is_active
         
         projects = []
+        from bson import ObjectId
         async for doc in db['projects'].find(query).limit(limit):
+            # Convert member_ids to strings (handle ObjectId if present)
+            member_ids = doc.get('member_ids', [])
+            member_ids_str = [
+                str(mid) if isinstance(mid, ObjectId) else str(mid)
+                for mid in member_ids
+            ]
+            
             projects.append(Project(
                 id=str(doc['_id']),
                 key=doc['key'],
                 name=doc['name'],
                 description=doc.get('description'),
                 slack_channel=doc.get('slack_channel'),
+                slack_channel_id=doc.get('slack_channel_id'),
                 lead=doc.get('lead'),
                 repositories=doc.get('repositories', []),
                 is_active=doc.get('is_active', True),
-                member_ids=doc.get('member_ids', [])
+                member_ids=member_ids_str
             ))
         
         return projects
@@ -1599,16 +1714,24 @@ class Query:
         if not doc:
             return None
         
+        # Convert member_ids to strings (handle ObjectId if present)
+        member_ids = doc.get('member_ids', [])
+        member_ids_str = [
+            str(mid) if isinstance(mid, ObjectId) else str(mid)
+            for mid in member_ids
+        ]
+        
         return Project(
             id=str(doc['_id']),
             key=doc['key'],
             name=doc['name'],
             description=doc.get('description'),
             slack_channel=doc.get('slack_channel'),
+            slack_channel_id=doc.get('slack_channel_id'),
             lead=doc.get('lead'),
             repositories=doc.get('repositories', []),
             is_active=doc.get('is_active', True),
-            member_ids=doc.get('member_ids', [])
+            member_ids=member_ids_str
         )
     
     @strawberry.field

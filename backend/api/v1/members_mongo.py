@@ -324,6 +324,54 @@ async def create_member(
             identifiers.append({"type": "recording_name", "value": member_data.recording_name})
             logger.info(f"Added recording_name '{member_data.recording_name}' for {member_data.name}")
         
+        # Sync projects.member_ids when member is created with projects
+        if member_data.projects:
+            member_obj_id = ObjectId(member_id)
+            
+            # Normalize project keys
+            def normalize_project_key(key: str) -> str:
+                if not key.startswith('project-'):
+                    return f'project-{key.lower()}'
+                return key.lower()
+            
+            for project_key in member_data.projects:
+                project_key_normalized = normalize_project_key(project_key)
+                project_doc = await db["projects"].find_one({"key": project_key_normalized})
+                if project_doc:
+                    member_ids = project_doc.get("member_ids", [])
+                    # Check if member ID already exists
+                    member_exists = False
+                    for mid in member_ids:
+                        mid_str = str(mid) if isinstance(mid, ObjectId) else str(mid)
+                        if mid_str == member_id:
+                            member_exists = True
+                            break
+                    
+                    if not member_exists:
+                        # Convert all to ObjectId for consistency
+                        object_ids = []
+                        for mid in member_ids:
+                            if isinstance(mid, ObjectId):
+                                object_ids.append(mid)
+                            else:
+                                try:
+                                    object_ids.append(ObjectId(mid))
+                                except:
+                                    pass
+                        
+                        object_ids.append(member_obj_id)
+                        
+                        await db["projects"].update_one(
+                            {"key": project_key_normalized},
+                            {
+                                "$set": {
+                                    "member_ids": object_ids,
+                                    "updated_at": datetime.utcnow()
+                                }
+                            }
+                        )
+                        logger.info(f"Added member {member_id} to project {project_key_normalized}")
+        
         # Clear member mapping cache to ensure fresh data after creation
         from backend.api.v1.activities_mongo import clear_member_mapping_cache
         clear_member_mapping_cache()
@@ -336,6 +384,7 @@ async def create_member(
             "email": member_data.email,
             "role": member_data.role,
             "project": member_data.project,
+            "projects": projects,
             "eoa_address": member_data.eoa_address,
             "recording_name": member_data.recording_name,
             "identifiers": identifiers,
@@ -610,6 +659,95 @@ async def update_member(
             await update_identifier("recordings", "recording_name", member_data.recording_name)
             logger.info(f"Updated recording_name '{member_data.recording_name}' for member {member_id}")
         
+        # Sync projects.member_ids when member.projects is updated
+        if "projects" in update_data:
+            new_projects = update_data["projects"] or []
+            old_projects = existing_member.get("projects", [])
+            
+            # Normalize project keys
+            def normalize_project_key(key: str) -> str:
+                if not key.startswith('project-'):
+                    return f'project-{key.lower()}'
+                return key.lower()
+            
+            new_projects_normalized = [normalize_project_key(p) for p in new_projects]
+            old_projects_normalized = [normalize_project_key(p) for p in old_projects]
+            
+            # Find projects that were removed
+            removed_projects = set(old_projects_normalized) - set(new_projects_normalized)
+            # Find projects that were added
+            added_projects = set(new_projects_normalized) - set(old_projects_normalized)
+            
+            member_obj_id = ObjectId(member_id)
+            
+            # Update removed projects: remove this member's ID
+            for project_key in removed_projects:
+                project_doc = await db["projects"].find_one({"key": project_key})
+                if project_doc:
+                    member_ids = project_doc.get("member_ids", [])
+                    # Remove this member's ID (handle both ObjectId and string formats)
+                    updated_member_ids = []
+                    for mid in member_ids:
+                        mid_str = str(mid) if isinstance(mid, ObjectId) else str(mid)
+                        if mid_str != member_id:
+                            # Keep as ObjectId if it was ObjectId, otherwise convert
+                            if isinstance(mid, ObjectId):
+                                updated_member_ids.append(mid)
+                            else:
+                                try:
+                                    updated_member_ids.append(ObjectId(mid))
+                                except:
+                                    updated_member_ids.append(mid)
+                    
+                    await db["projects"].update_one(
+                        {"key": project_key},
+                        {
+                            "$set": {
+                                "member_ids": updated_member_ids,
+                                "updated_at": datetime.utcnow()
+                            }
+                        }
+                    )
+                    logger.info(f"Removed member {member_id} from project {project_key}")
+            
+            # Update added projects: add this member's ID
+            for project_key in added_projects:
+                project_doc = await db["projects"].find_one({"key": project_key})
+                if project_doc:
+                    member_ids = project_doc.get("member_ids", [])
+                    # Check if member ID already exists (handle both ObjectId and string formats)
+                    member_exists = False
+                    for mid in member_ids:
+                        mid_str = str(mid) if isinstance(mid, ObjectId) else str(mid)
+                        if mid_str == member_id:
+                            member_exists = True
+                            break
+                    
+                    if not member_exists:
+                        # Convert all to ObjectId for consistency
+                        object_ids = []
+                        for mid in member_ids:
+                            if isinstance(mid, ObjectId):
+                                object_ids.append(mid)
+                            else:
+                                try:
+                                    object_ids.append(ObjectId(mid))
+                                except:
+                                    pass
+                        
+                        object_ids.append(member_obj_id)
+                        
+                        await db["projects"].update_one(
+                            {"key": project_key},
+                            {
+                                "$set": {
+                                    "member_ids": object_ids,
+                                    "updated_at": datetime.utcnow()
+                                }
+                            }
+                        )
+                        logger.info(f"Added member {member_id} to project {project_key}")
+        
         # Clear member mapping cache to ensure fresh data after update
         from backend.api.v1.activities_mongo import clear_member_mapping_cache
         clear_member_mapping_cache()
@@ -633,6 +771,7 @@ async def update_member(
             "email": updated_member.get("email"),
             "role": updated_member.get("role"),
             "project": updated_member.get("project"),
+            "projects": updated_member.get("projects", []),
             "eoa_address": updated_member.get("eoa_address"),
             "recording_name": updated_member.get("recording_name"),
             "identifiers": identifiers,
