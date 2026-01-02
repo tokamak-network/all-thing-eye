@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 from src.core.config import Config
 from src.core.mongo_manager import get_mongo_manager
 from src.utils.logger import get_logger
-from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, projects_management, exports_mongo, database_mongo, auth, stats_mongo, notion_export_mongo, ai_processed, custom_export, ai_proxy
+from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, projects_management, exports_mongo, database_mongo, auth, stats_mongo, notion_export_mongo, ai_processed, custom_export, ai_proxy, mcp_api, mcp_agent
 
 logger = get_logger(__name__)
 
@@ -229,6 +229,20 @@ app.include_router(
     ai_proxy.router,
     prefix="/api/v1",
     tags=["ai-proxy"]
+)
+
+# MCP API routes (Model Context Protocol HTTP wrapper)
+app.include_router(
+    mcp_api.router,
+    prefix="/api/v1",
+    tags=["mcp"]
+)
+
+# MCP Agent routes (True Function Calling Agent)
+app.include_router(
+    mcp_agent.router,
+    prefix="/api/v1",
+    tags=["mcp-agent"]
 )
 
 # GraphQL endpoint

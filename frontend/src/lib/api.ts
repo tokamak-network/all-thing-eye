@@ -538,6 +538,27 @@ class ApiClient {
     return response.data;
   }
 
+  /**
+   * Fetch custom export data as JSON (for AI analysis)
+   */
+  async fetchCustomExportData(params: {
+    selected_members?: string[];
+    start_date?: string;
+    end_date?: string;
+    project?: string;
+    selected_fields?: string[];
+    sources?: string[];
+    limit?: number;
+    offset?: number;
+  }) {
+    const response = await this.client.post("/custom-export/preview", {
+      ...params,
+      limit: params.limit || 500,  // Higher limit for AI analysis
+      offset: params.offset || 0,
+    });
+    return response.data;
+  }
+
   async downloadCustomExport(
     params: {
       selected_members?: string[];
@@ -731,6 +752,116 @@ class ApiClient {
   async listAIModels() {
     // Use backend proxy instead of direct API call
     const response = await this.client.get("/ai/models");
+    return response.data;
+  }
+
+  // ============================================================================
+  // MCP (Model Context Protocol) API
+  // ============================================================================
+
+  /**
+   * List available MCP resources
+   */
+  async listMCPResources() {
+    const response = await this.client.get("/mcp/resources");
+    return response.data;
+  }
+
+  /**
+   * Read an MCP resource
+   */
+  async readMCPResource(resourcePath: string) {
+    const response = await this.client.get(`/mcp/resources/${resourcePath}`);
+    return response.data;
+  }
+
+  /**
+   * List available MCP tools
+   */
+  async listMCPTools() {
+    const response = await this.client.get("/mcp/tools");
+    return response.data;
+  }
+
+  /**
+   * Call an MCP tool
+   */
+  async callMCPTool(name: string, args: Record<string, any> = {}) {
+    const response = await this.client.post("/mcp/tools/call", {
+      name,
+      arguments: args,
+    });
+    return response.data;
+  }
+
+  /**
+   * List available MCP prompts
+   */
+  async listMCPPrompts() {
+    const response = await this.client.get("/mcp/prompts");
+    return response.data;
+  }
+
+  /**
+   * Get an MCP prompt with arguments
+   */
+  async getMCPPrompt(name: string, args: Record<string, string> = {}) {
+    const response = await this.client.post("/mcp/prompts/get", {
+      name,
+      arguments: args,
+    });
+    return response.data;
+  }
+
+  /**
+   * Chat with AI using MCP context injection
+   * This automatically fetches relevant data based on the conversation
+   */
+  async chatWithMCPContext(
+    messages: Array<{ role: string; content: string }>,
+    model?: string,
+    contextHints?: Record<string, any>
+  ) {
+    const response = await this.client.post("/mcp/chat", {
+      messages,
+      model,
+      context_hints: contextHints,
+    });
+    return response.data;
+  }
+
+  /**
+   * Chat with MCP Agent - True Function Calling Agent
+   * AI decides which tools to call and iterates until it has enough information
+   */
+  async chatWithAgent(
+    messages: Array<{ role: string; content: string }>,
+    model?: string,
+    maxIterations?: number
+  ) {
+    // Use test endpoint in development (no auth required)
+    // Use regular endpoint in production (requires auth)
+    const isDev = process.env.NODE_ENV === "development";
+    const endpoint = isDev ? "/mcp/agent/test" : "/mcp/agent";
+    
+    console.log(`🤖 Agent API call to ${endpoint}`);
+    console.log(`   Messages: ${messages.length}, Model: ${model}`);
+    
+    const response = await this.client.post(endpoint, {
+      messages,
+      model,
+      max_iterations: maxIterations || 10,
+    });
+    
+    console.log(`🤖 Agent API response:`, response.data);
+    return response.data;
+  }
+
+  /**
+   * List available agent tools
+   */
+  async listAgentTools() {
+    const response = await this.client.get("/mcp/agent/tools");
     return response.data;
   }
 }

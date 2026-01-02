@@ -5,6 +5,7 @@ import FieldSelector from "./components/FieldSelector";
 import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
 import NotionExportPanel from "./components/NotionExportPanel";
+import DataAIChatPanel from "./components/DataAIChatPanel";
 import { api } from "@/lib/api";
 
 export default function CustomExportPage() {
@@ -386,9 +387,9 @@ export default function CustomExportPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
               {/* Left Column: Field/Collection Selector */}
-              <div className="lg:col-span-1">
+              <div className="xl:col-span-1">
                 <FieldSelector
                   selectedFields={selectedFields}
                   onFieldToggle={handleFieldToggle}
@@ -398,8 +399,8 @@ export default function CustomExportPage() {
                 />
               </div>
 
-              {/* Right Column: Filters + Preview */}
-              <div className="lg:col-span-2 space-y-6">
+              {/* Middle Column: Filters + Preview */}
+              <div className="xl:col-span-2 space-y-6">
                 {/* Filter Panel */}
                 <FilterPanel
                   filters={filters}
@@ -426,6 +427,14 @@ export default function CustomExportPage() {
                     filters={filters}
                   />
                 )}
+              </div>
+
+              {/* Right Column: AI Chat Panel */}
+              <div className="xl:col-span-1">
+                <DataAIChatPanel
+                  selectedFields={selectedFields}
+                  filters={filters}
+                />
               </div>
             </div>
           </>
