@@ -4,6 +4,7 @@ import Navigation from "@/components/Navigation";
 import { Web3Provider } from "@/components/Web3Provider";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ApolloProvider } from "@/components/ApolloProvider";
+import FloatingAIChatbot from "@/components/FloatingAIChatbot";
 
 export const metadata: Metadata = {
   title: "All-Thing-Eye | Team Activity Analytics",
@@ -38,6 +39,9 @@ export default function RootLayout({
                     </p>
                   </div>
                 </footer>
+
+                {/* Floating AI Chatbot - Available on all pages */}
+                <FloatingAIChatbot />
               </div>
             </AuthGuard>
           </Web3Provider>

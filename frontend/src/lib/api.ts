@@ -623,6 +623,116 @@ class ApiClient {
     );
     return response.data;
   }
+
+  // Tokamak AI API
+  private getAIClient(): AxiosInstance {
+    const AI_API_BASE_URL =
+      process.env.NEXT_PUBLIC_AI_API_URL || "https://api.toka.ngrok.app";
+    
+    const aiClient = axios.create({
+      baseURL: AI_API_BASE_URL,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      timeout: 60000, // 60 seconds for AI responses
+    });
+
+    // Add authentication header
+    aiClient.interceptors.request.use(
+      (config) => {
+        // Try API key first (from environment variable)
+        const apiKey = process.env.NEXT_PUBLIC_AI_API_KEY;
+        if (apiKey) {
+          config.headers["X-API-Key"] = apiKey;
+        } else {
+          // Fallback to JWT token if API key not available
+          const authHeader = getAuthHeader();
+          if (authHeader) {
+            config.headers.Authorization = authHeader;
+          }
+        }
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
+
+    return aiClient;
+  }
+
+  /**
+   * Chat with AI assistant (via backend proxy)
+   * @param messages Array of chat messages
+   * @param model Optional model name (defaults to server default)
+   * @param context Optional context data
+   */
+  async chatWithAI(
+    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
+    model?: string,
+    context?: Record<string, any>
+  ) {
+    // Use backend proxy instead of direct API call
+    const requestBody: any = {
+      messages: messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+    };
+
+    if (model) {
+      requestBody.model = model;
+    }
+
+    if (context) {
+      requestBody.context = context;
+    }
+
+    // Debug: Log the full URL
+    const fullUrl = `${this.client.defaults.baseURL}/ai/chat`;
+    console.log("🔍 Calling AI API at:", fullUrl, "Method: POST");
+    console.log("📦 Request body:", requestBody);
+
+    const response = await this.client.post("/ai/chat", requestBody);
+    return response.data;
+  }
+
+  /**
+   * Generate text using AI (via backend proxy)
+   * @param prompt Text prompt
+   * @param model Optional model name
+   * @param context Optional context data
+   */
+  async generateWithAI(
+    prompt: string,
+    model?: string,
+    context?: Record<string, any>
+  ) {
+    // Use backend proxy instead of direct API call
+    const requestBody: any = {
+      prompt,
+    };
+
+    if (model) {
+      requestBody.model = model;
+    }
+
+    if (context) {
+      requestBody.context = context;
+    }
+
+    const response = await this.client.post("/ai/generate", requestBody);
+    return response.data;
+  }
+
+  /**
+   * List available AI models (via backend proxy)
+   */
+  async listAIModels() {
+    // Use backend proxy instead of direct API call
+    const response = await this.client.get("/ai/models");
+    return response.data;
+  }
 }
 
 export const api = new ApiClient();

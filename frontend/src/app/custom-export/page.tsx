@@ -4,7 +4,6 @@ import { useState } from "react";
 import FieldSelector from "./components/FieldSelector";
 import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
-import AIChatPanel from "./components/AIChatPanel";
 import NotionExportPanel from "./components/NotionExportPanel";
 import { api } from "@/lib/api";
 
@@ -427,19 +426,12 @@ export default function CustomExportPage() {
                     filters={filters}
                   />
                 )}
-
-                {/* AI Chat Panel */}
-                {exportMode === "fields" && (
-                  <AIChatPanel
-                    selectedFields={selectedFields}
-                    filters={filters}
-                  />
-                )}
               </div>
             </div>
           </>
         )}
       </div>
+
     </div>
   );
 }

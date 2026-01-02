@@ -616,25 +616,21 @@ function parseRawAnalysis(analysisData: any): any {
 
 interface ActivitiesViewProps {
   initialMemberFilter?: string;
+  initialProjectFilter?: string;
   showProjectFilter?: boolean;
-}
-
-// Export ActivitiesView for reuse in other components
-// This is a component export, not a page export, so it should be fine
-
-interface ActivitiesViewProps {
-  initialMemberFilter?: string;
-  showProjectFilter?: boolean;
+  showMemberFilter?: boolean;
 }
 
 export default function ActivitiesView({
   initialMemberFilter = "",
+  initialProjectFilter = "",
   showProjectFilter = true,
+  showMemberFilter = true,
 }: ActivitiesViewProps) {
   // Note: allActivities, loading, error are now computed from GraphQL query below
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [memberFilter, setMemberFilter] = useState<string>(initialMemberFilter);
-  const [projectFilter, setProjectFilter] = useState<string>("");
+  const [projectFilter, setProjectFilter] = useState<string>(initialProjectFilter);
   const [keywordFilter, setKeywordFilter] = useState<string>(""); // Input field value
   const [searchKeyword, setSearchKeyword] = useState<string>(""); // Actual search keyword used in API
   const [startDate, setStartDate] = useState<string>("");
@@ -1258,7 +1254,7 @@ export default function ActivitiesView({
                 <option value="recordings_daily">📊 Analysis</option>
               </select>
 
-              {!initialMemberFilter && (
+              {showMemberFilter && !initialMemberFilter && (
                 <select
                   value={memberFilter}
                   onChange={(e) => setMemberFilter(e.target.value)}

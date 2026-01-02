@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import apiClient from '@/lib/api';
 import {
   ArrowLeftIcon,
@@ -10,63 +11,160 @@ import {
   ChatBubbleLeftRightIcon,
   DocumentTextIcon,
   UserIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
-
-interface Project {
-  id: string;
-  key: string;
-  name: string;
-  description?: string;
-  slack_channel?: string;
-  slack_channel_id?: string;
-  lead?: string;
-  repositories: string[];
-  repositories_synced_at?: string;
-  github_team_slug?: string;
-  drive_folders: string[];
-  notion_page_ids: string[];
-  notion_parent_page_id?: string;
-  sub_projects: string[];
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  Legend,
+} from 'recharts';
+import { useProject, useActivities } from '@/graphql/hooks';
+import ActivitiesView from '@/components/ActivitiesView';
 
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectKey = params.key as string;
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // GraphQL: Fetch project data
+  const { data: projectData, loading: projectLoading, error: projectError } = useProject({
+    key: projectKey,
+  });
 
-  useEffect(() => {
-    async function fetchProject() {
+  const project = projectData?.project;
+
+  // GraphQL: Fetch activities for this project (last 90 days)
+  const dateRange = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 90);
+    return { start, end };
+  }, []);
+
+  const { data: activitiesData, loading: activitiesLoading } = useActivities({
+    projectKey: projectKey,
+    startDate: dateRange.start.toISOString(),
+    endDate: dateRange.end.toISOString(),
+    limit: 1000, // Get enough data for statistics
+  });
+
+  const activities = activitiesData?.activities || [];
+
+  // Calculate activity statistics
+  const activityStats = useMemo(() => {
+    const stats = {
+      total: activities.length,
+      bySource: {
+        github: 0,
+        slack: 0,
+        notion: 0,
+        drive: 0,
+        recordings: 0,
+      },
+      byType: {} as Record<string, number>,
+      dailyTrends: [] as Array<{
+        date: string;
+        github: number;
+        slack: number;
+        notion: number;
+        drive: number;
+        recordings: number;
+      }>,
+    };
+
+    // Debug: Log activities count
+    console.log('📊 Project activities:', {
+      total: activities.length,
+      sample: activities.slice(0, 3).map(a => ({
+        source: a.sourceType,
+        timestamp: a.timestamp,
+        id: a.id,
+      })),
+    });
+
+    // Count by source
+    activities.forEach((activity) => {
+      const source = activity.sourceType?.toLowerCase() || 'unknown';
+      if (source === 'github') stats.bySource.github++;
+      else if (source === 'slack') stats.bySource.slack++;
+      else if (source === 'notion') stats.bySource.notion++;
+      else if (source === 'drive' || source === 'google_drive') stats.bySource.drive++;
+      else if (source === 'recordings') stats.bySource.recordings++;
+
+      // Count by type
+      const type = activity.activityType || 'unknown';
+      stats.byType[type] = (stats.byType[type] || 0) + 1;
+    });
+
+    // Calculate daily trends (last 90 days)
+    const trendMap: Record<string, { date: string; github: number; slack: number; notion: number; drive: number; recordings: number }> = {};
+    
+    // Initialize all dates with 0
+    const startDate = new Date(dateRange.start);
+    for (let i = 0; i < 90; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      trendMap[dateStr] = {
+        date: dateStr,
+        github: 0,
+        slack: 0,
+        notion: 0,
+        drive: 0,
+        recordings: 0,
+      };
+    }
+
+    // Fill in actual data
+    let matchedCount = 0;
+    activities.forEach((activity) => {
+      if (!activity.timestamp) return;
       try {
-        setLoading(true);
-        setError(null);
-        const data = await apiClient.getProjectManagement(projectKey);
-        setProject(data);
-      } catch (err: any) {
-        console.error('Error fetching project:', err);
-        setError(err.response?.data?.detail || err.message || 'Failed to load project');
-      } finally {
-        setLoading(false);
+        const date = new Date(activity.timestamp);
+        const dateStr = format(date, 'yyyy-MM-dd');
+        if (trendMap[dateStr]) {
+          matchedCount++;
+          const source = activity.sourceType?.toLowerCase() || 'unknown';
+          if (source === 'github') trendMap[dateStr].github++;
+          else if (source === 'slack') trendMap[dateStr].slack++;
+          else if (source === 'notion') trendMap[dateStr].notion++;
+          else if (source === 'drive' || source === 'google_drive') trendMap[dateStr].drive++;
+          else if (source === 'recordings') trendMap[dateStr].recordings++;
+        }
+      } catch (e) {
+        console.warn('Failed to parse timestamp:', activity.timestamp, e);
       }
-    }
+    });
 
-    if (projectKey) {
-      fetchProject();
-    }
-  }, [projectKey]);
+    console.log('📈 Daily trends:', {
+      totalDates: Object.keys(trendMap).length,
+      matchedActivities: matchedCount,
+      sampleTrends: Object.values(trendMap).slice(0, 5),
+    });
+
+    stats.dailyTrends = Object.values(trendMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    return stats;
+  }, [activities, dateRange]);
+
+  const loading = projectLoading;
+  const error = projectError?.message || null;
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         </div>
       </div>
@@ -94,9 +192,9 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="mb-8">
+        <div>
           <button
             onClick={() => router.push('/projects')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
@@ -112,117 +210,325 @@ export default function ProjectDetailPage() {
             </div>
             <span
               className={`ml-auto inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
-                project.is_active
+                project.isActive
                   ? 'bg-green-100 text-green-800'
                   : 'bg-gray-100 text-gray-800'
               }`}
             >
-              {project.is_active ? 'Active' : 'Inactive'}
+              {project.isActive ? 'Active' : 'Inactive'}
             </span>
           </div>
-          {project.description && (
-            <p className="text-gray-600 mt-2">{project.description}</p>
-          )}
+          <p className="mt-2 text-gray-600">
+            {activityStats.total.toLocaleString()} activities recorded across all sources
+          </p>
         </div>
 
-        {/* Project Details */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Basic Information */}
+        {/* Project Members */}
+        {project.members && project.members.length > 0 && (
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h2>
-            <dl className="space-y-3">
-              {project.lead && (
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <UserIcon className="h-5 w-5" />
+              Project Members ({project.members.length})
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {project.members.map((member) => (
+                <a
+                  key={member.id}
+                  href={`/members/${member.id}`}
+                  className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  {member.name}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Project Info Card */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Project Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {project.lead && (
+              <div className="flex items-center gap-3">
+                <UserIcon className="h-5 w-5 text-gray-400" />
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center gap-2">
-                    <UserIcon className="h-4 w-4" />
-                    Lead
-                  </dt>
-                  <dd className="mt-1 text-sm text-gray-900">{project.lead}</dd>
+                  <p className="text-sm text-gray-500">Lead</p>
+                  <p className="text-gray-900">{project.lead}</p>
                 </div>
-              )}
-              {project.slack_channel && (
+              </div>
+            )}
+            {project.slackChannel && (
+              <div className="flex items-center gap-3">
+                <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center gap-2">
-                    <ChatBubbleLeftRightIcon className="h-4 w-4" />
-                    Slack Channel
-                  </dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {project.slack_channel_id ? (
-                      <a
-                        href={`https://tokamaknetwork.slack.com/archives/${project.slack_channel_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        #{project.slack_channel}
-                      </a>
-                    ) : (
-                      `#${project.slack_channel}`
-                    )}
-                  </dd>
-                </div>
-              )}
-              {project.github_team_slug && (
-                <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center gap-2">
-                    <CodeBracketIcon className="h-4 w-4" />
-                    GitHub Team
-                  </dt>
-                  <dd className="mt-1 text-sm text-gray-900">
+                  <p className="text-sm text-gray-500">Slack Channel</p>
+                  {project.slackChannelId ? (
                     <a
-                      href={`https://github.com/orgs/tokamak-network/teams/${project.github_team_slug}`}
+                      href={`https://tokamaknetwork.slack.com/archives/${project.slackChannelId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:text-blue-800"
                     >
-                      {project.github_team_slug}
+                      #{project.slackChannel}
                     </a>
-                  </dd>
+                  ) : (
+                    <p className="text-gray-900">#{project.slackChannel}</p>
+                  )}
                 </div>
-              )}
-            </dl>
-          </div>
-
-          {/* Metadata */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Metadata</h2>
-            <dl className="space-y-3">
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Created</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {new Date(project.created_at).toLocaleDateString()}
-                </dd>
               </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Last Updated</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {new Date(project.updated_at).toLocaleDateString()}
-                </dd>
-              </div>
-              {project.repositories_synced_at && (
+            )}
+            {project.repositories && project.repositories.length > 0 && (
+              <div className="flex items-center gap-3">
+                <CodeBracketIcon className="h-5 w-5 text-gray-400" />
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Repositories Last Synced</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {new Date(project.repositories_synced_at).toLocaleString()}
-                  </dd>
+                  <p className="text-sm text-gray-500">Repositories</p>
+                  <p className="text-gray-900">{project.repositories.length} repositories</p>
                 </div>
-              )}
-            </dl>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* GitHub Repositories */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <CodeBracketIcon className="h-5 w-5" />
-              GitHub Repositories
-            </h2>
-            <span className="text-sm text-gray-500">
-              {project.repositories.length} {project.repositories.length === 1 ? 'repository' : 'repositories'}
-            </span>
+        {/* Analytics Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Stacked Area Chart - Activity Trends */}
+          <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <ChartBarIcon className="h-5 w-5 text-indigo-500" />
+                Activity Trends (Last 90 Days)
+              </h2>
+            </div>
+            <div className="h-[300px] w-full">
+              {activitiesLoading ? (
+                <div className="h-full flex items-center justify-center text-gray-500">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span>Loading activity data...</span>
+                  </div>
+                </div>
+              ) : activities.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-gray-500">
+                  <div className="text-center">
+                    <p className="text-sm">No activities found for this project</p>
+                    <p className="text-xs mt-1 text-gray-400">
+                      Try adjusting the date range or check project configuration
+                    </p>
+                  </div>
+                </div>
+              ) : activityStats.dailyTrends.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={activityStats.dailyTrends}
+                    margin={{
+                      top: 10,
+                      right: 10,
+                      left: 0,
+                      bottom: 0,
+                    }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => {
+                        try {
+                          // Handle both string and Date objects
+                          const date = typeof value === 'string' ? new Date(value + 'T00:00:00') : value;
+                          return format(date, 'MM/dd');
+                        } catch (e) {
+                          return value;
+                        }
+                      }}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: '8px',
+                        border: 'none',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      }}
+                      labelFormatter={(value) => {
+                        try {
+                          const date = typeof value === 'string' ? new Date(value + 'T00:00:00') : value;
+                          return format(date, 'MMM dd, yyyy');
+                        } catch (e) {
+                          return value;
+                        }
+                      }}
+                    />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="github"
+                      name="GitHub"
+                      stackId="1"
+                      stroke="#3B82F6"
+                      fill="#3B82F6"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="slack"
+                      name="Slack"
+                      stackId="1"
+                      stroke="#8B5CF6"
+                      fill="#8B5CF6"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="notion"
+                      name="Notion"
+                      stackId="1"
+                      stroke="#14B8A6"
+                      fill="#14B8A6"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="recordings"
+                      name="Recordings"
+                      stackId="1"
+                      stroke="#EF4444"
+                      fill="#EF4444"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500">
+                  {activitiesLoading ? 'Loading trend data...' : 'No trend data available'}
+                </div>
+              )}
+            </div>
           </div>
-          {project.repositories.length > 0 ? (
+
+          {/* Radar Chart - Activity Distribution */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <span className="text-xl">🎯</span>
+              Focus Areas
+            </h2>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart
+                  cx="50%"
+                  cy="50%"
+                  outerRadius="80%"
+                  data={[
+                    {
+                      subject: 'GitHub',
+                      A: activityStats.bySource.github,
+                      fullMark: Math.max(activityStats.bySource.github, activityStats.bySource.slack, activityStats.bySource.notion, activityStats.bySource.recordings) || 100,
+                    },
+                    {
+                      subject: 'Slack',
+                      A: activityStats.bySource.slack,
+                      fullMark: Math.max(activityStats.bySource.github, activityStats.bySource.slack, activityStats.bySource.notion, activityStats.bySource.recordings) || 100,
+                    },
+                    {
+                      subject: 'Notion',
+                      A: activityStats.bySource.notion,
+                      fullMark: Math.max(activityStats.bySource.github, activityStats.bySource.slack, activityStats.bySource.notion, activityStats.bySource.recordings) || 100,
+                    },
+                    {
+                      subject: 'Recordings',
+                      A: activityStats.bySource.recordings,
+                      fullMark: Math.max(activityStats.bySource.github, activityStats.bySource.slack, activityStats.bySource.notion, activityStats.bySource.recordings) || 100,
+                    },
+                  ]}
+                >
+                  <PolarGrid />
+                  <PolarAngleAxis
+                    dataKey="subject"
+                    tick={{ fill: '#4B5563', fontSize: 12 }}
+                  />
+                  <Radar
+                    name="Activities"
+                    dataKey="A"
+                    stroke="#4F46E5"
+                    fill="#4F46E5"
+                    fillOpacity={0.6}
+                  />
+                  <Tooltip />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Activity Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {/* Total Activities */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Total Activities</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">
+                  {activityStats.total.toLocaleString()}
+                </p>
+              </div>
+              <span className="text-4xl">📊</span>
+            </div>
+          </div>
+
+          {/* GitHub Activities */}
+          {activityStats.bySource.github > 0 && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">GitHub</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">
+                    {activityStats.bySource.github.toLocaleString()}
+                  </p>
+                </div>
+                <span className="text-4xl">🐙</span>
+              </div>
+            </div>
+          )}
+
+          {/* Slack Activities */}
+          {activityStats.bySource.slack > 0 && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Slack</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">
+                    {activityStats.bySource.slack.toLocaleString()}
+                  </p>
+                </div>
+                <span className="text-4xl">💬</span>
+              </div>
+            </div>
+          )}
+
+          {/* Other Sources */}
+          {(activityStats.bySource.notion > 0 || activityStats.bySource.recordings > 0) && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Other Sources</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">
+                    {(activityStats.bySource.notion + activityStats.bySource.recordings).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Notion, Recordings</p>
+                </div>
+                <span className="text-4xl">📝</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* GitHub Repositories */}
+        {project.repositories && project.repositories.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <CodeBracketIcon className="h-5 w-5" />
+                GitHub Repositories
+              </h2>
+              <span className="text-sm text-gray-500">
+                {project.repositories.length} {project.repositories.length === 1 ? 'repository' : 'repositories'}
+              </span>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {project.repositories.map((repo) => (
                 <a
@@ -237,81 +543,16 @@ export default function ProjectDetailPage() {
                 </a>
               ))}
             </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <CodeBracketIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-sm">No repositories found</p>
-              <p className="text-xs mt-1">
-                Repositories are automatically synced from GitHub Teams at midnight (KST)
-              </p>
-            </div>
-          )}
+          </div>
+        )}
+
+        {/* Activities Section */}
+        <div className="mt-8">
+          <ActivitiesView
+            initialProjectFilter={projectKey}
+            showMemberFilter={false}
+          />
         </div>
-
-        {/* Drive Folders */}
-        {project.drive_folders.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <FolderIcon className="h-5 w-5" />
-              Google Drive Folders
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {project.drive_folders.map((folderId) => (
-                <a
-                  key={folderId}
-                  href={`https://drive.google.com/drive/folders/${folderId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <FolderIcon className="h-4 w-4" />
-                  <span className="text-sm">{folderId}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Notion Pages */}
-        {project.notion_page_ids.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <DocumentTextIcon className="h-5 w-5" />
-              Notion Pages
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {project.notion_page_ids.map((pageId) => (
-                <a
-                  key={pageId}
-                  href={`https://www.notion.so/${pageId.replace(/-/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
-                >
-                  <DocumentTextIcon className="h-4 w-4" />
-                  <span className="text-sm">{pageId}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Sub Projects */}
-        {project.sub_projects.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Sub Projects</h2>
-            <div className="flex flex-wrap gap-2">
-              {project.sub_projects.map((subProject) => (
-                <span
-                  key={subProject}
-                  className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-800 rounded-lg text-sm"
-                >
-                  {subProject}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
