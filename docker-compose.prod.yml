@@ -61,6 +61,10 @@ services:
       
       # Admin Addresses (comma-separated)
       ADMIN_ADDRESSES: ${ADMIN_ADDRESSES}
+      
+      # AI API (Tokamak)
+      AI_API_KEY: ${AI_API_KEY}
+      AI_API_URL: ${AI_API_URL:-https://api.toka.ngrok.app}
     volumes:
       - ./config:/app/config:ro
       - ./data/logs/backend:/app/logs
