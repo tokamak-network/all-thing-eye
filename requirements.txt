@@ -1,7 +1,7 @@
 # Core Dependencies
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-pydantic>=2.5.0
+pydantic==2.9.2
 pydantic-settings>=2.1.0
 email-validator>=2.1.0  # Required for pydantic EmailStr validation
 anyio>=4.0.0
