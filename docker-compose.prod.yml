@@ -35,36 +35,40 @@ services:
     environment:
       # Timezone
       TZ: Asia/Seoul
-      
+
       # MongoDB Connection
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
       MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
-      
+
       # GitHub Plugin
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       GITHUB_ORG: ${GITHUB_ORG}
-      
+
       # Slack Plugin
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_USER_TOKEN: ${SLACK_USER_TOKEN}
-      
+
       # Notion Plugin
       NOTION_TOKEN: ${NOTION_TOKEN}
-      
+
       # Google Drive Plugin
       GOOGLE_APPLICATION_CREDENTIALS: /app/config/google_drive/credentials.json
       GOOGLE_ADMIN_EMAIL: ${GOOGLE_ADMIN_EMAIL}
-      
+
       # Translation API
       DEEPL_API_KEY: ${DEEPL_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}  # Legacy, kept for backward compatibility
-      
+      GEMINI_API_KEY: ${GEMINI_API_KEY} # Legacy, kept for backward compatibility
+
       # Admin Addresses (comma-separated)
       ADMIN_ADDRESSES: ${ADMIN_ADDRESSES}
-      
+
       # AI API (Tokamak)
       AI_API_KEY: ${AI_API_KEY}
       AI_API_URL: ${AI_API_URL:-https://api.toka.ngrok.app}
+      
+      # Slack Bot
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
     volumes:
       - ./config:/app/config:ro
       - ./data/logs/backend:/app/logs
@@ -74,7 +78,13 @@ services:
     networks:
       - all-thing-eye
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import requests; requests.get('http://localhost:8000/health', timeout=5)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -109,11 +119,11 @@ services:
     restart: unless-stopped
     environment:
       TZ: Asia/Seoul
-      
+
       # MongoDB Connection
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
       MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
-      
+
       # API Tokens
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       GITHUB_ORG: ${GITHUB_ORG}

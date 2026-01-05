@@ -19,7 +19,8 @@ sys.path.insert(0, str(project_root))
 from src.core.config import Config
 from src.core.mongo_manager import get_mongo_manager
 from src.utils.logger import get_logger
-from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, projects_management, exports_mongo, database_mongo, auth, stats_mongo, notion_export_mongo, ai_processed, custom_export, ai_proxy, mcp_api, mcp_agent
+from src.scheduler.slack_scheduler import SlackScheduler
+from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, projects_management, exports_mongo, database_mongo, auth, stats_mongo, notion_export_mongo, ai_processed, custom_export, ai_proxy, mcp_api, mcp_agent, slack_bot
 
 logger = get_logger(__name__)
 
@@ -48,6 +49,12 @@ async def lifespan(app: FastAPI):
     mongo_manager = get_mongo_manager(mongo_config)
     mongo_manager.connect_async()  # This is synchronous despite the name
     app.state.mongo_manager = mongo_manager
+    
+    # Initialize Slack Scheduler
+    print("⏰ Initializing Slack Scheduler...")
+    slack_scheduler = SlackScheduler(mongo_manager)
+    await slack_scheduler.start()
+    app.state.slack_scheduler = slack_scheduler
     
     print("✅ API startup complete")
     
@@ -243,6 +250,13 @@ app.include_router(
     mcp_agent.router,
     prefix="/api/v1",
     tags=["mcp-agent"]
+)
+
+# Slack Bot routes
+app.include_router(
+    slack_bot.router,
+    prefix="/api/v1/slack",
+    tags=["slack-bot"]
 )
 
 # GraphQL endpoint
