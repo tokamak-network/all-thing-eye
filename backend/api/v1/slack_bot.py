@@ -232,7 +232,7 @@ async def publish_app_home(user_id: str):
             {"type": "divider"},
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": "💡 *Tip*: You can also call this at any time using the `/schedule` command."}
+                "text": {"type": "mrkdwn", "text": "💡 *Tip*: You can also use the `/ati-schedule` command anytime."}
             }
         ]
     }
@@ -304,7 +304,8 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
     command = form_data.get("command")
     trigger_id = form_data.get("trigger_id")
     
-    if command in ["/schedule", "/ati-schedule"]:
+    # All commands use 'ati-' prefix to avoid conflicts with other bots
+    if command == "/ati-schedule":
         await open_schedule_modal(trigger_id)
         return "" # Acknowledge immediately
         

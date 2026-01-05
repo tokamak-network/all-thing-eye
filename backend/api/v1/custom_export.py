@@ -452,6 +452,11 @@ async def fetch_slack_data(db, members: List[str], date_filter: dict, member_inf
         
         messages = list(db["slack_messages"].find(query).sort("posted_at", -1))
         for msg in messages:
+            # Clean text: replace newlines with space, strip whitespace
+            # No truncation - keep full message for data analysis
+            raw_text = msg.get("text") or ""
+            clean_text = raw_text.replace('\n', ' ').replace('\r', ' ').strip()
+            
             results.append({
                 "source": "slack",
                 "type": "message",
@@ -459,7 +464,7 @@ async def fetch_slack_data(db, members: List[str], date_filter: dict, member_inf
                 "member_email": member_info.get("email"),
                 "timestamp": msg.get("posted_at"),
                 "channel": msg.get("channel_name"),
-                "text": (msg.get("text") or "")[:300],
+                "text": clean_text,
                 "has_thread": bool(msg.get("thread_ts")),
                 "reactions_count": len(msg.get("reactions", [])),
             })
@@ -926,7 +931,13 @@ async def export_custom_data(
                 if field not in ordered_fields:
                     ordered_fields.append(field)
             
-            writer = csv.DictWriter(output_stream, fieldnames=ordered_fields, extrasaction='ignore')
+            # Use QUOTE_ALL to properly handle special characters and newlines
+            writer = csv.DictWriter(
+                output_stream, 
+                fieldnames=ordered_fields, 
+                extrasaction='ignore',
+                quoting=csv.QUOTE_ALL
+            )
             writer.writeheader()
             writer.writerows(results)
             
