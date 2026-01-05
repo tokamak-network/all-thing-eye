@@ -304,11 +304,11 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
     command = form_data.get("command")
     trigger_id = form_data.get("trigger_id")
     
-    if command == "/schedule":
+    if command in ["/schedule", "/ati-schedule"]:
         await open_schedule_modal(trigger_id)
         return "" # Acknowledge immediately
         
-    return {"text": f"알 수 없는 명령어입니다: {command}"}
+    return {"text": f"Unknown command: {command}"}
 
 @router.post("/interactive")
 async def slack_interactive(request: Request, background_tasks: BackgroundTasks):
