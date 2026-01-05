@@ -1,11 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { XMarkIcon, ChatBubbleLeftRightIcon, ChevronDownIcon, ArrowsPointingOutIcon } from "@heroicons/react/24/outline";
+import {
+  XMarkIcon,
+  ChatBubbleLeftRightIcon,
+  ChevronDownIcon,
+  ArrowsPointingOutIcon,
+  TrashIcon,
+  StopCircleIcon,
+} from "@heroicons/react/24/outline";
 import { api } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { isTokenValid } from "@/lib/jwt";
+import { isSessionValid } from "@/lib/auth";
 
 interface FloatingAIChatbotProps {
   selectedFields?: string[];
@@ -30,6 +39,8 @@ export const AI_CHAT_STORAGE_KEY = "ai-chat-messages";
 export const AI_CHAT_MODEL_KEY = "ai-chat-model";
 export const AI_CHAT_MCP_KEY = "ai-chat-use-mcp";
 export const AI_CHAT_AGENT_KEY = "ai-chat-use-agent";
+export const AI_CHAT_SESSIONS_KEY = "ai-chat-sessions";
+export const AI_CHAT_CURRENT_SESSION_KEY = "ai-chat-current-session-id";
 export const AI_CHAT_CHANNEL_NAME = "ai-chat-sync";
 
 // AI Chat Mode
@@ -51,19 +62,25 @@ export const getBroadcastChannel = (): BroadcastChannel | null => {
 };
 
 // Helper to save messages to localStorage and broadcast to other instances
-export const saveMessagesToStorage = (messages: Message[], broadcast = true) => {
+export const saveMessagesToStorage = (
+  messages: Message[],
+  broadcast = true
+) => {
   try {
-    const serializable = messages.map(m => ({
+    const serializable = messages.map((m) => ({
       ...m,
-      timestamp: m.timestamp.toISOString()
+      timestamp: m.timestamp.toISOString(),
     }));
     localStorage.setItem(AI_CHAT_STORAGE_KEY, JSON.stringify(serializable));
-    
+
     // Broadcast to other tabs/components
     if (broadcast) {
       const channel = getBroadcastChannel();
       if (channel) {
-        channel.postMessage({ type: "messages_updated", messages: serializable });
+        channel.postMessage({
+          type: "messages_updated",
+          messages: serializable,
+        });
       }
     }
   } catch (e) {
@@ -79,7 +96,7 @@ export const loadMessagesFromStorage = (): Message[] => {
       const parsed = JSON.parse(stored);
       return parsed.map((m: any) => ({
         ...m,
-        timestamp: new Date(m.timestamp)
+        timestamp: new Date(m.timestamp),
       }));
     }
   } catch (e) {
@@ -102,23 +119,53 @@ export default function FloatingAIChatbot({
   contextData,
 }: FloatingAIChatbotProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "system-1",
-      role: "system",
-      content:
-        "👋 Hi! I'm your AI assistant with access to All-Thing-Eye data. I can answer questions about team members, projects, GitHub commits, Slack messages, and more. Try asking about specific projects or team members!",
-      timestamp: new Date(),
-    },
-  ]);
-  const [chatMode, setChatMode] = useState<AIChatMode>("agent"); // Default to Agent mode
-  const [input, setInput] = useState("");
-  const [agentIterations, setAgentIterations] = useState<number | null>(null);
-  const [agentToolCalls, setAgentToolCalls] = useState<Array<{tool: string; args: any}>>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("gpt-oss:120b");
-  const [availableModels, setAvailableModels] = useState<Array<{ name: string; size?: string }>>([]);
+  const [chatMode, setChatMode] = useState<AIChatMode>("agent");
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [agentIterations, setAgentIterations] = useState<number | null>(null);
+  const [agentToolCalls, setAgentToolCalls] = useState<
+    Array<{ tool: string; args: any }>
+  >([]);
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = () => {
+      const isValid = isTokenValid() || isSessionValid();
+      setIsAuthenticated(isValid);
+    };
+
+    checkAuth();
+    // Re-check auth periodically or on pathname change
+    const interval = setInterval(checkAuth, 5000); // Check every 5 seconds for responsive UI
+    return () => clearInterval(interval);
+  }, [pathname]);
+
+  // Load messages from storage on mount (Only models and mode, messages start fresh)
+  useEffect(() => {
+    setMessages([
+      {
+        id: "system-1",
+        role: "system",
+        content:
+          "👋 Hi! I'm your AI assistant with access to All-Thing-Eye data. I can answer questions about team members, projects, GitHub commits, Slack messages, and more. Try asking about specific projects or team members!",
+        timestamp: new Date(),
+      },
+    ]);
+
+    const savedModel = localStorage.getItem(AI_CHAT_MODEL_KEY);
+    if (savedModel) setSelectedModel(savedModel);
+
+    const savedMode = localStorage.getItem(AI_CHAT_MCP_KEY) as AIChatMode;
+    if (savedMode) setChatMode(savedMode);
+  }, []);
+  const [availableModels, setAvailableModels] = useState<
+    Array<{ name: string; size?: string }>
+  >([]);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -126,45 +173,7 @@ export default function FloatingAIChatbot({
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const modelSelectorRef = useRef<HTMLDivElement>(null);
   const isRequestInProgress = useRef(false); // Prevent duplicate requests
-
-  // Save messages to localStorage whenever they change
-  useEffect(() => {
-    if (messages.length > 1) { // Only save if there's more than the system message
-      saveMessagesToStorage(messages);
-      localStorage.setItem(AI_CHAT_MODEL_KEY, selectedModel);
-      localStorage.setItem(AI_CHAT_MCP_KEY, chatMode);
-    }
-  }, [messages, selectedModel, chatMode]);
-
-  // Listen for BroadcastChannel messages from fullscreen page
-  useEffect(() => {
-    const channel = getBroadcastChannel();
-    if (!channel) return;
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === "messages_updated") {
-        const newMessages = event.data.messages.map((m: any) => ({
-          ...m,
-          timestamp: new Date(m.timestamp)
-        }));
-        setMessages(newMessages);
-      }
-    };
-
-    channel.addEventListener("message", handleMessage);
-    return () => {
-      channel.removeEventListener("message", handleMessage);
-    };
-  }, []);
-
-  // Open fullscreen chat page
-  const openFullscreen = () => {
-    // Save current state before navigating
-    saveMessagesToStorage(messages);
-    localStorage.setItem(AI_CHAT_MODEL_KEY, selectedModel);
-    localStorage.setItem(AI_CHAT_MCP_KEY, chatMode);
-    router.push("/ai-chat");
-  };
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current) {
@@ -182,7 +191,7 @@ export default function FloatingAIChatbot({
     if (isOpen && availableModels.length === 0) {
       loadAvailableModels();
     }
-  }, [isOpen]);
+  }, [isOpen, availableModels.length]);
 
   // Close model selector when clicking outside
   useEffect(() => {
@@ -208,7 +217,7 @@ export default function FloatingAIChatbot({
     try {
       setIsLoadingModels(true);
       const models = await api.listAIModels();
-      
+
       // Handle different response formats
       let modelList: Array<{ name: string; size?: string }> = [];
       if (Array.isArray(models)) {
@@ -221,10 +230,10 @@ export default function FloatingAIChatbot({
 
       // Sort by size (largest first) if size information is available
       modelList.sort((a, b) => {
-        const sizeStrA = typeof a.size === 'string' ? a.size : '';
-        const sizeStrB = typeof b.size === 'string' ? b.size : '';
-        const sizeA = parseFloat(sizeStrA.replace(/[^0-9.]/g, '') || '0');
-        const sizeB = parseFloat(sizeStrB.replace(/[^0-9.]/g, '') || '0');
+        const sizeStrA = typeof a.size === "string" ? a.size : "";
+        const sizeStrB = typeof b.size === "string" ? b.size : "";
+        const sizeA = parseFloat(sizeStrA.replace(/[^0-9.]/g, "") || "0");
+        const sizeB = parseFloat(sizeStrB.replace(/[^0-9.]/g, "") || "0");
         return sizeB - sizeA;
       });
 
@@ -253,7 +262,7 @@ export default function FloatingAIChatbot({
         isOpen &&
         chatWindowRef.current &&
         !chatWindowRef.current.contains(event.target as Node) &&
-        !(event.target as HTMLElement).closest('[data-chatbot-button]')
+        !(event.target as HTMLElement).closest("[data-chatbot-button]")
       ) {
         setIsOpen(false);
       }
@@ -269,15 +278,19 @@ export default function FloatingAIChatbot({
 
   const handleSendMessage = async (message: string) => {
     if (!message.trim()) return;
-    
+
     // Prevent duplicate requests using ref (more reliable than state)
     if (isRequestInProgress.current) {
       console.log("⚠️ Request already in progress, ignoring duplicate");
       return;
     }
-    
+
     isRequestInProgress.current = true;
     console.log("🚀 Starting new request...", { message, chatMode });
+
+    // Initialize AbortController
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     // Add user message
     const userMessage: Message = {
@@ -287,7 +300,10 @@ export default function FloatingAIChatbot({
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => {
+      const newMessages = [...prev, userMessage];
+      return newMessages;
+    });
     setInput("");
     setIsLoading(true);
 
@@ -309,14 +325,19 @@ export default function FloatingAIChatbot({
       let response;
       setAgentIterations(null);
       setAgentToolCalls([]);
-      
+
       if (chatMode === "agent") {
         // Use MCP Agent - AI decides which tools to call
         console.log("🤖 Calling Agent API...");
-        response = await api.chatWithAgent(apiMessages, selectedModel, 10);
+        response = await api.chatWithAgent(
+          apiMessages,
+          selectedModel,
+          10,
+          controller.signal
+        );
         console.log("🤖 Agent response received:", response);
         console.log("🤖 Response keys:", Object.keys(response || {}));
-        
+
         // Store agent metadata
         if (response.iterations) {
           setAgentIterations(response.iterations);
@@ -335,8 +356,13 @@ export default function FloatingAIChatbot({
         if (filters?.selectedMembers?.length) {
           contextHints.member_names = filters.selectedMembers;
         }
-        
-        response = await api.chatWithMCPContext(apiMessages, selectedModel, contextHints);
+
+        response = await api.chatWithMCPContext(
+          apiMessages,
+          selectedModel,
+          contextHints,
+          controller.signal
+        );
       } else {
         // Use direct AI chat (legacy)
         const requestContext: Record<string, any> = {};
@@ -349,25 +375,40 @@ export default function FloatingAIChatbot({
         if (contextData) {
           Object.assign(requestContext, contextData);
         }
-        response = await api.chatWithAI(apiMessages, selectedModel, requestContext);
+        response = await api.chatWithAI(
+          apiMessages,
+          selectedModel,
+          requestContext
+        );
       }
 
       // Extract response content
       // Handle various response formats from AI API and MCP API
       let aiResponseContent = "";
-      
+
       console.log("📝 Parsing response...");
       console.log("   response type:", typeof response);
       console.log("   response.response:", response?.response);
-      console.log("   response.response?.message:", response?.response?.message);
-      console.log("   response.response?.message?.content:", response?.response?.message?.content);
-      
+      console.log(
+        "   response.response?.message:",
+        response?.response?.message
+      );
+      console.log(
+        "   response.response?.message?.content:",
+        response?.response?.message?.content
+      );
+
       if (typeof response === "string") {
         console.log("   → Using string response");
         aiResponseContent = response;
       } else if (response && typeof response === "object") {
+        // Handle new backend format: { answer: "...", ... }
+        if (response.answer) {
+          console.log("   → Using response.answer");
+          aiResponseContent = response.answer;
+        }
         // MCP Agent format: { response: { message: { content: "..." } } }
-        if (response.response?.message?.content) {
+        else if (response.response?.message?.content) {
           console.log("   → Using response.response.message.content");
           aiResponseContent = response.response.message.content;
         }
@@ -400,10 +441,16 @@ export default function FloatingAIChatbot({
         console.log("   → Using String(response)");
         aiResponseContent = String(response);
       }
-      
-      console.log("📝 Final aiResponseContent length:", aiResponseContent.length);
-      console.log("📝 Final aiResponseContent preview:", aiResponseContent.substring(0, 200));
-      
+
+      console.log(
+        "📝 Final aiResponseContent length:",
+        aiResponseContent.length
+      );
+      console.log(
+        "📝 Final aiResponseContent preview:",
+        aiResponseContent.substring(0, 200)
+      );
+
       // Ensure content is always a string
       if (typeof aiResponseContent !== "string") {
         aiResponseContent = JSON.stringify(aiResponseContent, null, 2);
@@ -418,24 +465,33 @@ export default function FloatingAIChatbot({
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error: any) {
+      if (error.name === "CanceledError" || error.name === "AbortError") {
+        console.log("🛑 Request was canceled by user");
+        return;
+      }
+
       console.error("AI API Error:", error);
-      
+
       // Extract error details
-      const errorDetail = error.response?.data?.detail || error.message || "Unknown error";
+      const errorDetail =
+        error.response?.data?.detail || error.message || "Unknown error";
       const statusCode = error.response?.status;
-      
+
       // Determine if it's a server-side issue (503, 502, or backend error messages)
-      const isServerError = statusCode >= 500 || 
-                           errorDetail.includes("Backend error") || 
-                           errorDetail.includes("All backend servers failed") ||
-                           errorDetail.includes("Service Temporarily Unavailable");
-      
+      const isServerError =
+        statusCode >= 500 ||
+        errorDetail.includes("Backend error") ||
+        errorDetail.includes("All backend servers failed") ||
+        errorDetail.includes("Service Temporarily Unavailable");
+
       // Fallback to mock response on error
       const aiMessage: Message = {
         id: `ai-${Date.now()}`,
         role: "assistant",
         content: isServerError
-          ? `⚠️ **AI Service Temporarily Unavailable**\n\nThe AI API server is currently experiencing issues (${statusCode ? `HTTP ${statusCode}` : "Connection Error"}).\n\n**Error Details:** ${errorDetail}\n\n📝 **Using mock response for demonstration:**\n\n${getMockAIResponse(
+          ? `⚠️ **AI Service Temporarily Unavailable**\n\nThe AI API server is currently experiencing issues (${
+              statusCode ? `HTTP ${statusCode}` : "Connection Error"
+            }).\n\n**Error Details:** ${errorDetail}\n\n📝 **Using mock response for demonstration:**\n\n${getMockAIResponse(
               message,
               selectedFields,
               filters || {
@@ -461,13 +517,57 @@ export default function FloatingAIChatbot({
     } finally {
       setIsLoading(false);
       isRequestInProgress.current = false;
+      abortControllerRef.current = null;
       console.log("✅ Request completed");
+    }
+  };
+
+  const handleStopRequest = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsLoading(false);
+      isRequestInProgress.current = false;
+      abortControllerRef.current = null;
+      console.log("🛑 Stop button clicked, request aborted");
     }
   };
 
   const handleQuickQuestion = (question: string) => {
     handleSendMessage(question);
   };
+
+  // Open fullscreen chat page
+  const openFullscreen = () => {
+    // If there are messages beyond system message, save as a new session
+    if (messages.length > 1) {
+      const sessionId = `session-${Date.now()}`;
+      const sessionsJson = localStorage.getItem(AI_CHAT_SESSIONS_KEY);
+      const sessions = sessionsJson ? JSON.parse(sessionsJson) : [];
+
+      const newSession = {
+        id: sessionId,
+        title:
+          messages.find((m) => m.role === "user")?.content?.substring(0, 30) +
+            "..." || "New Chat",
+        messages: messages,
+        lastTimestamp: new Date().toISOString(),
+        model: selectedModel,
+      };
+
+      sessions.unshift(newSession);
+      localStorage.setItem(AI_CHAT_SESSIONS_KEY, JSON.stringify(sessions));
+      localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
+    }
+
+    localStorage.setItem(AI_CHAT_MODEL_KEY, selectedModel);
+    localStorage.setItem(AI_CHAT_MCP_KEY, chatMode);
+    setIsOpen(false); // Close the floating window when moving to fullscreen
+    router.push("/ai-chat");
+  };
+
+  if (!isAuthenticated || pathname === "/login") {
+    return null;
+  }
 
   return (
     <>
@@ -497,7 +597,7 @@ export default function FloatingAIChatbot({
       {isOpen && (
         <div
           ref={chatWindowRef}
-          className="fixed bottom-24 right-6 z-[9999] w-96 h-[600px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
+          className="fixed bottom-24 right-6 z-[9999] w-[500px] h-[650px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
           style={{ zIndex: 9999 }}
         >
           {/* Header */}
@@ -517,6 +617,24 @@ export default function FloatingAIChatbot({
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* Clear Chat Button */}
+                <button
+                  onClick={() => {
+                    setMessages([
+                      {
+                        id: "system-1",
+                        role: "system",
+                        content:
+                          "👋 Hi! I'm your AI assistant with access to All-Thing-Eye data. I can answer questions about team members, projects, GitHub commits, Slack messages, and more. Try asking about specific projects or team members!",
+                        timestamp: new Date(),
+                      },
+                    ]);
+                  }}
+                  className="p-1.5 hover:bg-white rounded-lg transition-colors"
+                  title="Clear conversation"
+                >
+                  <TrashIcon className="w-4 h-4 text-gray-600" />
+                </button>
                 {/* Fullscreen Button */}
                 <button
                   onClick={openFullscreen}
@@ -533,14 +651,19 @@ export default function FloatingAIChatbot({
                     disabled={isLoadingModels}
                   >
                     <span className="font-medium">
-                      {selectedModel.split(':')[0]}
-                      {availableModels.find(m => m.name === selectedModel)?.size 
-                        ? ` (${availableModels.find(m => m.name === selectedModel)?.size})`
-                        : ''}
+                      {selectedModel}
+                      {availableModels.find((m) => m.name === selectedModel)
+                        ?.size
+                        ? ` (${
+                            availableModels.find(
+                              (m) => m.name === selectedModel
+                            )?.size
+                          })`
+                        : ""}
                     </span>
                     <ChevronDownIcon className="w-3 h-3" />
                   </button>
-                  
+
                   {showModelSelector && (
                     <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
                       {isLoadingModels ? (
@@ -562,10 +685,14 @@ export default function FloatingAIChatbot({
                                   : "text-gray-700"
                               }`}
                             >
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{model.name.split(':')[0]}</span>
+                              <div className="flex flex-col">
+                                <span className="font-medium">
+                                  {model.name}
+                                </span>
                                 {model.size && (
-                                  <span className="text-gray-500">({model.size})</span>
+                                  <span className="text-[10px] text-gray-500">
+                                    {model.size}
+                                  </span>
                                 )}
                               </div>
                               {selectedModel === model.name && (
@@ -578,7 +705,7 @@ export default function FloatingAIChatbot({
                     </div>
                   )}
                 </div>
-                
+
                 <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full flex items-center gap-1">
                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                   Online
@@ -587,61 +714,28 @@ export default function FloatingAIChatbot({
             </div>
           </div>
 
-          {/* Chat Mode Selector */}
+          {/* Chat Mode Status (Fixed to Agent) */}
           <div className="p-3 bg-purple-50 border-b border-purple-100">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm">{chatMode === "agent" ? "🤖" : chatMode === "mcp" ? "🔌" : "💬"}</span>
+                <span className="text-sm">🤖</span>
                 <span className="text-xs font-medium text-purple-900">
-                  {chatMode === "agent" ? "Agent Mode" : chatMode === "mcp" ? "MCP Context" : "Direct Mode"}
+                  Agent Mode Active
                 </span>
               </div>
             </div>
-            <div className="flex gap-1">
-              <button
-                onClick={() => setChatMode("agent")}
-                className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
-                  chatMode === "agent" 
-                    ? "bg-purple-600 text-white" 
-                    : "bg-white text-gray-700 hover:bg-purple-100"
-                }`}
-              >
-                🤖 Agent
-              </button>
-              <button
-                onClick={() => setChatMode("mcp")}
-                className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
-                  chatMode === "mcp" 
-                    ? "bg-purple-600 text-white" 
-                    : "bg-white text-gray-700 hover:bg-purple-100"
-                }`}
-              >
-                🔌 MCP
-              </button>
-              <button
-                onClick={() => setChatMode("direct")}
-                className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
-                  chatMode === "direct" 
-                    ? "bg-purple-600 text-white" 
-                    : "bg-white text-gray-700 hover:bg-purple-100"
-                }`}
-              >
-                💬 Direct
-              </button>
-            </div>
-            <p className="text-xs text-purple-600 mt-1">
-              {chatMode === "agent" && "AI decides which tools to call automatically"}
-              {chatMode === "mcp" && "AI queries data based on your question"}
-              {chatMode === "direct" && "Basic AI chat without data access"}
+            <p className="text-xs text-purple-600">
+              AI decides which tools to call automatically based on your data.
             </p>
-            {agentIterations && chatMode === "agent" && (
+            {agentIterations && (
               <div className="mt-2 p-2 bg-white rounded border border-purple-200 text-xs">
                 <span className="text-purple-700">
-                  🔄 {agentIterations} iterations, {agentToolCalls.length} tool calls
+                  🔄 {agentIterations} iterations, {agentToolCalls.length} tool
+                  calls
                 </span>
                 {agentToolCalls.length > 0 && (
                   <div className="mt-1 text-gray-600">
-                    Tools used: {agentToolCalls.map(t => t.tool).join(", ")}
+                    Tools used: {agentToolCalls.map((t) => t.tool).join(", ")}
                   </div>
                 )}
               </div>
@@ -711,7 +805,8 @@ export default function FloatingAIChatbot({
                     </div>
                   )}
                   {message.role === "assistant" || message.role === "system" ? (
-                    <div className="prose prose-xs max-w-none text-xs leading-relaxed
+                    <div
+                      className="prose prose-xs max-w-none text-xs leading-relaxed
                       prose-headings:text-xs prose-headings:font-semibold prose-headings:text-gray-900 prose-headings:mt-2 prose-headings:mb-1
                       prose-p:text-xs prose-p:text-gray-700 prose-p:my-1
                       prose-strong:text-gray-900 prose-strong:font-semibold
@@ -723,17 +818,18 @@ export default function FloatingAIChatbot({
                       prose-td:px-2 prose-td:py-1 prose-td:text-xs prose-td:border prose-td:border-gray-200
                       prose-code:text-xs prose-code:bg-gray-100 prose-code:px-1 prose-code:rounded
                       [&_table]:w-full [&_table]:border-collapse [&_table]:text-xs
-                      [&_th]:text-left [&_td]:text-left">
+                      [&_th]:text-left [&_td]:text-left"
+                    >
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {typeof message.content === "string" 
-                          ? message.content 
+                        {typeof message.content === "string"
+                          ? message.content
                           : JSON.stringify(message.content, null, 2)}
                       </ReactMarkdown>
                     </div>
                   ) : (
                     <p className="text-xs whitespace-pre-wrap">
-                      {typeof message.content === "string" 
-                        ? message.content 
+                      {typeof message.content === "string"
+                        ? message.content
                         : JSON.stringify(message.content, null, 2)}
                     </p>
                   )}
@@ -821,10 +917,20 @@ export default function FloatingAIChatbot({
                 <span>Send</span>
                 <span>✨</span>
               </button>
+              {isLoading && (
+                <button
+                  type="button"
+                  onClick={handleStopRequest}
+                  className="px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1 text-sm"
+                  title="Stop generation"
+                >
+                  <StopCircleIcon className="w-5 h-5" />
+                  <span>Stop</span>
+                </button>
+              )}
             </form>
             <p className="text-xs text-gray-500 mt-2">
-              🚧 AI responses are simulated. Real AI integration coming in
-              Phase 2.
+              ✨ Powered by All-Thing-Eye MCP Agent ({selectedModel})
             </p>
           </div>
         </div>
@@ -846,10 +952,7 @@ function getMockAIResponse(
 ): string {
   const lowerQuestion = question.toLowerCase();
 
-  if (
-    lowerQuestion.includes("most active") ||
-    lowerQuestion.includes("who")
-  ) {
+  if (lowerQuestion.includes("most active") || lowerQuestion.includes("who")) {
     return `Based on the selected data (${filters.startDate} to ${filters.endDate}), **Jake** appears to be the most active contributor with:
 
 • **32 commits** (highest)
@@ -941,7 +1044,11 @@ Other team members:
   // Default response
   return `I understand you're asking: "${question}"
 
-Based on your current data selection${selectedFields.length > 0 ? ` (${selectedFields.length} fields` : ""}${filters.startDate ? `, ${filters.startDate} to ${filters.endDate}` : ""}${selectedFields.length > 0 || filters.startDate ? ")" : ""}, I can help you analyze:
+Based on your current data selection${
+    selectedFields.length > 0 ? ` (${selectedFields.length} fields` : ""
+  }${filters.startDate ? `, ${filters.startDate} to ${filters.endDate}` : ""}${
+    selectedFields.length > 0 || filters.startDate ? ")" : ""
+  }, I can help you analyze:
 
 • **Activity patterns** and trends
 • **Member comparisons** and rankings
@@ -956,4 +1063,3 @@ Try asking more specific questions like:
 
 🤖 **Note**: This is a simulated response. Real AI will provide more detailed analysis based on your actual data.`;
 }
-

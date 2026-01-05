@@ -820,13 +820,17 @@ class ApiClient {
   async chatWithMCPContext(
     messages: Array<{ role: string; content: string }>,
     model?: string,
-    contextHints?: Record<string, any>
+    contextHints?: Record<string, any>,
+    signal?: AbortSignal
   ) {
-    const response = await this.client.post("/mcp/chat", {
+    const isDev = process.env.NODE_ENV === "development";
+    const endpoint = isDev ? "/mcp/chat/test" : "/mcp/chat";
+    
+    const response = await this.client.post(endpoint, {
       messages,
       model,
       context_hints: contextHints,
-    });
+    }, { signal });
     return response.data;
   }
 
@@ -837,7 +841,8 @@ class ApiClient {
   async chatWithAgent(
     messages: Array<{ role: string; content: string }>,
     model?: string,
-    maxIterations?: number
+    maxIterations?: number,
+    signal?: AbortSignal
   ) {
     // Use test endpoint in development (no auth required)
     // Use regular endpoint in production (requires auth)
@@ -851,7 +856,7 @@ class ApiClient {
       messages,
       model,
       max_iterations: maxIterations || 10,
-    });
+    }, { signal });
     
     console.log(`🤖 Agent API response:`, response.data);
     return response.data;

@@ -5,18 +5,19 @@ import {
   ArrowLeftIcon, 
   ChevronDownIcon,
   TrashIcon,
-  PaperAirplaneIcon
+  PaperAirplaneIcon,
+  PlusIcon,
+  ChatBubbleLeftIcon,
+  StopCircleIcon
 } from "@heroicons/react/24/outline";
 import { api } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useRouter } from "next/navigation";
 import {
-  AI_CHAT_STORAGE_KEY,
   AI_CHAT_MODEL_KEY,
-  AI_CHAT_MCP_KEY,
-  loadMessagesFromStorage,
-  saveMessagesToStorage,
+  AI_CHAT_SESSIONS_KEY,
+  AI_CHAT_CURRENT_SESSION_KEY,
   getBroadcastChannel,
 } from "@/components/FloatingAIChatbot";
 
@@ -25,6 +26,14 @@ interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  lastTimestamp: string;
+  model: string;
 }
 
 const quickQuestions = [
@@ -49,62 +58,105 @@ const systemMessage: Message = {
 export default function AIChat() {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([systemMessage]);
-  const [useMCP, setUseMCP] = useState(true);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("gpt-oss:120b");
   const [availableModels, setAvailableModels] = useState<Array<{ name: string; size?: string }>>([]);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [agentIterations, setAgentIterations] = useState<number | null>(null);
+  const [agentToolCalls, setAgentToolCalls] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const modelSelectorRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Load messages from localStorage on mount
+  // Load sessions from localStorage on mount
   useEffect(() => {
-    const stored = loadMessagesFromStorage();
-    if (stored.length > 0) {
-      setMessages(stored);
+    const savedSessions = localStorage.getItem(AI_CHAT_SESSIONS_KEY);
+    if (savedSessions) {
+      const parsedSessions = JSON.parse(savedSessions).map((s: any) => ({
+        ...s,
+        messages: s.messages.map((m: any) => ({
+          ...m,
+          timestamp: new Date(m.timestamp)
+        }))
+      }));
+      setSessions(parsedSessions);
+      
+      const lastSessionId = localStorage.getItem(AI_CHAT_CURRENT_SESSION_KEY);
+      if (lastSessionId) {
+        const lastSession = parsedSessions.find((s: any) => s.id === lastSessionId);
+        if (lastSession) {
+          setCurrentSessionId(lastSessionId);
+          setMessages(lastSession.messages);
+        }
+      }
     }
     
     const storedModel = localStorage.getItem(AI_CHAT_MODEL_KEY);
     if (storedModel) setSelectedModel(storedModel);
     
-    const storedMCP = localStorage.getItem(AI_CHAT_MCP_KEY);
-    if (storedMCP) setUseMCP(storedMCP === "true");
-    
     loadAvailableModels();
   }, []);
 
-  // Listen for BroadcastChannel messages from floating chat
+  // Update current session messages when they change
   useEffect(() => {
-    const channel = getBroadcastChannel();
-    if (!channel) return;
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === "messages_updated") {
-        const newMessages = event.data.messages.map((m: any) => ({
-          ...m,
-          timestamp: new Date(m.timestamp)
-        }));
-        setMessages(newMessages);
-      }
-    };
-
-    channel.addEventListener("message", handleMessage);
-    return () => {
-      channel.removeEventListener("message", handleMessage);
-    };
-  }, []);
-
-  // Save messages whenever they change
-  useEffect(() => {
-    if (messages.length > 1) {
-      saveMessagesToStorage(messages);
-      localStorage.setItem(AI_CHAT_MODEL_KEY, selectedModel);
-      localStorage.setItem(AI_CHAT_MCP_KEY, String(useMCP));
+    if (currentSessionId && messages.length > 0) {
+      setSessions(prev => {
+        const updated = prev.map(s => 
+          s.id === currentSessionId 
+            ? { ...s, messages, lastTimestamp: new Date().toISOString() } 
+            : s
+        );
+        localStorage.setItem(AI_CHAT_SESSIONS_KEY, JSON.stringify(updated));
+        return updated;
+      });
     }
-  }, [messages, selectedModel, useMCP]);
+  }, [messages, currentSessionId]);
+
+  // Create a new chat session
+  const createNewSession = () => {
+    const sessionId = `session-${Date.now()}`;
+    const newSession: ChatSession = {
+      id: sessionId,
+      title: "New Chat",
+      messages: [systemMessage],
+      lastTimestamp: new Date().toISOString(),
+      model: selectedModel
+    };
+    
+    setSessions(prev => [newSession, ...prev]);
+    setCurrentSessionId(sessionId);
+    setMessages([systemMessage]);
+    localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
+  };
+
+  const switchSession = (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) {
+      setCurrentSessionId(sessionId);
+      setMessages(session.messages);
+      localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
+    }
+  };
+
+  const deleteSession = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    setSessions(prev => {
+      const updated = prev.filter(s => s.id !== sessionId);
+      localStorage.setItem(AI_CHAT_SESSIONS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    
+    if (currentSessionId === sessionId) {
+      setCurrentSessionId(null);
+      setMessages([systemMessage]);
+      localStorage.removeItem(AI_CHAT_CURRENT_SESSION_KEY);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -161,6 +213,8 @@ export default function AIChat() {
         { name: "qwen3:30b", size: "30.5B" },
         { name: "gemma3:27b", size: "27.4B" },
         { name: "qwen3:8b", size: "8.2B" },
+        { name: "llama3.1:8b", size: "8.0B" },
+        { name: "deepseek-r1:8b", size: "8.2B" },
       ]);
     } finally {
       setIsLoadingModels(false);
@@ -170,6 +224,23 @@ export default function AIChat() {
   const handleSendMessage = async (message: string) => {
     if (!message.trim() || isLoading) return;
 
+    // Create a new session if none exists
+    let activeSessionId = currentSessionId;
+    if (!activeSessionId) {
+      const sessionId = `session-${Date.now()}`;
+      const newSession: ChatSession = {
+        id: sessionId,
+        title: message.substring(0, 30) + "...",
+        messages: [systemMessage],
+        lastTimestamp: new Date().toISOString(),
+        model: selectedModel
+      };
+      setSessions(prev => [newSession, ...prev]);
+      setCurrentSessionId(sessionId);
+      activeSessionId = sessionId;
+      localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
+    }
+
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -177,34 +248,53 @@ export default function AIChat() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput("");
     setIsLoading(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Update title if it's the first user message
+    if (messages.length <= 1) {
+      setSessions(prev => prev.map(s => 
+        s.id === activeSessionId ? { ...s, title: message.substring(0, 30) + "..." } : s
+      ));
+    }
+
     try {
-      const apiMessages = messages
+      const apiMessages = newMessages
         .filter((msg) => msg.role !== "system")
         .map((msg) => ({
           role: msg.role as "user" | "assistant",
           content: msg.content,
         }));
 
-      apiMessages.push({ role: "user", content: message });
-
       let response;
+      setAgentIterations(null);
+      setAgentToolCalls([]);
       
-      if (useMCP) {
-        response = await api.chatWithMCPContext(apiMessages, selectedModel, {});
-      } else {
-        response = await api.chatWithAI(apiMessages, selectedModel, {});
-      }
+      // Use Agent Mode by default
+      response = await api.chatWithAgent(
+        apiMessages,
+        selectedModel,
+        10,
+        controller.signal
+      );
 
       let aiResponseContent = "";
       
       if (typeof response === "string") {
         aiResponseContent = response;
       } else if (response && typeof response === "object") {
-        if (response.response?.message?.content) {
+        // Handle agent metadata
+        if (response.iterations) setAgentIterations(response.iterations);
+        if (response.tool_calls) setAgentToolCalls(response.tool_calls);
+
+        if (response.answer) {
+          aiResponseContent = response.answer;
+        } else if (response.response?.message?.content) {
           aiResponseContent = response.response.message.content;
         } else if (response.message?.content) {
           aiResponseContent = response.message.content;
@@ -234,6 +324,11 @@ export default function AIChat() {
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error: any) {
+      if (error.name === "CanceledError" || error.name === "AbortError") {
+        console.log("🛑 Request was canceled by user");
+        return;
+      }
+
       console.error("AI API Error:", error);
       const errorDetail = error.response?.data?.detail || error.message || "Unknown error";
       
@@ -246,56 +341,94 @@ export default function AIChat() {
       setMessages((prev) => [...prev, aiMessage]);
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
-  const clearChat = () => {
-    setMessages([systemMessage]);
-    localStorage.removeItem(AI_CHAT_STORAGE_KEY);
+  const handleStopRequest = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsLoading(false);
+      abortControllerRef.current = null;
+      console.log("🛑 Stop button clicked, request aborted");
+    }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-gray-50 to-purple-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+    <div className="flex h-screen bg-white overflow-hidden text-gray-900">
+      {/* Sidebar */}
+      <aside className="w-72 bg-gray-50 flex flex-col border-r border-gray-200">
+        {/* New Chat Button */}
+        <div className="p-4">
+          <button
+            onClick={createNewSession}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white hover:bg-white hover:shadow-md border border-gray-200 rounded-xl transition-all text-sm font-semibold text-gray-700 shadow-sm"
+          >
+            <PlusIcon className="w-5 h-5 text-purple-600" />
+            New Chat
+          </button>
+        </div>
+
+        {/* Sessions List */}
+        <div className="flex-1 overflow-y-auto px-3 space-y-1">
+          <div className="px-2 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            Recent Conversations
+          </div>
+          {sessions.map((session) => (
+            <div
+              key={session.id}
+              onClick={() => switchSession(session.id)}
+              className={`group flex items-center justify-between gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all text-sm ${
+                currentSessionId === session.id
+                  ? "bg-white text-purple-700 shadow-sm border border-purple-100 font-medium"
+                  : "text-gray-600 hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-100"
+              }`}
+            >
+              <div className="flex items-center gap-3 overflow-hidden">
+                <ChatBubbleLeftIcon className={`w-4 h-4 flex-shrink-0 ${currentSessionId === session.id ? 'text-purple-500' : 'text-gray-400'}`} />
+                <span className="truncate">{session.title}</span>
+              </div>
+              <button
+                onClick={(e) => deleteSession(e, session.id)}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded-lg transition-all"
+              >
+                <TrashIcon className="w-4 h-4 text-gray-400 hover:text-red-500" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="p-4 border-t border-gray-200 bg-gray-50/50 text-[10px] text-gray-400 text-center font-medium">
+          ALL-THING-EYE ANALYTICS
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col bg-white overflow-hidden">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-100 shadow-sm z-10">
+          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.back()}
+                onClick={() => router.push("/")}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <ArrowLeftIcon className="w-5 h-5 text-gray-600" />
               </button>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-                  <span className="text-2xl">🤖</span>
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">AI Data Assistant</h1>
-                  <p className="text-sm text-gray-600">Ask anything about your team's activity data</p>
-                </div>
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">AI Data Assistant</h1>
+                <p className="text-xs text-gray-600">
+                  {currentSessionId ? sessions.find(s => s.id === currentSessionId)?.title : "Start a new conversation"}
+                </p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
-              {/* MCP Toggle */}
               <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-lg">
                 <span className="text-sm font-medium text-purple-900">
-                  {useMCP ? "🔌 MCP Active" : "Direct Mode"}
+                  🤖 Agent Mode
                 </span>
-                <button
-                  onClick={() => setUseMCP(!useMCP)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    useMCP ? "bg-purple-600" : "bg-gray-300"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      useMCP ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
               </div>
 
               {/* Model Selector */}
@@ -305,63 +438,57 @@ export default function AIChat() {
                   className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700"
                   disabled={isLoadingModels}
                 >
-                  <span>
-                    {selectedModel.split(':')[0]}
-                    {availableModels.find(m => m.name === selectedModel)?.size 
-                      ? ` (${availableModels.find(m => m.name === selectedModel)?.size})`
-                      : ''}
+                  <span className="truncate max-w-[120px]">
+                    {selectedModel}
                   </span>
                   <ChevronDownIcon className="w-4 h-4" />
                 </button>
                 
                 {showModelSelector && (
                   <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
-                    {isLoadingModels ? (
-                      <div className="p-4 text-center text-sm text-gray-500">Loading models...</div>
-                    ) : (
-                      <div className="py-1">
-                        {availableModels.map((model) => (
-                          <button
-                            key={model.name}
-                            onClick={() => {
-                              setSelectedModel(model.name);
-                              setShowModelSelector(false);
-                            }}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
-                              selectedModel === model.name ? "bg-purple-50 text-purple-700" : "text-gray-700"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{model.name.split(':')[0]}</span>
-                              {model.size && <span className="text-gray-500">({model.size})</span>}
-                            </div>
-                            {selectedModel === model.name && <span className="text-purple-600">✓</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="py-1">
+                      {availableModels.map((model) => (
+                        <button
+                          key={model.name}
+                          onClick={() => {
+                            setSelectedModel(model.name);
+                            setShowModelSelector(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                            selectedModel === model.name ? "bg-purple-50 text-purple-700" : "text-gray-700"
+                          }`}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{model.name}</span>
+                            {model.size && <span className="text-xs text-gray-500">{model.size}</span>}
+                          </div>
+                          {selectedModel === model.name && <span className="text-purple-600">✓</span>}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* Clear Chat */}
-              <button
-                onClick={clearChat}
-                className="p-2 hover:bg-red-50 text-gray-500 hover:text-red-600 rounded-lg transition-colors"
-                title="Clear chat"
-              >
-                <TrashIcon className="w-5 h-5" />
-              </button>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Chat Area */}
-      <div className="flex-1 overflow-hidden max-w-6xl mx-auto w-full">
-        <div className="h-full flex flex-col">
+        {/* Chat Area */}
+        <div className="flex-1 overflow-hidden flex flex-col relative">
           {/* Messages */}
-          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth bg-gray-50/30">
+            {messages.length <= 1 && !currentSessionId && (
+              <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-xl text-4xl mb-2">
+                  🤖
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">How can I help you today?</h2>
+                <p className="text-gray-500 max-w-md">
+                  Select a past conversation or start a new one to analyze your team's data.
+                </p>
+              </div>
+            )}
+
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -385,28 +512,22 @@ export default function AIChat() {
                   
                   {message.role === "assistant" || message.role === "system" ? (
                     <div className="prose prose-sm max-w-none prose-purple 
-                      prose-headings:text-gray-900 prose-headings:font-semibold 
-                      prose-p:text-gray-700 prose-strong:text-gray-900 
+                      prose-headings:text-gray-900 prose-headings:font-bold
+                      prose-p:text-gray-700 prose-strong:text-purple-700 
                       prose-ul:text-gray-700 prose-ol:text-gray-700 prose-li:marker:text-purple-500 
                       prose-table:text-sm prose-table:w-full prose-table:border-collapse
-                      prose-th:bg-purple-100 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:border prose-th:border-purple-200
-                      prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-gray-200
-                      prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-purple-700 
+                      prose-th:bg-purple-50 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:border prose-th:border-purple-100
+                      prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-gray-100
+                      prose-code:bg-purple-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-purple-700 
                       prose-pre:bg-gray-900 prose-pre:text-gray-100
                       [&_table]:w-full [&_table]:border-collapse [&_table]:my-4
                       [&_th]:text-left [&_td]:text-left">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {typeof message.content === "string" 
-                          ? message.content 
-                          : JSON.stringify(message.content, null, 2)}
+                        {message.content}
                       </ReactMarkdown>
                     </div>
                   ) : (
-                    <p className="text-base whitespace-pre-wrap">
-                      {typeof message.content === "string" 
-                        ? message.content 
-                        : JSON.stringify(message.content, null, 2)}
-                    </p>
+                    <p className="text-base whitespace-pre-wrap">{message.content}</p>
                   )}
                   
                   <p className={`text-xs mt-3 ${
@@ -427,7 +548,14 @@ export default function AIChat() {
                       <div className="w-2.5 h-2.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
                       <div className="w-2.5 h-2.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
                     </div>
-                    <span className="text-sm text-purple-700 font-medium">AI is thinking...</span>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-purple-700 font-medium">AI is thinking...</span>
+                      {agentIterations !== null && (
+                        <span className="text-xs text-purple-500">
+                          {agentIterations} iterations, {agentToolCalls.length} tool calls
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -437,8 +565,8 @@ export default function AIChat() {
           </div>
 
           {/* Quick Questions (show only if few messages) */}
-          {messages.length <= 2 && (
-            <div className="px-6 pb-4">
+          {messages.length <= 1 && (
+            <div className="px-6 pb-4 max-w-4xl mx-auto w-full">
               <p className="text-sm font-medium text-gray-600 mb-3">💡 Suggested questions:</p>
               <div className="flex flex-wrap gap-2">
                 {quickQuestions.map((question, index) => (
@@ -455,7 +583,7 @@ export default function AIChat() {
           )}
 
           {/* Input Area */}
-          <div className="p-6 bg-white border-t border-gray-200">
+          <div className="p-6 bg-white border-t border-gray-100">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -470,22 +598,31 @@ export default function AIChat() {
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Ask me anything about your team's data..."
                   disabled={isLoading}
-                  className="flex-1 px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-base shadow-sm"
+                  className="flex-1 px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-base shadow-sm"
                 />
                 <button
                   type="submit"
                   disabled={isLoading || !input.trim()}
-                  className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold flex items-center gap-2 shadow-lg shadow-purple-200"
+                  className="px-8 py-4 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold flex items-center gap-2 shadow-lg shadow-purple-100"
                 >
                   <span>Send</span>
                   <PaperAirplaneIcon className="w-5 h-5" />
                 </button>
+                {isLoading && (
+                  <button
+                    type="button"
+                    onClick={handleStopRequest}
+                    className="px-6 py-4 bg-red-50 text-red-600 border border-red-200 rounded-2xl hover:bg-red-100 transition-colors flex items-center gap-2 font-semibold shadow-lg shadow-red-100"
+                    title="Stop generation"
+                  >
+                    <StopCircleIcon className="w-6 h-6" />
+                    <span>Stop</span>
+                  </button>
+                )}
               </div>
-              {useMCP && (
-                <p className="text-xs text-purple-600 mt-2 text-center">
-                  🔌 MCP is active - AI has access to your GitHub, Slack, and project data
-                </p>
-              )}
+              <p className="text-[10px] text-gray-400 mt-3 text-center">
+                AI Agent autonomously uses tools to access GitHub, Slack, and project data.
+              </p>
             </form>
           </div>
         </div>
