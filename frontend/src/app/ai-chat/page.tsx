@@ -484,7 +484,7 @@ export default function AIChat() {
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">How can I help you today?</h2>
                 <p className="text-gray-500 max-w-md">
-                  Select a past conversation or start a new one to analyze your team's data.
+                  Select a past conversation or start a new one to analyze your team&apos;s data.
                 </p>
               </div>
             )}

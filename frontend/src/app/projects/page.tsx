@@ -654,7 +654,7 @@ export default function ProjectsPage() {
                       placeholder="project-ooo"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Enter channel name (e.g., "project-ooo"). Channel ID will be automatically found and mapped.
+                      Enter channel name (e.g., &quot;project-ooo&quot;). Channel ID will be automatically found and mapped.
                     </p>
                   </div>
 

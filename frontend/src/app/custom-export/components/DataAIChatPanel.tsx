@@ -42,7 +42,13 @@ export default function DataAIChatPanel({
     setCachedData(null);
     setDataStats(null);
     setMessages([]);
-  }, [selectedFields.join(','), filters.startDate, filters.endDate, filters.selectedMembers.join(','), filters.project]);
+  }, [
+    selectedFields,
+    filters.startDate,
+    filters.endDate,
+    filters.selectedMembers,
+    filters.project,
+  ]);
 
   // Load data from custom export API
   const loadData = async () => {

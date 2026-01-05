@@ -57,7 +57,7 @@ export default function ProjectDetailPage() {
     limit: 1000, // Get enough data for statistics
   });
 
-  const activities = activitiesData?.activities || [];
+  const activities = useMemo(() => activitiesData?.activities || [], [activitiesData]);
 
   // Calculate activity statistics
   const activityStats = useMemo(() => {
