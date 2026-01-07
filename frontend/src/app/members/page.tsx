@@ -509,8 +509,13 @@ export default function MembersPage() {
                             projectKeys = member.project.split(",").map((p) => p.trim()).filter(Boolean);
                           }
 
-                          if (projectKeys.length > 0) {
-                            return projectKeys.map((projectKey, idx) => {
+                          // Filter to only show active projects
+                          const activeProjectKeys = projectKeys.filter((pk) => 
+                            projects.some((p) => p.key === pk)
+                          );
+
+                          if (activeProjectKeys.length > 0) {
+                            return activeProjectKeys.map((projectKey, idx) => {
                               const project = projects.find((p) => p.key === projectKey);
                               return (
                                 <span

@@ -416,32 +416,43 @@ export default function MemberDetailPage() {
               </div>
             )}
 
-            {(member.projects && member.projects.length > 0) || member.project ? (
-              <div className="flex items-center gap-3">
-                <FolderIcon className="h-5 w-5 text-gray-400" />
-                <div>
-                  <p className="text-sm text-gray-500">Projects</p>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {(member.projects && member.projects.length > 0
-                      ? member.projects
-                      : member.project
-                      ? [member.project]
-                      : []
-                    ).map((projectKey, idx) => {
-                      const project = projects.find(p => p.key === projectKey);
-                      return (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                        >
-                          {project ? project.name : projectKey}
-                        </span>
-                      );
-                    })}
+            {(() => {
+              // Get all project keys from member
+              const memberProjectKeys = member.projects && member.projects.length > 0
+                ? member.projects
+                : member.project
+                ? [member.project]
+                : [];
+              
+              // Filter to only show active projects
+              const activeProjectKeys = memberProjectKeys.filter((pk) => 
+                projects.some((p) => p.key === pk)
+              );
+
+              if (activeProjectKeys.length === 0) return null;
+
+              return (
+                <div className="flex items-center gap-3">
+                  <FolderIcon className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-500">Projects</p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {activeProjectKeys.map((projectKey, idx) => {
+                        const project = projects.find(p => p.key === projectKey);
+                        return (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                          >
+                            {project ? project.name : projectKey}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : null}
+              );
+            })()}
 
             {member.identifiers.github && (
               <div className="flex items-center gap-3">

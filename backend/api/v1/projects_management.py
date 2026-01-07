@@ -88,6 +88,13 @@ def get_mongo():
     return mongo_manager
 
 
+def convert_member_ids_to_strings(member_ids: list) -> List[str]:
+    """Convert ObjectIds in member_ids to strings"""
+    if not member_ids:
+        return []
+    return [str(mid) if isinstance(mid, ObjectId) else str(mid) for mid in member_ids]
+
+
 @router.get("/projects", response_model=ProjectListResponse)
 async def get_projects(request: Request, active_only: bool = False):
     """
@@ -137,6 +144,7 @@ async def get_projects(request: Request, active_only: bool = False):
                 notion_page_ids=doc.get("notion_page_ids", []),
                 notion_parent_page_id=doc.get("notion_parent_page_id"),
                 sub_projects=doc.get("sub_projects", []),
+                member_ids=convert_member_ids_to_strings(doc.get("member_ids", [])),
                 is_active=doc.get("is_active", True),
                 created_at=created_at,
                 updated_at=updated_at
@@ -201,10 +209,10 @@ async def get_project(request: Request, project_key: str):
             notion_page_ids=doc.get("notion_page_ids", []),
             notion_parent_page_id=doc.get("notion_parent_page_id"),
             sub_projects=doc.get("sub_projects", []),
-            member_ids=doc.get("member_ids", []),
-            is_active=doc.get("is_active", True),
-            created_at=created_at,
-            updated_at=updated_at
+                member_ids=convert_member_ids_to_strings(doc.get("member_ids", [])),
+                is_active=doc.get("is_active", True),
+                created_at=created_at,
+                updated_at=updated_at
         )
         
     except HTTPException:
@@ -278,10 +286,10 @@ async def create_project(request: Request, body: ProjectCreateRequest):
             notion_page_ids=project_doc.get("notion_page_ids", []),
             notion_parent_page_id=project_doc.get("notion_parent_page_id"),
             sub_projects=project_doc.get("sub_projects", []),
-            member_ids=project_doc.get("member_ids", []),
-            is_active=project_doc.get("is_active", True),
-            created_at=project_doc.get("created_at"),
-            updated_at=project_doc.get("updated_at")
+                member_ids=convert_member_ids_to_strings(project_doc.get("member_ids", [])),
+                is_active=project_doc.get("is_active", True),
+                created_at=project_doc.get("created_at"),
+                updated_at=project_doc.get("updated_at")
         )
         
     except HTTPException:
@@ -307,6 +315,7 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
         mongo = get_mongo()
         db = mongo.db
         projects_collection = db["projects"]
+        members_collection = db["members"]
         
         # Check if project exists
         existing = projects_collection.find_one({"key": project_key})
@@ -341,9 +350,61 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
         if body.sub_projects is not None:
             update_doc["sub_projects"] = body.sub_projects
         if body.member_ids is not None:
-            update_doc["member_ids"] = body.member_ids
+            update_doc["member_ids"] = [ObjectId(mid) if not isinstance(mid, ObjectId) else mid for mid in body.member_ids]
         if body.is_active is not None:
             update_doc["is_active"] = body.is_active
+        
+        # Sync member's projects field when member_ids changes
+        if body.member_ids is not None:
+            old_member_ids = set(str(mid) for mid in existing.get("member_ids", []))
+            new_member_ids = set(body.member_ids)
+            
+            # Members removed from project - remove project key from their projects array
+            removed_members = old_member_ids - new_member_ids
+            for member_id in removed_members:
+                try:
+                    members_collection.update_one(
+                        {"_id": ObjectId(member_id)},
+                        {
+                            "$pull": {"projects": project_key},
+                            "$set": {"updated_at": datetime.utcnow()}
+                        }
+                    )
+                    # Also update team field if it matches this project
+                    member = members_collection.find_one({"_id": ObjectId(member_id)})
+                    if member and member.get("team") == project_key:
+                        # Set team to first remaining project or None
+                        remaining_projects = member.get("projects", [])
+                        new_team = remaining_projects[0] if remaining_projects else None
+                        members_collection.update_one(
+                            {"_id": ObjectId(member_id)},
+                            {"$set": {"team": new_team}}
+                        )
+                    logger.info(f"Removed {project_key} from member {member_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to update member {member_id}: {e}")
+            
+            # Members added to project - add project key to their projects array
+            added_members = new_member_ids - old_member_ids
+            for member_id in added_members:
+                try:
+                    members_collection.update_one(
+                        {"_id": ObjectId(member_id)},
+                        {
+                            "$addToSet": {"projects": project_key},
+                            "$set": {"updated_at": datetime.utcnow()}
+                        }
+                    )
+                    # Also update team field if not set
+                    member = members_collection.find_one({"_id": ObjectId(member_id)})
+                    if member and not member.get("team"):
+                        members_collection.update_one(
+                            {"_id": ObjectId(member_id)},
+                            {"$set": {"team": project_key}}
+                        )
+                    logger.info(f"Added {project_key} to member {member_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to update member {member_id}: {e}")
         
         # Update document
         projects_collection.update_one(
@@ -371,10 +432,10 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
             notion_page_ids=updated.get("notion_page_ids", []),
             notion_parent_page_id=updated.get("notion_parent_page_id"),
             sub_projects=updated.get("sub_projects", []),
-            member_ids=updated.get("member_ids", []),
-            is_active=updated.get("is_active", True),
-            created_at=updated.get("created_at", datetime.utcnow()),
-            updated_at=updated.get("updated_at", datetime.utcnow())
+                member_ids=convert_member_ids_to_strings(updated.get("member_ids", [])),
+                is_active=updated.get("is_active", True),
+                created_at=updated.get("created_at", datetime.utcnow()),
+                updated_at=updated.get("updated_at", datetime.utcnow())
         )
         
     except HTTPException:
@@ -477,6 +538,7 @@ async def sync_repositories(request: Request, project_key: str):
             notion_page_ids=updated.get("notion_page_ids", []),
             notion_parent_page_id=updated.get("notion_parent_page_id"),
             sub_projects=updated.get("sub_projects", []),
+            member_ids=convert_member_ids_to_strings(updated.get("member_ids", [])),
             is_active=updated.get("is_active", True),
             created_at=updated.get("created_at", datetime.utcnow()),
             updated_at=updated.get("updated_at", datetime.utcnow())
