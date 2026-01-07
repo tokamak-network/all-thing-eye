@@ -44,7 +44,7 @@ export default function FilterPanel({
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [membersExpanded, setMembersExpanded] = useState(true);
+  const [membersExpanded, setMembersExpanded] = useState(false); // Collapsed by default to prevent auto-scroll
   const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch members and projects on mount

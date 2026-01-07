@@ -30,11 +30,13 @@ export default function DataAIChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [cachedData, setCachedData] = useState<any>(null);
   const [dataStats, setDataStats] = useState<{ total: number; sources: Record<string, number> } | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto scroll to bottom
+  // Auto scroll to bottom within container only (not the page)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [messages]);
 
   // Reset when selection changes
@@ -271,7 +273,7 @@ export default function DataAIChatPanel({
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 && !cachedData && (
           <div className="text-center text-gray-400 text-sm py-8">
             <p>👆 &quot;불러오기&quot; 버튼을 눌러 시작하세요</p>
@@ -315,8 +317,6 @@ export default function DataAIChatPanel({
             </div>
           </div>
         )}
-        
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Quick Questions */}

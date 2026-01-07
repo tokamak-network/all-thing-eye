@@ -1,12 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import FieldSelector from "./components/FieldSelector";
 import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
 import NotionExportPanel from "./components/NotionExportPanel";
 import DataAIChatPanel from "./components/DataAIChatPanel";
 import { api } from "@/lib/api";
+
+// Helper function to get this month's date range (1st to today)
+function getThisMonthRange(): { startDate: string; endDate: string } {
+  const today = new Date();
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  return {
+    startDate: formatDate(firstDayOfMonth),
+    endDate: formatDate(today),
+  };
+}
 
 export default function CustomExportPage() {
   const [activeTab, setActiveTab] = useState<"custom" | "notion">("custom");
@@ -28,9 +46,12 @@ export default function CustomExportPage() {
     new Set()
   );
 
+  // Initialize with this month's date range
+  const defaultDateRange = useMemo(() => getThisMonthRange(), []);
+  
   const [filters, setFilters] = useState({
-    startDate: "2025-11-01",
-    endDate: "2025-11-27",
+    startDate: defaultDateRange.startDate,
+    endDate: defaultDateRange.endDate,
     project: "all",
     selectedMembers: [] as string[],
   });

@@ -95,8 +95,8 @@ interface MemberDetail {
   name: string;
   email: string;
   role?: string;
-  project?: string;  // Backward compatibility: single project
-  projects?: string[];  // New: array of project keys
+  project?: string; // Backward compatibility: single project
+  projects?: string[]; // New: array of project keys
   identifiers: MemberIdentifiers;
   activity_stats: ActivityStats;
   created_at?: string;
@@ -418,14 +418,15 @@ export default function MemberDetailPage() {
 
             {(() => {
               // Get all project keys from member
-              const memberProjectKeys = member.projects && member.projects.length > 0
-                ? member.projects
-                : member.project
-                ? [member.project]
-                : [];
-              
+              const memberProjectKeys =
+                member.projects && member.projects.length > 0
+                  ? member.projects
+                  : member.project
+                  ? [member.project]
+                  : [];
+
               // Filter to only show active projects
-              const activeProjectKeys = memberProjectKeys.filter((pk) => 
+              const activeProjectKeys = memberProjectKeys.filter((pk) =>
                 projects.some((p) => p.key === pk)
               );
 
@@ -438,7 +439,9 @@ export default function MemberDetailPage() {
                     <p className="text-sm text-gray-500">Projects</p>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {activeProjectKeys.map((projectKey, idx) => {
-                        const project = projects.find(p => p.key === projectKey);
+                        const project = projects.find(
+                          (p) => p.key === projectKey
+                        );
                         return (
                           <span
                             key={idx}
