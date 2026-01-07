@@ -127,6 +127,7 @@ async def get_members(
                     "eoa_address": member.get("eoa_address"),
                     "recording_name": member.get("recording_name"),
                     "identifiers": identifiers,
+                    "is_active": member.get("is_active", True),
                     "created_at": member.get("created_at"),
                     "updated_at": member.get("updated_at")
                 })
