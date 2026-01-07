@@ -1,10 +1,10 @@
 /**
  * GraphQL Hooks
  *
- * Custom React hooks for GraphQL queries.
+ * Custom React hooks for GraphQL queries and mutations.
  */
 
-import { useQuery, QueryResult } from "@apollo/client";
+import { useQuery, useMutation, QueryResult, MutationTuple } from "@apollo/client";
 import {
   GET_MEMBERS,
   GET_MEMBER,
@@ -16,6 +16,10 @@ import {
   GET_MEMBER_DETAIL,
   GET_MEMBER_COLLABORATIONS,
 } from "./queries";
+import {
+  DEACTIVATE_MEMBER,
+  REACTIVATE_MEMBER,
+} from "./mutations";
 import type {
   GetMembersVariables,
   GetMembersResponse,
@@ -35,6 +39,10 @@ import type {
   GetMemberDetailResponse,
   GetMemberCollaborationsVariables,
   GetMemberCollaborationsResponse,
+  DeactivateMemberVariables,
+  DeactivateMemberResponse,
+  ReactivateMemberVariables,
+  ReactivateMemberResponse,
 } from "./types";
 
 /**
@@ -162,6 +170,40 @@ export function useMemberCollaborations(
       variables,
       skip: !variables.name,
       fetchPolicy: "cache-and-network", // Balance between fresh data and performance
+    }
+  );
+}
+
+// ============================================
+// Mutation Hooks
+// ============================================
+
+/**
+ * Hook to deactivate (resign) a member
+ */
+export function useDeactivateMember(): MutationTuple<
+  DeactivateMemberResponse,
+  DeactivateMemberVariables
+> {
+  return useMutation<DeactivateMemberResponse, DeactivateMemberVariables>(
+    DEACTIVATE_MEMBER,
+    {
+      refetchQueries: [{ query: GET_MEMBERS }],
+    }
+  );
+}
+
+/**
+ * Hook to reactivate a member
+ */
+export function useReactivateMember(): MutationTuple<
+  ReactivateMemberResponse,
+  ReactivateMemberVariables
+> {
+  return useMutation<ReactivateMemberResponse, ReactivateMemberVariables>(
+    REACTIVATE_MEMBER,
+    {
+      refetchQueries: [{ query: GET_MEMBERS }],
     }
   );
 }

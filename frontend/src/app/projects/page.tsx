@@ -10,6 +10,7 @@ import {
   PencilIcon,
   TrashIcon,
   FolderIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 
 interface Project {
@@ -49,7 +50,7 @@ interface ProjectListResponse {
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const [activeOnly, setActiveOnly] = useState(true);
+  const [activeTab, setActiveTab] = useState<"active" | "inactive">("active");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -60,7 +61,7 @@ export default function ProjectsPage() {
     loading,
     error: projectsError,
     refetch: refetchProjects,
-  } = useProjects({ isActive: activeOnly });
+  } = useProjects({ isActive: activeTab === "active" });
   const { data: membersData } = useMembers({ limit: 1000 });
 
   // Transform GraphQL data to REST API format
@@ -319,6 +320,31 @@ export default function ProjectsPage() {
     }
   }
 
+  async function handleReactivate(project: Project) {
+    if (
+      !confirm(
+        `Are you sure you want to reactivate project "${project.name}"?`
+      )
+    ) {
+      return;
+    }
+    try {
+      setLocalError(null);
+      // Reactivate project by updating is_active to true
+      await apiClient.updateProject(project.key, {
+        is_active: true,
+      });
+
+      // Refetch projects from GraphQL
+      await refetchProjects();
+    } catch (err: any) {
+      console.error("Error reactivating project:", err);
+      setLocalError(
+        err.response?.data?.detail || err.message || "Failed to reactivate project"
+      );
+    }
+  }
+
   // Extract folder ID from Drive URL
   function extractDriveFolderId(urlOrId: string): string {
     const trimmed = urlOrId.trim();
@@ -414,7 +440,7 @@ export default function ProjectsPage() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
       {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-6">
       <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
               <FolderIcon className="h-8 w-8 text-blue-600" />
@@ -425,15 +451,6 @@ export default function ProjectsPage() {
         </p>
       </div>
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={activeOnly}
-                onChange={(e) => setActiveOnly(e.target.checked)}
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700">Active only</span>
-            </label>
             {canEditProjects && (
               <button
                 onClick={openCreateModal}
@@ -444,6 +461,30 @@ export default function ProjectsPage() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setActiveTab("active")}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "active"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            Active Projects
+          </button>
+          <button
+            onClick={() => setActiveTab("inactive")}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "inactive"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            Inactive Projects
+          </button>
         </div>
 
         {error && (
@@ -536,13 +577,22 @@ export default function ProjectsPage() {
                             <PencilIcon className="h-5 w-5" />
                           </button>
                         )}
-                        {canEditProject(project) && (
+                        {canEditProject(project) && activeTab === "active" && (
                           <button
                             onClick={() => handleDelete(project.key)}
                             className="text-red-600 hover:text-red-900"
-                            title="Delete project"
+                            title="Deactivate project"
                           >
                             <TrashIcon className="h-5 w-5" />
+                          </button>
+                        )}
+                        {canEditProject(project) && activeTab === "inactive" && (
+                          <button
+                            onClick={() => handleReactivate(project)}
+                            className="text-green-600 hover:text-green-900"
+                            title="Reactivate project"
+                          >
+                            <ArrowPathIcon className="h-5 w-5" />
                           </button>
                         )}
                       </div>
@@ -557,12 +607,12 @@ export default function ProjectsPage() {
             <div className="text-center py-12">
               <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">
-                No projects found
+                No {activeTab === "active" ? "active" : "inactive"} projects found
               </h3>
               <p className="mt-1 text-sm text-gray-500">
-                {activeOnly
+                {activeTab === "active"
                   ? "No active projects are configured yet."
-                  : "No projects are configured yet."}
+                  : "No inactive projects. All projects are currently active."}
               </p>
             </div>
           )}

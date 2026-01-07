@@ -19,8 +19,8 @@ import {
 // Get all members
 export const GET_MEMBERS = gql`
   ${MEMBER_FRAGMENT}
-  query GetMembers($limit: Int) {
-    members(limit: $limit) {
+  query GetMembers($limit: Int, $includeInactive: Boolean) {
+    members(limit: $limit, includeInactive: $includeInactive) {
       ...MemberFields
       activityCount
     }

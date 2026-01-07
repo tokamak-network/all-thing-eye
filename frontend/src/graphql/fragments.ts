@@ -20,6 +20,9 @@ export const MEMBER_FRAGMENT = gql`
     eoaAddress
     recordingName
     projectKeys
+    isActive
+    resignedAt
+    resignationReason
   }
 `;
 

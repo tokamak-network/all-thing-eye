@@ -41,6 +41,11 @@ class Member:
     recording_name: Optional[str] = None
     projects: List[str] = strawberry.field(default_factory=list)  # Internal field
     
+    # Employment status fields
+    is_active: bool = True  # False if member has resigned
+    resigned_at: Optional[datetime] = None  # Resignation date (ISO format)
+    resignation_reason: Optional[str] = None  # Optional reason for resignation
+    
     @strawberry.field
     def projectKeys(self) -> List[str]:
         """Get list of project keys this member belongs to."""
@@ -357,7 +362,10 @@ class Project:
                 slack_id=doc.get('slack_id'),
                 notion_id=doc.get('notion_id'),
                 eoa_address=doc.get('eoa_address'),
-                recording_name=doc.get('recording_name')
+                recording_name=doc.get('recording_name'),
+                is_active=doc.get('is_active', True),
+                resigned_at=doc.get('resigned_at'),
+                resignation_reason=doc.get('resignation_reason')
             ))
         
         print(f"✅ [Project.members] Project {self.key}: Found {len(members)}/{len(object_ids)} members")

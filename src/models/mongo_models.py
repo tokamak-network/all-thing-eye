@@ -72,6 +72,11 @@ class Member(BaseModel):
     # Embedded identifiers (was separate member_identifiers table)
     identifiers: List[MemberIdentifier] = Field(default_factory=list)
     
+    # Employment status fields
+    is_active: bool = True  # False if member has resigned
+    resigned_at: Optional[datetime] = None  # Resignation date
+    resignation_reason: Optional[str] = None  # Optional reason for resignation
+    
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

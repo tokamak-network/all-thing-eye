@@ -59,26 +59,67 @@ async def build_members_collection(db, members_config: List[Dict[str, Any]]) -> 
     await members_col.delete_many({})
     print(f"   🗑️  Cleared existing members")
     
+    active_count = 0
+    inactive_count = 0
+    
     for member_config in members_config:
         name = member_config.get('name')
         if not name:
             continue
         
+        # Parse is_active field (default True for backwards compatibility)
+        is_active = member_config.get('is_active', True)
+        
+        # Parse resigned_at field (ISO format string or None)
+        resigned_at_str = member_config.get('resigned_at')
+        resigned_at = None
+        if resigned_at_str:
+            try:
+                resigned_at = datetime.fromisoformat(resigned_at_str.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                print(f"   ⚠️  Invalid resigned_at date for {name}: {resigned_at_str}")
+        
+        # Parse project(s) - can be single string or array
+        project_value = member_config.get('project')
+        projects = []
+        if project_value:
+            if isinstance(project_value, list):
+                projects = project_value
+            elif isinstance(project_value, str):
+                # Handle comma-separated projects
+                projects = [p.strip() for p in project_value.split(',') if p.strip()]
+        
         member_doc = {
             'name': name,
             'email': member_config.get('email'),
             'role': member_config.get('role'),
-            'team': member_config.get('project'),
+            'team': member_config.get('project') if isinstance(member_config.get('project'), str) else None,
+            'projects': projects,  # Array of project keys
+            'github_username': member_config.get('github_id'),
+            'slack_id': member_config.get('slack_id'),
+            'notion_id': member_config.get('notion_id'),
+            'eoa_address': member_config.get('eoa_address'),
             'recording_name': member_config.get('recording_name'),
-            'is_active': True,
+            'is_active': is_active,
+            'resigned_at': resigned_at,
+            'resignation_reason': member_config.get('resignation_reason'),
             'created_at': datetime.utcnow()
         }
         
         result = await members_col.insert_one(member_doc)
         member_name_to_id[name] = result.inserted_id
-        print(f"   ✅ {name}")
+        
+        # Status indicator
+        if is_active:
+            print(f"   ✅ {name}")
+            active_count += 1
+        else:
+            print(f"   ⏸️  {name} (inactive)")
+            inactive_count += 1
     
     print(f"\n   📊 Total: {len(member_name_to_id)} members created")
+    print(f"      - Active: {active_count}")
+    print(f"      - Inactive: {inactive_count}")
     return member_name_to_id
 
 

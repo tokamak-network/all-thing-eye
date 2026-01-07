@@ -11,7 +11,20 @@
 #     notion_id: Notion user ID (optional)
 #     eoa_address: Ethereum address for All-Thing-Eye beta access (optional)
 #     role: Role in the team (e.g., "Project Lead", "Developer")
-#     project: Project name (e.g., "project-ooo")
+#     project: Project name(s), comma-separated (e.g., "project-ooo, project-syb")
+#     is_active: Employment status (true/false, default: true)
+#     resigned_at: Resignation date in ISO format (e.g., "2025-01-15")
+#     resignation_reason: Optional reason for leaving
+#
+# Resigned Member Example:
+#   - name: "Former Member"
+#     email: "former@tokamak.network"
+#     is_active: false
+#     resigned_at: "2025-01-15"
+#     resignation_reason: "Left for another opportunity"
+#
+# Note: Inactive members are hidden from the member list by default,
+# but their historical activity data is preserved for reporting.
 
 # Core Team Members
 - name: "Kevin"
@@ -35,6 +48,7 @@
   slack_id: "theo@tokamak.network"
   notion_id: "theo@tokamak.network"
   eoa_address: "0xf109a6faa0c8adae8ccb114f4ab55d47e8fd4be6"
+  project: "project-trh"
 
 - name: "Ale"
   email: "ale@tokamak.network"
@@ -48,6 +62,7 @@
   slack_id: "harvey@tokamak.network"
   notion_id: "harvey@tokamak.network"
   eoa_address: "0x6E1c4a442E9B9ddA59382ee78058650F1723E0F6"
+  project: "project-eco"
 
 - name: "Suhyeon"
   email: "suhyeon@tokamak.network"
@@ -88,6 +103,7 @@
   slack_id: "nam@tokamak.network"
   notion_id: "nam@tokamak.network"
   eoa_address: "0x3122c65da0e288fb745f07d8c81b10427b28e7ad"
+  project: "project-trh"
 
 - name: "Jamie"
   email: "jamie@tokamak.network"
@@ -104,6 +120,7 @@
   slack_id: "aryan@tokamak.network"
   notion_id: "aryan@tokamak.network"
   eoa_address: "0x97826f4bf96EFa51Ef92184D7555A9Ac4DD7db80"
+  project: "project-syb, project-trh"
 
 - name: "Thomas"
   email: "thomas@tokamak.network"
@@ -111,6 +128,7 @@
   slack_id: "thomas@tokamak.network"
   notion_id: "thomas@tokamak.network"
   eoa_address: "0xb7ae0b891f6ebd3dcf12501465a830d59e4d0b79"
+  project: "project-eco"
 
 - name: "Muhammed"
   email: "muhammed@tokamak.network"
@@ -118,6 +136,7 @@
   slack_id: "muhammed@tokamak.network"
   notion_id: "muhammed@tokamak.network"
   eoa_address: "0x1a39C31277f7fB4A44F9bb22a47a85e4bB68B307"
+  project: "project-ooo"
 
 - name: "Mehdi"
   email: "mehdi@tokamak.network"
@@ -125,6 +144,7 @@
   slack_id: "mehdi@tokamak.network"
   notion_id: "mehdi@tokamak.network"
   eoa_address: "0x15759359e60a3b9e59ea7a96d10fa48829f83beb"
+  project: "project-ooo, project-trh"
 
 - name: "George"
   email: "george@tokamak.network"
@@ -132,6 +152,7 @@
   slack_id: "george@tokamak.network"
   notion_id: "george@tokamak.network"
   eoa_address: "0xB4032ff3335F0E54Fb0291793B35955e5dA30B0C"
+  project: "project-trh"
 
 - name: "Singh"
   email: "singh@tokamak.network"
@@ -139,12 +160,14 @@
   slack_id: "singh@tokamak.network"
   notion_id: "singh@tokamak.network"
   eoa_address: "0xf90432b76A23bC7bB50b868dC4257C5F5B401742"
+  project: "project-syb, project-trh"
 
 - name: "Nil"
   email: "nil@tokamak.network"
   github_id: "nsoroush"
   slack_id: "nil@tokamak.network"
   notion_id: "nil@tokamak.network"
+  project: "project-syb, project-ooo"
 
 - name: "Luca"
   email: "luca@tokamak.network"
@@ -152,6 +175,7 @@
   slack_id: "luca@tokamak.network"
   notion_id: "luca@tokamak.network"
   eoa_address: "0x99b2227d5a42c58f632d0152636f06fc89155c17"
+  project: "project-syb, project-ooo"
 
 - name: "Jeff"
   email: "jeff@tokamak.network"
@@ -159,6 +183,7 @@
   slack_id: "jeff@tokamak.network"
   notion_id: "jeff@tokamak.network"
   eoa_address: "0x5c61cb743bfdca46e829e3e6f1d3b56efbb56e20"
+  project: "project-syb"
 
 - name: "Aamir"
   email: "aamir@tokamak.network"
@@ -166,6 +191,7 @@
   slack_id: "aamir@tokamak.network"
   notion_id: "amir@tokamak.network"
   eoa_address: "0x7f88539538ae808e45e23ff6c2b897d062616c4e"
+  project: "project-ooo, project-syb"
 
 - name: "Manish"
   email: "manish@tokamak.network"
@@ -173,12 +199,14 @@
   slack_id: "manish@tokamak.network"
   notion_id: "manish@tokamak.network"
   eoa_address: "0x6E0733e7960b3dF52cDb8C995F3B1010846b33de"
+  project: "project-trh"
 
 - name: "Bernard"
   email: "bernard@tokamak.network"
   github_id: "b3rnardlee"
   slack_id: "bernard@tokamak.network"
   notion_id: "bernard@tokamak.network"
+  project: "project-eco"
 
 - name: "Eugenie"
   email: "eugenie@tokamak.network"
@@ -186,18 +214,21 @@
   slack_id: "eugenie@tokamak.network"
   notion_id: "eugenie@tokamak.network"
   eoa_address: "0x763d8edabee545bf49082b910e3715f3048f21cc"
+  project: "project-eco"
 
 - name: "Monica"
   email: "monica@tokamak.network"
   slack_id: "monica@tokamak.network"
   notion_id: "monica@tokamak.network"
   eoa_address: "0x248d48e44da385476072c9d65c043113a3839b91"
+  project: "project-ooo, project-trh"
 
 - name: "Irene"
   email: "irene@tokamak.network"
   slack_id: "irene@tokamak.network"
   notion_id: "irene@tokamak.network"
   eoa_address: "0xa615a44c47e39c23c27eca57a3ea6e65748cf07b"
+  project: "project-hr"
 
 - name: "Jaden"
   email: "jaden@tokamak.network"
@@ -210,6 +241,13 @@
   slack_id: "rangga@tokamak.network"
   notion_id: "rangga@tokamak.network"
   eoa_address: "0xce3025524c751715bc4d941dbdf30b1d94342698"
+  project: "project-cm"
+
+- name: "Sahil"
+  email: "sahil@tokamak.network"
+  slack_id: "sahil@tokamak.network"
+  notion_id: "sahil@tokamak.network"
+  project: "project-trh"
 
 # External Contributors / Guests
 # (외부 협력자 - 특정 프로젝트 채널에만 참여)
@@ -220,7 +258,6 @@
   notion_id: "jeongun@tokamak.network"
   eoa_address: "0x00000000E59C101331dAbA409170159a48300000"
   role: "External Contributor"
-
 # Add more members here as needed
 # - name: "New Member"
 #   email: "newmember@tokamak.network"
@@ -228,4 +265,10 @@
 #   slack_id: "newmember@tokamak.network"
 #   notion_id: "newmember@tokamak.network"
 #   eoa_address: "0x..."
-
+#
+# To mark a member as resigned/inactive:
+# - name: "Former Member"
+#   email: "former@tokamak.network"
+#   is_active: false
+#   resigned_at: "2025-01-15"
+#   resignation_reason: "Left the team"

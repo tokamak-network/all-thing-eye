@@ -490,7 +490,8 @@ class Query:
         self,
         info,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        include_inactive: bool = False
     ) -> List[Member]:
         """
         Get all members with pagination.
@@ -498,15 +499,25 @@ class Query:
         Args:
             limit: Maximum number of members to return (default: 100)
             offset: Number of members to skip (default: 0)
+            include_inactive: If True, include resigned/inactive members (default: False)
             
         Returns:
             List of Member objects
         """
         db = info.context['db']
         
+        # Build query filter
+        query_filter = {}
+        if not include_inactive:
+            # Only show active members by default
+            query_filter['$or'] = [
+                {'is_active': True},
+                {'is_active': {'$exists': False}}  # Backwards compatibility
+            ]
+        
         members = []
         # Sort by name alphabetically (case-insensitive)
-        async for doc in db['members'].find().sort('name', 1).skip(offset).limit(limit):
+        async for doc in db['members'].find(query_filter).sort('name', 1).skip(offset).limit(limit):
             member_name = doc['name']
             member_id = str(doc['_id'])
             
@@ -552,7 +563,10 @@ class Query:
                 notion_id=notion_id,
                 eoa_address=doc.get('eoa_address'),
                 recording_name=doc.get('recording_name'),
-                projects=doc.get('projects', [])
+                projects=doc.get('projects', []),
+                is_active=doc.get('is_active', True),
+                resigned_at=doc.get('resigned_at'),
+                resignation_reason=doc.get('resignation_reason')
             ))
         
         return members
@@ -632,7 +646,10 @@ class Query:
             notion_id=notion_id,
             eoa_address=doc.get('eoa_address'),
             recording_name=doc.get('recording_name'),
-            projects=doc.get('projects', [])
+            projects=doc.get('projects', []),
+            is_active=doc.get('is_active', True),
+            resigned_at=doc.get('resigned_at'),
+            resignation_reason=doc.get('resignation_reason')
         )
     
     @strawberry.field

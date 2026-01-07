@@ -7,6 +7,7 @@ Creates the Strawberry GraphQL schema for the All-Thing-Eye platform.
 import strawberry
 from strawberry.extensions import QueryDepthLimiter, MaxTokensLimiter
 from .queries import Query
+from .mutations import Mutation
 from .extensions import (
     PerformanceMonitoringExtension,
     QueryComplexityExtension,
@@ -17,8 +18,8 @@ from .extensions import (
 # Create GraphQL schema with security and monitoring extensions
 schema = strawberry.Schema(
     query=Query,
-    # Future: Add mutations and subscriptions here
-    # mutation=Mutation,
+    mutation=Mutation,
+    # Future: Add subscriptions here
     # subscription=Subscription,
     extensions=[
         # Security: Limit query depth to prevent deeply nested queries

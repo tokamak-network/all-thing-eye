@@ -25,10 +25,15 @@ export interface Member {
   slackId?: string;
   notionId?: string;
   eoaAddress?: string;
+  recordingName?: string;
   projectKeys?: string[];
   projectDetails?: Project[];
   activityCount?: number;
   recentActivities?: Activity[];
+  // Employment status fields
+  isActive?: boolean;
+  resignedAt?: string;
+  resignationReason?: string;
 }
 
 // Activity type
@@ -72,6 +77,7 @@ export interface Project {
 // Query variables types
 export interface GetMembersVariables {
   limit?: number;
+  includeInactive?: boolean;
 }
 
 export interface GetMemberVariables {
@@ -237,4 +243,35 @@ export interface GetMemberCollaborationsVariables {
 // Query response for member collaborations
 export interface GetMemberCollaborationsResponse {
   memberCollaborations: CollaborationNetwork;
+}
+
+// Mutation types
+
+// Member update result
+export interface MemberUpdateResult {
+  success: boolean;
+  message: string;
+  member?: Member;
+}
+
+// Deactivate member mutation variables
+export interface DeactivateMemberVariables {
+  memberId: string;
+  resignationReason?: string;
+  resignedAt?: string;
+}
+
+// Reactivate member mutation variables
+export interface ReactivateMemberVariables {
+  memberId: string;
+}
+
+// Deactivate member mutation response
+export interface DeactivateMemberResponse {
+  deactivateMember: MemberUpdateResult;
+}
+
+// Reactivate member mutation response
+export interface ReactivateMemberResponse {
+  reactivateMember: MemberUpdateResult;
 }
