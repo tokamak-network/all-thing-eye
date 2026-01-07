@@ -53,9 +53,10 @@ export default function FilterPanel({
       try {
         setLoading(true);
         
-        // Fetch members
+        // Fetch members (filter out inactive members)
         const membersResponse = await api.getMembers({ limit: 100 });
         const memberList = membersResponse
+          .filter((m: any) => m.isActive !== false && m.is_active !== false) // Exclude inactive members
           .map((m: any) => ({ name: m.name, email: m.email }))
           .filter((m: Member) => m.name)
           .sort((a: Member, b: Member) => a.name.localeCompare(b.name));
