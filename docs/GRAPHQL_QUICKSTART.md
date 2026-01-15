@@ -1,6 +1,6 @@
 # GraphQL Quick Start Guide
 
-**Phase 1 Implementation Complete** ✅
+**Phase 3 Implementation Complete** ✅ (Frontend Integrated)
 
 ---
 
@@ -13,6 +13,17 @@
 - ✅ 6 Query resolvers (members, member, activities, projects, project, activitySummary)
 - ✅ Field resolvers for computed fields
 - ✅ Support for all data sources (GitHub, Slack, Notion, Drive)
+
+### Frontend (Complete)
+
+- ✅ **All frontend pages now use GraphQL** (`POST /graphql`)
+- ✅ `ActivitiesView.tsx` - Uses `GetActivities` query
+- ✅ Dashboard - Uses GraphQL for statistics
+- ✅ REST API is only used for admin/script operations
+
+> **⚠️ CRITICAL**: The frontend does NOT use `/api/v1/activities` REST API.
+> Always modify `backend/graphql/queries.py` for frontend data changes.
+> See `docs/FRONTEND_API_ARCHITECTURE.md` for details.
 
 ### Files Created
 
@@ -711,7 +722,8 @@ If you see:
 - [x] `activities` query returns data
 - [x] Field resolvers work (e.g., `Member.activityCount`)
 - [x] Filtering works (source, member, date)
-- [ ] Frontend migrates first page to Apollo Client (Phase 3)
+- [x] Frontend uses GraphQL for all data fetching (Phase 3 Complete)
+- [x] Notion diff data integrated via `notion_content_diffs` collection
 
 ---
 

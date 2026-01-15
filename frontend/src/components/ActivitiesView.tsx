@@ -1925,6 +1925,30 @@ export default function ActivitiesView({
                   {/* Notion Details */}
                   {activity.source_type === "notion" && (
                     <div className="space-y-3">
+                      {/* Activity Type Badge for Notion Diff */}
+                      <div className="flex items-center space-x-2">
+                        {activity.activity_type === "notion_block" && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            📝 Content Edit
+                          </span>
+                        )}
+                        {activity.activity_type === "notion_comment" && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            💬 Comment
+                          </span>
+                        )}
+                        {activity.activity_type === "notion_page_edit" && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            📄 Page Edit
+                          </span>
+                        )}
+                        {!["notion_block", "notion_comment", "notion_page_edit"].includes(activity.activity_type) && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            📝 Edit
+                          </span>
+                        )}
+                      </div>
+
                       {/* Timestamp */}
                       <div>
                         <span className="text-xs font-medium text-gray-500">
@@ -1938,7 +1962,8 @@ export default function ActivitiesView({
                         </p>
                       </div>
 
-                      {activity.metadata?.title && (
+                      {/* Page Title */}
+                      {(activity.metadata?.title || activity.metadata?.page_title) && (
                         <div>
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-gray-500">
@@ -1950,7 +1975,7 @@ export default function ActivitiesView({
                                   e.stopPropagation();
                                   handleTranslate(
                                     activity.id,
-                                    activity.metadata.title,
+                                    activity.metadata.title || activity.metadata.page_title,
                                     "en"
                                   );
                                 }}
@@ -1972,7 +1997,7 @@ export default function ActivitiesView({
                                   e.stopPropagation();
                                   handleTranslate(
                                     activity.id,
-                                    activity.metadata.title,
+                                    activity.metadata.title || activity.metadata.page_title,
                                     "ko"
                                   );
                                 }}
@@ -1993,7 +2018,7 @@ export default function ActivitiesView({
                           </div>
                           <p className="text-sm text-gray-900 mt-1">
                             {translations[activity.id]?.text ||
-                              activity.metadata.title}
+                              activity.metadata.title || activity.metadata.page_title}
                           </p>
                           {translations[activity.id] && (
                             <p className="text-xs text-gray-400 mt-1">
@@ -2005,7 +2030,110 @@ export default function ActivitiesView({
                           )}
                         </div>
                       )}
-                      {activity.metadata?.comments && (
+
+                      {/* GitHub-style Changes Display */}
+                      {(activity.metadata?.additions !== undefined ||
+                        activity.metadata?.deletions !== undefined ||
+                        activity.metadata?.blocks_added !== undefined) && (
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-medium text-gray-500">
+                              Changes:
+                            </span>
+                            <span className="text-xs font-medium text-green-600">
+                              +{activity.metadata.additions || activity.metadata.blocks_added || 0}
+                            </span>
+                            <span className="text-xs font-medium text-red-600">
+                              -{activity.metadata.deletions || activity.metadata.blocks_deleted || 0}
+                            </span>
+                            {activity.metadata?.blocks_modified > 0 && (
+                              <span className="text-xs font-medium text-yellow-600">
+                                ~{activity.metadata.blocks_modified}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Detailed Changes (Expandable) */}
+                      {activity.metadata?.changes && (
+                        <div className="mt-2 space-y-2">
+                          {/* Added Content */}
+                          {activity.metadata.changes.added?.length > 0 && (
+                            <div className="bg-green-50 border border-green-200 rounded p-2">
+                              <span className="text-xs font-medium text-green-700 block mb-1">
+                                ➕ Added ({activity.metadata.changes.added.length})
+                              </span>
+                              <div className="space-y-1 max-h-32 overflow-y-auto">
+                                {activity.metadata.changes.added.slice(0, 5).map((item: any, idx: number) => (
+                                  <p key={idx} className="text-xs text-green-800 bg-green-100 px-2 py-1 rounded">
+                                    {typeof item === 'string' ? item : item.content || JSON.stringify(item)}
+                                  </p>
+                                ))}
+                                {activity.metadata.changes.added.length > 5 && (
+                                  <p className="text-xs text-green-600 italic">
+                                    ... and {activity.metadata.changes.added.length - 5} more
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Deleted Content */}
+                          {activity.metadata.changes.deleted?.length > 0 && (
+                            <div className="bg-red-50 border border-red-200 rounded p-2">
+                              <span className="text-xs font-medium text-red-700 block mb-1">
+                                ➖ Deleted ({activity.metadata.changes.deleted.length})
+                              </span>
+                              <div className="space-y-1 max-h-32 overflow-y-auto">
+                                {activity.metadata.changes.deleted.slice(0, 5).map((item: any, idx: number) => (
+                                  <p key={idx} className="text-xs text-red-800 bg-red-100 px-2 py-1 rounded line-through">
+                                    {typeof item === 'string' ? item : item.content || JSON.stringify(item)}
+                                  </p>
+                                ))}
+                                {activity.metadata.changes.deleted.length > 5 && (
+                                  <p className="text-xs text-red-600 italic">
+                                    ... and {activity.metadata.changes.deleted.length - 5} more
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Modified Content */}
+                          {activity.metadata.changes.modified?.length > 0 && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded p-2">
+                              <span className="text-xs font-medium text-yellow-700 block mb-1">
+                                ✏️ Modified ({activity.metadata.changes.modified.length})
+                              </span>
+                              <div className="space-y-2 max-h-40 overflow-y-auto">
+                                {activity.metadata.changes.modified.slice(0, 3).map((item: any, idx: number) => (
+                                  <div key={idx} className="text-xs border-l-2 border-yellow-400 pl-2">
+                                    {item.old_content && (
+                                      <p className="text-red-700 bg-red-50 px-1 rounded line-through">
+                                        {item.old_content.substring(0, 100)}...
+                                      </p>
+                                    )}
+                                    {item.new_content && (
+                                      <p className="text-green-700 bg-green-50 px-1 rounded mt-1">
+                                        {item.new_content.substring(0, 100)}...
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                                {activity.metadata.changes.modified.length > 3 && (
+                                  <p className="text-xs text-yellow-600 italic">
+                                    ... and {activity.metadata.changes.modified.length - 3} more
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Legacy comments display */}
+                      {activity.metadata?.comments && !activity.metadata?.changes && (
                         <div>
                           <span className="text-sm text-gray-500">
                             💬 {activity.metadata.comments} comments
@@ -2014,10 +2142,10 @@ export default function ActivitiesView({
                       )}
 
                       {/* Link Button */}
-                      {activity.metadata?.url && (
+                      {(activity.metadata?.url || activity.metadata?.page_url) && (
                         <div className="mt-3">
                           <a
-                            href={activity.metadata.url}
+                            href={activity.metadata.url || activity.metadata.page_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}

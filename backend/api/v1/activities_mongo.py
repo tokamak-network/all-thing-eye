@@ -463,105 +463,97 @@ async def get_activities(
                     ))
             
             elif source == 'notion':
-                pages = db["notion_pages"]
+                # Use notion_content_diffs for granular change tracking (1-minute collection)
+                diffs = db["notion_content_diffs"]
                 query = {}
+                
                 if filter_member_name:
-                    # Reverse lookup: Find UUIDs for this member name
-                    identifiers = get_identifiers_for_member(member_mappings, 'notion', filter_member_name)
-                    # Build $or conditions for multiple search fields
-                    or_conditions = []
-                    if identifiers:
-                        or_conditions.append({'created_by.id': {'$in': identifiers}})
-                        or_conditions.append({'created_by.email': {'$in': identifiers}})
-                    # Always add name search as fallback (case-insensitive)
-                    or_conditions.append({'created_by.name': {"$regex": f"^{filter_member_name}", "$options": "i"}})
-                    query['$or'] = or_conditions
+                    # Search by editor name (case-insensitive)
+                    query['editor_name'] = {"$regex": f"^{filter_member_name}", "$options": "i"}
+                
                 if date_filter:
-                    query['created_time'] = date_filter
+                    # Convert date filter for string timestamp comparison
+                    timestamp_query = {}
+                    if '$gte' in date_filter:
+                        timestamp_query['$gte'] = date_filter['$gte'].isoformat() if isinstance(date_filter['$gte'], datetime) else str(date_filter['$gte'])
+                    if '$lte' in date_filter:
+                        timestamp_query['$lte'] = date_filter['$lte'].isoformat() if isinstance(date_filter['$lte'], datetime) else str(date_filter['$lte'])
+                    if timestamp_query:
+                        query['timestamp'] = timestamp_query
+                
                 if filter_keyword:
-                    # Search in page title and content
-                    # Use $and to combine member filter with keyword search
+                    # Search in page title
                     keyword_conditions = [
-                        {'title': {'$regex': filter_keyword, '$options': 'i'}},
-                        {'content': {'$regex': filter_keyword, '$options': 'i'}}
+                        {'document_title': {'$regex': filter_keyword, '$options': 'i'}}
                     ]
-                    if '$or' in query:
-                        # If member filter exists, combine with keyword search using $and
-                        query = {
-                            '$and': [
-                                {'$or': query['$or']},
-                                {'$or': keyword_conditions}
-                            ]
-                        }
+                    if query:
+                        query = {'$and': [query, {'$or': keyword_conditions}]}
                     else:
                         query['$or'] = keyword_conditions
-                if project_config and project_config['notion_page_ids']:
-                    # Filter by project Notion page IDs
-                    if '$and' in query:
-                        query['$and'].append({'id': {'$in': project_config['notion_page_ids']}})
-                    elif '$or' in query:
-                        query = {
-                            '$and': [
-                                {'$or': query['$or']},
-                                {'id': {'$in': project_config['notion_page_ids']}}
-                            ]
-                        }
-                    else:
-                        query['id'] = {'$in': project_config['notion_page_ids']}
                 
-                async for page in pages.find(query).sort("created_time", -1).limit(source_limit):
-                    created_time = page.get('created_time')
-                    # Add 'Z' to indicate UTC timezone for proper frontend conversion
-                    if isinstance(created_time, datetime):
-                        timestamp_str = created_time.isoformat() + 'Z' if created_time.tzinfo is None else created_time.isoformat()
+                if project_config and project_config.get('notion_page_ids'):
+                    # Filter by project Notion page IDs
+                    page_filter = {'document_id': {'$in': project_config['notion_page_ids']}}
+                    if query:
+                        query = {'$and': [query, page_filter]} if '$and' not in query else query
+                        if '$and' in query:
+                            query['$and'].append(page_filter)
                     else:
-                        timestamp_str = str(created_time) if created_time else ''
+                        query = page_filter
+                
+                async for diff in diffs.find(query).sort("timestamp", -1).limit(source_limit):
+                    timestamp_val = diff.get('timestamp', '')
+                    # Ensure timestamp is a string
+                    if isinstance(timestamp_val, datetime):
+                        timestamp_str = timestamp_val.isoformat() + 'Z' if timestamp_val.tzinfo is None else timestamp_val.isoformat()
+                    else:
+                        timestamp_str = str(timestamp_val) if timestamp_val else ''
                     
-                    # Map Notion user to member name (MUST use members.yaml standard name)
-                    notion_user = page.get('created_by', {})
-                    notion_user_name = notion_user.get('name', '')
-                    notion_user_email = notion_user.get('email', '')
-                    notion_user_id = notion_user.get('id', '')
+                    # Get editor name directly from diff record
+                    display_member_name = diff.get('editor_name', 'Unknown')
+                    if not display_member_name or display_member_name == 'Unknown':
+                        editor_id = diff.get('editor_id', '')
+                        display_member_name = f"Notion-{editor_id[:8]}" if editor_id else "Unknown"
                     
-                    # Priority 1: Map by email (most reliable)
-                    display_member_name = None
-                    if notion_user_email:
-                        display_member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_email)
-                        if display_member_name and '@' not in display_member_name:
-                            # Successfully mapped to members.yaml name
-                            pass
-                        else:
-                            display_member_name = None
+                    # Get changes for metadata
+                    changes = diff.get('changes', {})
+                    added_items = changes.get('added', [])
+                    deleted_items = changes.get('deleted', [])
+                    modified_items = changes.get('modified', [])
                     
-                    # Priority 2: Map by UUID
-                    if not display_member_name and notion_user_id:
-                        display_member_name = get_mapped_member_name(member_mappings, 'notion', notion_user_id)
-                        if display_member_name and display_member_name != notion_user_id and 'Notion-' not in display_member_name:
-                            # Successfully mapped
-                            pass
-                        else:
-                            display_member_name = None
+                    # Calculate additions/deletions like GitHub
+                    additions = len(added_items)
+                    deletions = len(deleted_items)
                     
-                    # Priority 3: Extract first name from full name (fallback)
-                    if not display_member_name and notion_user_name:
-                        # "Manish Kumar" → "Manish", "Jaden Kong" → "Jaden"
-                        first_name = notion_user_name.split()[0] if ' ' in notion_user_name else notion_user_name
-                        display_member_name = first_name.capitalize() if first_name else None
+                    # Add line-level changes from modified blocks
+                    for mod in modified_items:
+                        if isinstance(mod, dict):
+                            additions += len(mod.get('added_lines', []))
+                            deletions += len(mod.get('deleted_lines', []))
                     
-                    # Priority 4: Use short UUID if nothing else works
-                    if not display_member_name:
-                        display_member_name = f"Notion-{notion_user_id[:8]}" if notion_user_id else "Unknown"
+                    # Determine activity type based on diff type
+                    diff_type = diff.get('diff_type', 'block')
+                    activity_type = f'notion_{diff_type}'
                     
                     activities.append(ActivityResponse(
-                        id=str(page['_id']),
+                        id=str(diff['_id']),
                         member_name=display_member_name,
                         source_type='notion',
-                        activity_type='page_created',
+                        activity_type=activity_type,
                         timestamp=timestamp_str,
                         metadata={
-                            'title': page.get('title'),
-                            'comments': page.get('comments_count', 0),
-                            'url': page.get('url')
+                            'page_id': diff.get('document_id'),
+                            'page_title': diff.get('document_title'),
+                            'title': diff.get('document_title'),  # For backward compatibility
+                            'page_url': diff.get('document_url'),
+                            'url': diff.get('document_url'),  # For backward compatibility
+                            'diff_type': diff_type,
+                            'additions': additions,
+                            'deletions': deletions,
+                            'blocks_added': len(added_items),
+                            'blocks_deleted': len(deleted_items),
+                            'blocks_modified': len(modified_items),
+                            'changes': changes
                         }
                     ))
             

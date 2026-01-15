@@ -999,105 +999,116 @@ class Query:
             slack_after = len(activities)
             print(f"🔍 [{request_id}] 💬 Slack activities added: {slack_after - slack_before}")
         
-        # Notion pages
-        # Filter by project name in title if project_key is specified
-        # When project filter is active, ignore member filter (filter by title only)
+        # Notion content diffs (1-minute granular change tracking)
+        # Uses notion_content_diffs collection for real-time change tracking
         if 'notion' in sources:
             query = {}
-            # When project filter is active, ignore member filter (filter by title only)
-            if project_key:
-                # Project filter is active - only filter by project name in title, ignore member
-                if not project_name:
-                    # Project has no name configured - return empty results
-                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no name configured - returning empty results")
-                    query['title'] = {'$regex': '^$'}  # Match nothing
-            elif member_name:
-                # REST API pattern: only created_by (not last_edited_by)
-                notion_ids = member_identifiers.get('notion', [])
-                or_conditions = []
-                if notion_ids:
-                    or_conditions.append({'created_by.id': {'$in': notion_ids}})
-                    or_conditions.append({'created_by.email': {'$in': notion_ids}})
-                # Always add name search as fallback (case-insensitive)
-                or_conditions.append({'created_by.name': {'$regex': f'^{member_name}', '$options': 'i'}})
-                query['$or'] = or_conditions
-                print(f"🔍 [{request_id}] 📝 Notion identifiers for '{member_name}': {notion_ids}")
             
+            # Filter by member name (editor_name field)
+            if member_name:
+                query['editor_name'] = {'$regex': f'^{member_name}', '$options': 'i'}
+                print(f"🔍 [{request_id}] 📝 Notion diff filter by editor: {member_name}")
+            
+            # Date filters - timestamp is stored as ISO string
             if start_date:
-                # Notion stores last_edited_time as timezone-naive datetime
-                # Convert timezone-aware datetime to timezone-naive UTC for comparison
                 from datetime import timezone as tz
-                start_date_naive = start_date.astimezone(tz.utc).replace(tzinfo=None)
-                query['last_edited_time'] = {'$gte': start_date_naive}
+                start_str = start_date.astimezone(tz.utc).isoformat()
+                query['timestamp'] = {'$gte': start_str}
             if end_date:
-                # Notion stores last_edited_time as timezone-naive datetime
-                # Convert timezone-aware datetime to timezone-naive UTC for comparison
                 from datetime import timezone as tz
-                end_date_naive = end_date.astimezone(tz.utc).replace(tzinfo=None)
-                query['last_edited_time'] = query.get('last_edited_time', {})
-                query['last_edited_time']['$lte'] = end_date_naive
-            if keyword:
-                query['title'] = {'$regex': keyword, '$options': 'i'}
+                end_str = end_date.astimezone(tz.utc).isoformat()
+                query['timestamp'] = query.get('timestamp', {})
+                query['timestamp']['$lte'] = end_str
             
-            # Filter by project name in title if project_key is specified
+            # Keyword search in document title
+            if keyword:
+                query['document_title'] = {'$regex': keyword, '$options': 'i'}
+            
+            # Project filter by title
             if project_name:
-                # Add project name to title filter (case-insensitive)
-                if 'title' in query:
-                    # If keyword already exists, combine with $and
-                    existing_title_regex = query['title']
+                if 'document_title' in query:
                     query = {
                         '$and': [
                             query,
-                            {'title': {'$regex': project_name, '$options': 'i'}}
+                            {'document_title': {'$regex': project_name, '$options': 'i'}}
                         ]
                     }
                 else:
-                    query['title'] = {'$regex': project_name, '$options': 'i'}
-                print(f"🔍 [{request_id}] 📝 Filtering Notion by project name in title: {project_name}")
+                    query['document_title'] = {'$regex': project_name, '$options': 'i'}
+                print(f"🔍 [{request_id}] 📝 Filtering Notion diffs by project: {project_name}")
             
             print(f"🔍 [{request_id}] 📝 Notion query: {query}")
             
-            async for doc in db['notion_pages'].find(query).sort('last_edited_time', -1).limit(limit * 2):
-                # Get the person who actually made the action (last_edited_by preferred)
-                last_edited_by = doc.get('last_edited_by', {})
-                created_by = doc.get('created_by', {})
-                
-                # Priority: last_edited_by (the person who actually made the action)
-                notion_id = last_edited_by.get('id') or created_by.get('id')
-                fallback_name = last_edited_by.get('name') or created_by.get('name', 'Unknown')
-                
-                # Convert Notion ID to display name
-                if notion_id:
-                    doc_member_name = identifier_to_member.get(('notion', notion_id), fallback_name)
-                else:
-                    doc_member_name = fallback_name
+            notion_before = len(activities)
+            async for doc in db['notion_content_diffs'].find(query).sort('timestamp', -1).limit(limit * 2):
+                # Get editor name directly from diff record
+                doc_member_name = doc.get('editor_name', 'Unknown')
+                if not doc_member_name or doc_member_name == 'Unknown':
+                    editor_id = doc.get('editor_id', '')
+                    doc_member_name = f"Notion-{editor_id[:8]}" if editor_id else "Unknown"
                 
                 # Capitalize first letter
                 if doc_member_name and isinstance(doc_member_name, str) and len(doc_member_name) > 0:
                     doc_member_name = doc_member_name[0].upper() + doc_member_name[1:]
                 
-                # Safely get timestamp
-                timestamp = ensure_datetime(doc.get('last_edited_time') or doc.get('created_time'))
-                if not timestamp:
-                    continue  # Skip documents without timestamp
+                # Parse timestamp from ISO string
+                timestamp_str = doc.get('timestamp', '')
+                try:
+                    if timestamp_str:
+                        from datetime import datetime
+                        # Handle various ISO formats
+                        if timestamp_str.endswith('Z'):
+                            timestamp_str = timestamp_str[:-1] + '+00:00'
+                        timestamp = datetime.fromisoformat(timestamp_str)
+                    else:
+                        continue
+                except:
+                    continue
+                
+                # Get changes for metadata
+                changes = doc.get('changes', {})
+                added_items = changes.get('added', [])
+                deleted_items = changes.get('deleted', [])
+                modified_items = changes.get('modified', [])
+                
+                # Calculate additions/deletions like GitHub
+                additions = len(added_items)
+                deletions = len(deleted_items)
+                
+                # Add line-level changes from modified blocks
+                for mod in modified_items:
+                    if isinstance(mod, dict):
+                        additions += len(mod.get('added_lines', []))
+                        deletions += len(mod.get('deleted_lines', []))
+                
+                # Determine activity type
+                diff_type = doc.get('diff_type', 'block')
+                activity_type = f'notion_{diff_type}'
                 
                 activities.append(Activity(
                     id=str(doc['_id']),
                     member_name=doc_member_name,
                     source_type='notion',
-                    activity_type='page_edit',
+                    activity_type=activity_type,
                     timestamp=timestamp,
                     metadata=sanitize_metadata({
-                        'title': doc.get('title'),
-                        'url': doc.get('url'),
-                        'created_time': doc.get('created_time'),
-                        'last_edited_time': doc.get('last_edited_time'),
-                        'created_by': doc.get('created_by'),
-                        'last_edited_by': doc.get('last_edited_by'),
-                        'parent': doc.get('parent'),
-                        'properties': doc.get('properties')
+                        'page_id': doc.get('document_id'),
+                        'page_title': doc.get('document_title'),
+                        'title': doc.get('document_title'),
+                        'page_url': doc.get('document_url'),
+                        'url': doc.get('document_url'),
+                        'diff_type': diff_type,
+                        'additions': additions,
+                        'deletions': deletions,
+                        'blocks_added': len(added_items),
+                        'blocks_deleted': len(deleted_items),
+                        'blocks_modified': len(modified_items),
+                        'changes': changes
                     })
                 ))
+            
+            notion_after = len(activities)
+            print(f"🔍 [{request_id}] 📝 Notion diff activities added: {notion_after - notion_before}")
         
         # Drive activities
         # Filter by project name in title/doc_title if project_key is specified
