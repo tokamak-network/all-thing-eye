@@ -1110,131 +1110,111 @@ class Query:
             notion_after = len(activities)
             print(f"🔍 [{request_id}] 📝 Notion diff activities added: {notion_after - notion_before}")
         
-        # Drive activities
-        # Filter by project name in title/doc_title if project_key is specified
-        # When project filter is active, ignore member filter (filter by title only)
+        # Drive content diffs (revision-based change tracking)
+        # Uses drive_content_diffs collection for actual content changes
         if 'drive' in sources:
             query = {}
-            # When project filter is active, ignore member filter (filter by title only)
-            if project_key:
-                # Project filter is active - only filter by project name in title, ignore member
-                if not project_name:
-                    # Project has no name configured - return empty results
-                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no name configured - returning empty results")
-                    query['title'] = {'$regex': '^$'}  # Match nothing
-                    query['doc_title'] = {'$regex': '^$'}  # Match nothing
-            elif member_name:
-                # Try to use emails from identifiers (REST API pattern: user_email field)
+            
+            # Filter by member name (editor_name or editor_id/email)
+            if member_name:
                 emails = member_identifiers.get('email', []) or member_identifiers.get('drive', [])
                 print(f"🔍 [{request_id}] 📁 Drive emails for '{member_name}': {emails}")
+                
+                or_conditions = []
+                or_conditions.append({'editor_name': {'$regex': f'^{member_name}', '$options': 'i'}})
                 if emails:
-                    # Use user_email field (like REST API)
-                    query['user_email'] = {'$in': emails}
-                else:
-                    # Fallback to regex search (case-insensitive)
-                    query['user_email'] = {'$regex': member_name, '$options': 'i'}
-            if start_date:
-                # Drive uses 'timestamp' field (not 'time'), and it's timezone-naive
-                # Convert timezone-aware datetime to timezone-naive UTC for comparison
-                from datetime import timezone as tz
-                start_date_naive = start_date.astimezone(tz.utc).replace(tzinfo=None)
-                query['timestamp'] = {'$gte': start_date_naive}
-            if end_date:
-                # Drive uses 'timestamp' field (not 'time'), and it's timezone-naive
-                # Convert timezone-aware datetime to timezone-naive UTC for comparison
-                from datetime import timezone as tz
-                end_date_naive = end_date.astimezone(tz.utc).replace(tzinfo=None)
-                query['timestamp'] = query.get('timestamp', {})
-                query['timestamp']['$lte'] = end_date_naive
-            if keyword:
-                query['title'] = {'$regex': keyword, '$options': 'i'}
+                    or_conditions.append({'editor_id': {'$in': emails}})
+                query['$or'] = or_conditions
             
-            # Filter by project name in title/doc_title if project_key is specified
+            # Date filters - timestamp is stored as ISO string
+            if start_date:
+                from datetime import timezone as tz
+                start_str = start_date.astimezone(tz.utc).isoformat()
+                query['timestamp'] = {'$gte': start_str}
+            if end_date:
+                from datetime import timezone as tz
+                end_str = end_date.astimezone(tz.utc).isoformat()
+                query['timestamp'] = query.get('timestamp', {})
+                query['timestamp']['$lte'] = end_str
+            
+            # Keyword search in document title
+            if keyword:
+                query['document_title'] = {'$regex': keyword, '$options': 'i'}
+            
+            # Project filter by title
             if project_name:
-                # Drive activities may have 'title' or 'doc_title' field
-                # Use $or to check both fields
-                project_title_filter = {
-                    '$or': [
-                        {'title': {'$regex': project_name, '$options': 'i'}},
-                        {'doc_title': {'$regex': project_name, '$options': 'i'}}
-                    ]
-                }
-                if 'title' in query or keyword:
-                    # If keyword already exists, combine with $and
-                    existing_conditions = {k: v for k, v in query.items() if k != 'title'}
-                    if 'title' in query:
-                        existing_conditions['title'] = query['title']
+                if 'document_title' in query:
                     query = {
                         '$and': [
-                            existing_conditions,
-                            project_title_filter
+                            query,
+                            {'document_title': {'$regex': project_name, '$options': 'i'}}
                         ]
                     }
                 else:
-                    query.update(project_title_filter)
-                print(f"🔍 [{request_id}] 📁 Filtering Drive by project name in title/doc_title: {project_name}")
+                    query['document_title'] = {'$regex': project_name, '$options': 'i'}
+                print(f"🔍 [{request_id}] 📁 Filtering Drive diffs by project: {project_name}")
             
             print(f"🔍 [{request_id}] 📁 Drive query: {query}")
             
-            async for doc in db['drive_activities'].find(query).sort('timestamp', -1).limit(limit * 2):
-                # Get user email (Drive stores as 'user_email' field, following REST API pattern)
-                user_email = doc.get('user_email') or doc.get('actor_email')
-                actor_name = doc.get('actor_name')
-                
-                # Try to get display name from identifier mapping
-                display_name = None
-                if user_email:
-                    # First try email mapping
-                    display_name = identifier_to_member.get(('email', user_email.lower()))
-                    # Then try drive mapping
-                    if not display_name:
-                        display_name = identifier_to_member.get(('drive', user_email.lower()))
-                    # If still not found, extract name from email (like REST API)
-                    if not display_name or '@' in display_name:
-                        # Extract username from email and capitalize
-                        username = user_email.split('@')[0] if user_email else 'Unknown'
-                        display_name = username.capitalize() if username else 'Unknown'
-                else:
-                    # No email, use actor_name or fallback to Unknown
-                    display_name = actor_name or 'Unknown'
+            drive_before = len(activities)
+            async for doc in db['drive_content_diffs'].find(query).sort('timestamp', -1).limit(limit * 2):
+                # Get editor name
+                doc_member_name = doc.get('editor_name', 'Unknown')
+                if not doc_member_name or doc_member_name == 'Unknown':
+                    editor_id = doc.get('editor_id', '')
+                    if editor_id and '@' in editor_id:
+                        doc_member_name = editor_id.split('@')[0].capitalize()
+                    else:
+                        doc_member_name = "Unknown"
                 
                 # Capitalize first letter
-                if display_name and isinstance(display_name, str) and len(display_name) > 0 and display_name != display_name.capitalize():
-                    display_name = display_name[0].upper() + display_name[1:]
+                if doc_member_name and isinstance(doc_member_name, str) and len(doc_member_name) > 0:
+                    doc_member_name = doc_member_name[0].upper() + doc_member_name[1:]
                 
-                # Safely get timestamp (time field might not exist)
-                timestamp = ensure_datetime(doc.get('time') or doc.get('timestamp') or doc.get('created_at'))
-                if not timestamp:
-                    continue  # Skip documents without timestamp
+                # Parse timestamp from ISO string
+                timestamp_str = doc.get('timestamp', '')
+                try:
+                    if timestamp_str:
+                        from datetime import datetime
+                        if timestamp_str.endswith('Z'):
+                            timestamp_str = timestamp_str[:-1] + '+00:00'
+                        timestamp = datetime.fromisoformat(timestamp_str)
+                    else:
+                        continue
+                except:
+                    continue
                 
-                # Get target object (if exists)
-                target = doc.get('target', {})
+                # Get changes for metadata
+                changes = doc.get('changes', {})
+                added_items = changes.get('added', [])
+                deleted_items = changes.get('deleted', [])
+                
+                # Calculate additions/deletions
+                additions = len(added_items)
+                deletions = len(deleted_items)
                 
                 activities.append(Activity(
                     id=str(doc['_id']),
-                    member_name=display_name,
+                    member_name=doc_member_name,
                     source_type='drive',
-                    activity_type=doc.get('event_name', 'activity'),
+                    activity_type='drive_revision',
                     timestamp=timestamp,
                     metadata=sanitize_metadata({
-                        # REST API style fields (primary)
-                        'action': doc.get('action'),
-                        'doc_title': doc.get('doc_title'),
-                        'doc_type': doc.get('doc_type'),
-                        'url': doc.get('link'),
-                        'file_id': doc.get('doc_id'),
-                        # Also include target object fields (for fallback)
-                        'target': target,
-                        'target_name': target.get('name') if target else doc.get('doc_title'),
-                        'target_type': target.get('type') if target else doc.get('doc_type'),
-                        'target_url': target.get('url') if target else doc.get('link'),
-                        # Additional metadata
-                        'type': doc.get('type'),
-                        'event_name': doc.get('event_name'),
-                        'user_email': user_email,
-                        'time': doc.get('time')
+                        'document_id': doc.get('document_id'),
+                        'title': doc.get('document_title'),
+                        'doc_title': doc.get('document_title'),
+                        'url': doc.get('document_url'),
+                        'diff_type': doc.get('diff_type', 'revision'),
+                        'additions': additions,
+                        'deletions': deletions,
+                        'revision_id': doc.get('revision_id'),
+                        'previous_revision_id': doc.get('previous_revision_id'),
+                        'changes': changes
                     })
                 ))
+            
+            drive_after = len(activities)
+            print(f"🔍 [{request_id}] 📁 Drive diff activities added: {drive_after - drive_before}")
         
         # Recordings (Google Drive recordings via shared_async_db)
         if 'recordings' in sources:
@@ -1634,11 +1614,11 @@ class Query:
         
         # Sort by timestamp (newest first) and apply pagination
         # Handle mixed datetime/string timestamps
-        from datetime import timezone as tz
+        from datetime import datetime as dt_class, timezone as tz
         
         def get_sort_key(activity):
             ts = activity.timestamp
-            if isinstance(ts, datetime):
+            if isinstance(ts, dt_class):
                 # Ensure timezone-aware
                 if ts.tzinfo is None:
                     return ts.replace(tzinfo=tz.utc)
@@ -1646,15 +1626,15 @@ class Query:
             elif isinstance(ts, str):
                 try:
                     # Try parsing ISO format
-                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=tz.utc)
-                    return dt.astimezone(tz.utc)
+                    parsed_dt = dt_class.fromisoformat(ts.replace('Z', '+00:00'))
+                    if parsed_dt.tzinfo is None:
+                        parsed_dt = parsed_dt.replace(tzinfo=tz.utc)
+                    return parsed_dt.astimezone(tz.utc)
                 except:
                     # If parsing fails, return a very old date (timezone-aware)
-                    return datetime.min.replace(tzinfo=tz.utc)
+                    return dt_class.min.replace(tzinfo=tz.utc)
             else:
-                return datetime.min.replace(tzinfo=tz.utc)
+                return dt_class.min.replace(tzinfo=tz.utc)
         
         activities.sort(key=get_sort_key, reverse=True)
         

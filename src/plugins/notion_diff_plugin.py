@@ -399,8 +399,10 @@ class NotionDiffPlugin(DataSourcePlugin):
                             'parent_id': parent_id
                         })
                         
-                        # Recurse into children
-                        if block.get('has_children', False):
+                        # Recurse into children, but SKIP child_page blocks
+                        # Child pages are tracked separately as their own pages
+                        # This prevents duplicate tracking of the same content
+                        if block.get('has_children', False) and block_type != 'child_page':
                             time.sleep(self.rate_limit_delay)
                             fetch_children(block['id'], block['id'])
                     
