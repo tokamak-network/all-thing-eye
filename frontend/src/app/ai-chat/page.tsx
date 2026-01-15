@@ -209,13 +209,6 @@ export default function AIChat() {
       console.error("Failed to load models:", error);
       setAvailableModels([
         { name: "qwen3-235b", size: "235B" },
-        { name: "gpt-oss:120b", size: "116.8B" },
-        { name: "gpt-oss:20b", size: "20.9B" },
-        { name: "qwen3:30b", size: "30.5B" },
-        { name: "gemma3:27b", size: "27.4B" },
-        { name: "qwen3:8b", size: "8.2B" },
-        { name: "llama3.1:8b", size: "8.0B" },
-        { name: "deepseek-r1:8b", size: "8.2B" },
       ]);
     } finally {
       setIsLoadingModels(false);
