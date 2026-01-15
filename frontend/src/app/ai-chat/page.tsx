@@ -62,7 +62,7 @@ export default function AIChat() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>("gpt-oss:120b");
+  const [selectedModel, setSelectedModel] = useState<string>("qwen3-235b");
   const [availableModels, setAvailableModels] = useState<Array<{ name: string; size?: string }>>([]);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -208,6 +208,7 @@ export default function AIChat() {
     } catch (error) {
       console.error("Failed to load models:", error);
       setAvailableModels([
+        { name: "qwen3-235b", size: "235B" },
         { name: "gpt-oss:120b", size: "116.8B" },
         { name: "gpt-oss:20b", size: "20.9B" },
         { name: "qwen3:30b", size: "30.5B" },

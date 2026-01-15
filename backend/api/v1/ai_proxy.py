@@ -33,14 +33,16 @@ else:
 
 def get_ai_api_key() -> str:
     """Get AI API key from environment variable"""
-    api_key = os.getenv("AI_API_KEY", "")
+    api_key = os.getenv("AI_API_KEY", "").strip()
     if not api_key:
         logger.warning("AI_API_KEY not found in environment variables")
+    else:
+        logger.debug(f"AI_API_KEY loaded: {api_key[:10]}...{api_key[-4:] if len(api_key) > 14 else '***'} (length: {len(api_key)})")
     return api_key
 
 def get_ai_api_url() -> str:
     """Get AI API base URL from environment variable"""
-    return os.getenv("AI_API_URL", "https://api.toka.ngrok.app")
+    return os.getenv("AI_API_URL", "https://api.ai.tokamak.network").strip()
 
 
 class ChatMessage(BaseModel):
@@ -102,23 +104,34 @@ async def proxy_chat(
             if chat_request.model:
                 payload["model"] = chat_request.model
             
+            # Note: context is not part of OpenAI standard, but we'll keep it for compatibility
             if chat_request.context:
                 payload["context"] = chat_request.context
             
+            request_url = f"{api_url}/v1/chat/completions"
+            logger.info(f"📤 AI Proxy Chat - Request URL: {request_url}")
+            logger.info(f"📤 AI Proxy Chat - Model: {payload.get('model', 'default')}, Messages: {len(payload.get('messages', []))}")
+            
             response = await client.post(
-                f"{api_url}/api/chat",
+                request_url,
                 json=payload,
                 headers=headers
             )
             
             if response.status_code != 200:
-                logger.error(f"AI API error: {response.status_code} - {response.text}")
+                logger.error(f"❌ AI Proxy Chat - Error: Status {response.status_code}, Response: {response.text}")
                 raise HTTPException(
                     status_code=response.status_code,
                     detail=f"AI API error: {response.text}"
                 )
             
-            return response.json()
+            # Convert OpenAI format to expected format for frontend compatibility
+            ai_data = response.json()
+            if "choices" in ai_data and len(ai_data["choices"]) > 0:
+                content = ai_data["choices"][0]["message"]["content"]
+                return {"message": {"content": content}}
+            else:
+                return ai_data
             
     except httpx.TimeoutException:
         raise HTTPException(
@@ -242,6 +255,24 @@ async def proxy_list_models(
                 "Authorization": f"Bearer {api_key}",
             }
             
+            # Try /v1/models first (OpenAI standard), fallback to /api/tags
+            try:
+                response = await client.get(
+                    f"{api_url}/v1/models",
+                    headers=headers
+                )
+                if response.status_code == 200:
+                    # Convert OpenAI models format to expected format
+                    models_data = response.json()
+                    if "data" in models_data:
+                        # OpenAI format: { "data": [{"id": "...", ...}] }
+                        tags = [{"name": model.get("id", ""), "size": ""} for model in models_data["data"]]
+                        return {"tags": tags}
+                    return models_data
+            except Exception as e:
+                logger.warning(f"Failed to get models from /v1/models: {e}, trying /api/tags")
+            
+            # Fallback to /api/tags
             response = await client.get(
                 f"{api_url}/api/tags",
                 headers=headers

@@ -652,7 +652,7 @@ class ApiClient {
   // Tokamak AI API
   private getAIClient(): AxiosInstance {
     const AI_API_BASE_URL =
-      process.env.NEXT_PUBLIC_AI_API_URL || "https://api.toka.ngrok.app";
+      process.env.NEXT_PUBLIC_AI_API_URL || "https://api.ai.tokamak.network";
     
     const aiClient = axios.create({
       baseURL: AI_API_BASE_URL,

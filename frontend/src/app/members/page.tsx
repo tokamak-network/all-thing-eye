@@ -106,6 +106,7 @@ export default function MembersPage() {
           : gqlMember.team || "",
       projectKeys: gqlMember.projectKeys || [],
       eoa_address: gqlMember.eoaAddress,
+      recording_name: gqlMember.recordingName,
       identifiers: {
         email: gqlMember.email,
         github: gqlMember.githubUsername,

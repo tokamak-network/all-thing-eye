@@ -68,7 +68,7 @@ class SlackScheduler:
             # 1. Call AI Agent
             agent_req = AgentRequest(
                 messages=[{"role": "user", "content": prompt}],
-                model=schedule.get("model", "gpt-oss:120b")
+                model=schedule.get("model", "qwen3-235b")
             )
             
             result = await run_mcp_agent(agent_req)

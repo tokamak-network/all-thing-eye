@@ -122,7 +122,7 @@ export default function FloatingAIChatbot({
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>("gpt-oss:120b");
+  const [selectedModel, setSelectedModel] = useState<string>("qwen3-235b");
   const [chatMode, setChatMode] = useState<AIChatMode>("agent");
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -242,6 +242,7 @@ export default function FloatingAIChatbot({
       console.error("Failed to load models:", error);
       // Fallback to default models if API fails
       setAvailableModels([
+        { name: "qwen3-235b", size: "235B" },
         { name: "gpt-oss:120b", size: "116.8B" },
         { name: "gpt-oss:20b", size: "20.9B" },
         { name: "qwen3:30b", size: "30.5B" },

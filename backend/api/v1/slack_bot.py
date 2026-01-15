@@ -105,7 +105,7 @@ async def process_slack_mention(event: Dict[str, Any]):
         try:
             agent_req = AgentRequest(
                 messages=[{"role": "user", "content": cleaned_text}],
-                model="gpt-oss:120b"
+                model="qwen3-235b"
             )
             # Internal call to run_mcp_agent
             result = await run_mcp_agent(agent_req)

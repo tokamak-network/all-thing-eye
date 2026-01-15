@@ -27,7 +27,7 @@ router = APIRouter()
 
 class ChatWithContextRequest(BaseModel):
     messages: List[Dict[str, str]]
-    model: Optional[str] = "gpt-oss:120b"
+    model: Optional[str] = "qwen3-235b"  # Model: qwen3-235b, Context Window: 131072 tokens
     context_hints: Optional[Dict[str, Any]] = None
 
 @router.post("/mcp/chat")
@@ -56,11 +56,15 @@ async def run_mcp_chat_logic(body: ChatWithContextRequest):
     user_message = body.messages[-1].get("content", "") if body.messages else ""
     context_hints = body.context_hints or {}
     
-    api_key = os.getenv("AI_API_KEY", "")
-    api_url = os.getenv("AI_API_URL", "https://api.toka.ngrok.app")
+    api_key = os.getenv("AI_API_KEY", "").strip()
+    api_url = os.getenv("AI_API_URL", "https://api.ai.tokamak.network").strip()
     
     if not api_key:
         raise HTTPException(status_code=500, detail="AI API key not configured")
+    
+    # Debug logging
+    logger.info(f"🔑 MCP Chat - API URL: {api_url}")
+    logger.info(f"🔑 MCP Chat - API Key: {api_key[:10]}...{api_key[-4:] if len(api_key) > 14 else '***'} (length: {len(api_key)})")
 
     # PHASE 1: Data Gathering
     data_for_ai = {}
@@ -109,16 +113,31 @@ Analyze the provided data and answer the user's question accurately.
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        request_url = f"{api_url}/v1/chat/completions"
+        request_payload = {
+            "model": body.model,
+            "messages": messages
+        }
+        logger.info(f"📤 MCP Chat - Request URL: {request_url}")
+        logger.info(f"📤 MCP Chat - Model: {body.model}, Messages: {len(messages)}")
+        
         resp = await client.post(
-            f"{api_url}/api/chat",
-            json={"messages": messages, "model": body.model},
+            request_url,
+            json=request_payload,
             headers=headers
         )
         
         if resp.status_code != 200:
+            logger.error(f"❌ MCP Chat - AI API Error: Status {resp.status_code}, Response: {resp.text}")
             raise HTTPException(status_code=500, detail=f"AI API Error: {resp.text}")
-            
-        return resp.json()
+        
+        # Convert OpenAI format response to expected format
+        ai_data = resp.json()
+        if "choices" in ai_data and len(ai_data["choices"]) > 0:
+            content = ai_data["choices"][0]["message"]["content"]
+            return {"message": {"content": content}}
+        else:
+            return resp.json()
 
 def analyze_question(question: str) -> Dict[str, Any]:
     """Simple heuristic to determine data needs."""

@@ -65,7 +65,7 @@ services:
 
       # AI API (Tokamak)
       AI_API_KEY: ${AI_API_KEY}
-      AI_API_URL: ${AI_API_URL:-https://api.toka.ngrok.app}
+      AI_API_URL: ${AI_API_URL:-https://api.ai.tokamak.network}
     volumes:
       - ./config:/app/config:ro
       - ./data/logs/backend:/app/logs

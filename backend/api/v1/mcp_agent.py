@@ -196,7 +196,7 @@ def parse_agent_response(text: str) -> Dict[str, Any]:
 
 class AgentRequest(BaseModel):
     messages: List[Dict[str, str]]
-    model: Optional[str] = "gpt-oss:120b"
+    model: Optional[str] = "qwen3-235b"  # Model: qwen3-235b, Context Window: 131072 tokens
     max_iterations: int = 10
 
 @router.post("/mcp/agent")
@@ -207,11 +207,15 @@ async def run_mcp_agent(body: AgentRequest, _admin: Any = None):
     if is_test and os.getenv("ENVIRONMENT") == "production":
         raise HTTPException(status_code=403, detail="Test endpoint disabled in production")
 
-    api_key = os.getenv("AI_API_KEY", "")
-    api_url = os.getenv("AI_API_URL", "https://api.toka.ngrok.app")
+    api_key = os.getenv("AI_API_KEY", "").strip()
+    api_url = os.getenv("AI_API_URL", "https://api.ai.tokamak.network").strip()
     
     if not api_key:
         raise HTTPException(status_code=500, detail="AI API key not configured")
+    
+    # Debug logging (mask API key for security)
+    logger.info(f"🔑 Using AI API URL: {api_url}")
+    logger.info(f"🔑 API Key loaded: {api_key[:10]}...{api_key[-4:] if len(api_key) > 14 else '***'} (length: {len(api_key)})")
         
     conversation = [{"role": "system", "content": build_system_prompt()}]
     for m in body.messages:
@@ -222,6 +226,8 @@ async def run_mcp_agent(body: AgentRequest, _admin: Any = None):
     
     async with httpx.AsyncClient(timeout=120.0) as client:
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        logger.info(f"📤 Request URL: {api_url}/v1/chat/completions")
+        logger.info(f"📤 Request headers: Authorization: Bearer {api_key[:10]}...")
         
         while iterations < body.max_iterations:
             iterations += 1
@@ -230,15 +236,21 @@ async def run_mcp_agent(body: AgentRequest, _admin: Any = None):
             # Step 1: AI Reason & Act
             try:
                 resp = await client.post(
-                    f"{api_url}/api/chat",
-                    json={"messages": conversation, "model": body.model, "options": {"temperature": 0.1}},
+                    f"{api_url}/v1/chat/completions",
+                    json={
+                        "model": body.model,
+                        "messages": conversation,
+                        "temperature": 0.1
+                    },
                     headers=headers
                 )
                 if resp.status_code != 200:
+                    logger.error(f"❌ AI API Error: Status {resp.status_code}, Response: {resp.text}")
                     raise Exception(f"AI API Error: {resp.text}")
                 
                 ai_data = resp.json()
-                ai_text = ai_data.get("message", {}).get("content", "")
+                # OpenAI format: choices[0].message.content
+                ai_text = ai_data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 
                 # Step 2: Parse
                 parsed = parse_agent_response(ai_text)

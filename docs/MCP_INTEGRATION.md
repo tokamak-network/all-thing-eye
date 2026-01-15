@@ -117,7 +117,7 @@ Content-Type: application/json
   "messages": [
     {"role": "user", "content": "Who is the most active in OOO?"}
   ],
-  "model": "gpt-oss:120b",
+  "model": "qwen3-235b",
   "context_hints": {
     "project_key": "project-ooo"
   }
