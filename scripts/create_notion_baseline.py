@@ -212,6 +212,12 @@ class NotionBaselineCreator:
                     
                     for block in response.get('results', []):
                         block_type = block.get('type', '')
+                        
+                        # COMPLETELY SKIP child_page and child_database blocks
+                        # These are tracked as their own separate pages
+                        if block_type in ('child_page', 'child_database'):
+                            continue
+                        
                         plain_text = self._extract_block_text(block)
                         
                         blocks.append({
@@ -222,9 +228,8 @@ class NotionBaselineCreator:
                             'parent_id': parent_id
                         })
                         
-                        # Recurse into children, but SKIP child_page blocks
-                        # Child pages are tracked separately as their own pages
-                        if block.get('has_children', False) and block_type != 'child_page':
+                        # Recurse into children for nested content
+                        if block.get('has_children', False):
                             time.sleep(self.rate_limit_delay)
                             fetch_children(block['id'], block['id'])
                     
