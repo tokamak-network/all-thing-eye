@@ -108,6 +108,7 @@ services:
       - all-thing-eye
 
   # Data Collection Scheduler (Cron-like service)
+  # NOTE: Notion is excluded - use notion-diff-collector for real-time Notion tracking
   data-collector:
     build:
       context: .
@@ -126,7 +127,6 @@ services:
       GITHUB_ORG: ${GITHUB_ORG}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_USER_TOKEN: ${SLACK_USER_TOKEN}
-      NOTION_TOKEN: ${NOTION_TOKEN}
       GOOGLE_APPLICATION_CREDENTIALS: /app/config/google_drive/credentials.json
       GOOGLE_ADMIN_EMAIL: ${GOOGLE_ADMIN_EMAIL}
     volumes:
@@ -143,8 +143,8 @@ services:
         echo '[INFO] Waiting 60 seconds for backend to initialize...'
         sleep 60
         
-        echo '[INFO] Running initial data collection (2 weeks)...'
-        python scripts/initial_data_collection_mongo.py --days 14
+        echo '[INFO] Running initial data collection (2 weeks) - GitHub, Slack, Drive only...'
+        python scripts/initial_data_collection_mongo.py --days 14 --sources github slack drive
         
         echo '[INFO] Building member index...'
         python scripts/build_member_index_mongo.py
@@ -167,15 +167,47 @@ services:
           # Sleep until midnight
           sleep $$SECONDS_UNTIL_MIDNIGHT
           
-          # Run daily collection
+          # Run daily collection (Notion excluded - handled by notion-diff-collector)
           echo \"[INFO] ====== Starting daily data collection ======\"
           echo \"[INFO] Time: $$(TZ=Asia/Seoul date)\"
-          python scripts/daily_data_collection_mongo.py
+          python scripts/daily_data_collection_mongo.py --sources github slack drive
           echo \"[INFO] ====== Daily collection completed ======\"
           
           # Sleep 1 minute to avoid duplicate runs
           sleep 60
         done
+      "
+
+  # Notion Diff Collector (runs every minute for real-time change tracking)
+  notion-diff-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: all-thing-eye-notion-diff-collector
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+
+      # MongoDB Connection
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
+
+      # Notion API
+      NOTION_TOKEN: ${NOTION_TOKEN}
+    volumes:
+      - ./config:/app/config:ro
+      - ./data/logs/notion-diff:/app/logs
+    networks:
+      - all-thing-eye
+    command: >
+      bash -c "
+        echo '[INFO] Notion Diff Collector starting...'
+        echo '[INFO] Timezone: $$(date +%Z)'
+        echo '[INFO] Waiting 30 seconds for backend to initialize...'
+        sleep 30
+        
+        echo '[INFO] Starting Notion diff collection (every 1 minute)...'
+        python scripts/collect_notion_diff.py --schedule 1
       "
 
 # No local volumes needed - MongoDB is remote
