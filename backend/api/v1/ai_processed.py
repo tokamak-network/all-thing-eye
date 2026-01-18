@@ -650,7 +650,7 @@ async def get_recordings_daily_by_date(
 
 
 # ============================================
-# Translation API (using Gemini)
+# Translation API (using Tokamak AI - qwen3-80b-next)
 # ============================================
 
 class TranslationRequest(BaseModel):
@@ -672,7 +672,7 @@ async def translate_text(
     translation_request: TranslationRequest
 ):
     """
-    Translate text using DeepL API with caching
+    Translate text using Tokamak AI API (qwen3-80b-next) with caching
     
     Supports:
     - Auto language detection
@@ -692,46 +692,52 @@ async def translate_text(
         env_path = project_root / '.env'
         load_dotenv(dotenv_path=env_path, override=False)
         
-        # Get DeepL API key from environment
-        api_key = os.getenv("DEEPL_API_KEY")
+        # Get Tokamak AI API key for translation (qwen3-80b-next)
+        api_key = os.getenv("TRANSLATION_API_KEY")
         if not api_key:
-            logger.error(f"DEEPL_API_KEY not found. .env path: {env_path}")
+            logger.error(f"TRANSLATION_API_KEY not found. .env path: {env_path}")
             raise HTTPException(
                 status_code=501,
-                detail="DEEPL_API_KEY not configured"
+                detail="TRANSLATION_API_KEY not configured"
             )
         
         text = translation_request.text
         target = translation_request.target_language
         
-        # DeepL language codes (uppercase)
-        deepl_lang_map = {
-            "ko": "KO",
-            "en": "EN",
-            "ja": "JA",
-            "zh": "ZH",
+        # Language name mapping for prompt
+        lang_name_map = {
+            "ko": "Korean",
+            "en": "English",
+            "ja": "Japanese",
+            "zh": "Chinese",
         }
-        target_lang = deepl_lang_map.get(target.lower(), target.upper())
+        target_lang = target.lower()
+        target_lang_name = lang_name_map.get(target_lang, target_lang.capitalize())
         
         # Detect source language (simple heuristic if not provided)
         def detect_language(text: str) -> str:
             korean_chars = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
-            if korean_chars > len(text) * 0.3:
-                return "KO"
-            return "EN"
+            japanese_chars = sum(1 for c in text if '\u3040' <= c <= '\u30ff')
+            chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+            
+            if korean_chars > len(text) * 0.2:
+                return "ko"
+            if japanese_chars > len(text) * 0.1:
+                return "ja"
+            if chinese_chars > len(text) * 0.2:
+                return "zh"
+            return "en"
         
         source_lang = translation_request.source_language
         if source_lang:
-            source_lang = deepl_lang_map.get(source_lang.lower(), source_lang.upper())
+            source_lang = source_lang.lower()
         else:
             source_lang = detect_language(text)
         
-        # Convert to lowercase for cache key
-        source_lang_lower = source_lang.lower()
-        target_lang_lower = target_lang.lower()
+        source_lang_name = lang_name_map.get(source_lang, source_lang.capitalize())
         
         # Generate cache key: hash of (original_text + source_lang + target_lang)
-        cache_key_str = f"{text}|{source_lang_lower}|{target_lang_lower}"
+        cache_key_str = f"{text}|{source_lang}|{target_lang}"
         cache_key = hashlib.sha256(cache_key_str.encode('utf-8')).hexdigest()
         
         # Try to get cached translation from MongoDB
@@ -756,53 +762,57 @@ async def translate_text(
             logger.warning(f"Failed to check translation cache: {cache_error}")
             # Continue with API call if cache check fails
         
-        # Cache miss - call DeepL API
-        logger.info(f"Translation cache miss, calling DeepL API for key: {cache_key[:16]}...")
+        # Cache miss - call Tokamak AI API
+        logger.info(f"Translation cache miss, calling Tokamak AI API for key: {cache_key[:16]}...")
         
-        # Determine API endpoint (free or paid)
-        # DeepL free API uses api-free.deepl.com, paid uses api.deepl.com
-        # Check if API key is for free tier (ends with :fx) or paid tier
-        api_url = "https://api-free.deepl.com/v2/translate"
-        if not api_key.endswith(":fx"):
-            api_url = "https://api.deepl.com/v2/translate"
+        api_url = "https://api.ai.tokamak.network/v1/chat/completions"
         
-        # Prepare request data
-        data = {
-            "auth_key": api_key,
-            "text": text,
-            "target_lang": target_lang,
+        # Prepare translation prompt
+        system_prompt = f"""You are a professional translator. Translate the given text from {source_lang_name} to {target_lang_name}.
+Rules:
+- Output ONLY the translated text, nothing else
+- Preserve the original formatting and structure
+- Keep proper nouns, technical terms, and code unchanged
+- Maintain the tone and style of the original text"""
+        
+        # Prepare request data for OpenAI-compatible API
+        request_data = {
+            "model": "qwen3-80b-next",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text}
+            ],
+            "max_tokens": 4096,
+            "temperature": 0.3  # Lower temperature for more consistent translations
         }
         
-        # Add source language if specified
-        if source_lang:
-            data["source_lang"] = source_lang
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
         
-        # Call DeepL API
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(api_url, data=data)
+        # Call Tokamak AI API
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(api_url, json=request_data, headers=headers)
             response.raise_for_status()
             result = response.json()
         
-        # Extract translated text
-        if "translations" in result and len(result["translations"]) > 0:
-            translated_text = result["translations"][0]["text"]
-            detected_source = result["translations"][0].get("detected_source_language", source_lang)
+        # Extract translated text from OpenAI-compatible response
+        if "choices" in result and len(result["choices"]) > 0:
+            translated_text = result["choices"][0]["message"]["content"].strip()
         else:
-            raise ValueError("No translation in DeepL API response")
-        
-        # Convert DeepL language codes back to lowercase for response
-        detected_source_lower = detected_source.lower() if detected_source else source_lang.lower()
+            raise ValueError("No translation in Tokamak AI API response")
         
         # Save to cache
         try:
             translation_doc = {
                 "cache_key": cache_key,
                 "original_text": text,
-                "source_language": detected_source_lower,
+                "source_language": source_lang,
                 "translated_text": translated_text,
-                "target_language": target_lang_lower,
-                "translation_provider": "deepl",
-                "detected_source_language": detected_source if detected_source else None,
+                "target_language": target_lang,
+                "translation_provider": "tokamak-ai",
+                "model": "qwen3-80b-next",
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
@@ -819,17 +829,17 @@ async def translate_text(
         return TranslationResponse(
             original_text=text,
             translated_text=translated_text,
-            source_language=detected_source_lower,
-            target_language=target_lang_lower
+            source_language=source_lang,
+            target_language=target_lang
         )
         
     except HTTPException:
         raise
     except httpx.HTTPStatusError as e:
-        logger.error(f"DeepL API HTTP error: {e.response.status_code} - {e.response.text}")
+        logger.error(f"Tokamak AI API HTTP error: {e.response.status_code} - {e.response.text}")
         raise HTTPException(
             status_code=e.response.status_code,
-            detail=f"DeepL API error: {e.response.text}"
+            detail=f"Tokamak AI API error: {e.response.text}"
         )
     except Exception as e:
         logger.error(f"Translation error: {e}", exc_info=True)

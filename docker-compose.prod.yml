@@ -56,8 +56,8 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: /app/config/google_drive/credentials.json
       GOOGLE_ADMIN_EMAIL: ${GOOGLE_ADMIN_EMAIL}
 
-      # Translation API
-      DEEPL_API_KEY: ${DEEPL_API_KEY}
+      # Translation API (Tokamak AI - qwen3-80b-next)
+      TRANSLATION_API_KEY: ${TRANSLATION_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY} # Legacy, kept for backward compatibility
 
       # Admin Addresses (comma-separated)
