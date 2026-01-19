@@ -873,6 +873,55 @@ class ApiClient {
     const response = await this.client.get("/mcp/agent/tools");
     return response.data;
   }
+
+  // ============================================
+  // Reports API
+  // ============================================
+
+  /**
+   * Generate a biweekly ecosystem report
+   */
+  async generateReport(
+    startDate: string,
+    endDate: string,
+    useAi: boolean = true
+  ): Promise<{
+    content: string;
+    metadata: {
+      start_date: string;
+      end_date: string;
+      use_ai: boolean;
+      generated_at: string;
+      stats: {
+        total_commits: number;
+        total_repos: number;
+        total_prs: number;
+        staked_ton: number;
+        market_cap: number;
+      };
+    };
+  }> {
+    const response = await this.client.post("/reports/generate", {
+      start_date: startDate,
+      end_date: endDate,
+      use_ai: useAi,
+    });
+    return response.data;
+  }
+
+  /**
+   * Get preset date ranges for report generation
+   */
+  async getReportPresets(): Promise<{
+    presets: Array<{
+      name: string;
+      start_date: string;
+      end_date: string;
+    }>;
+  }> {
+    const response = await this.client.get("/reports/presets");
+    return response.data;
+  }
 }
 
 export const api = new ApiClient();

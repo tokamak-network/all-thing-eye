@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import FieldSelector from "./components/FieldSelector";
 import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
-import NotionExportPanel from "./components/NotionExportPanel";
+import ReportGeneratorPanel from "./components/ReportGeneratorPanel";
 import DataAIChatPanel from "./components/DataAIChatPanel";
 import { api } from "@/lib/api";
 
@@ -27,7 +27,7 @@ function getThisMonthRange(): { startDate: string; endDate: string } {
 }
 
 export default function CustomExportPage() {
-  const [activeTab, setActiveTab] = useState<"custom" | "notion">("custom");
+  const [activeTab, setActiveTab] = useState<"custom" | "report">("custom");
   const [exportMode, setExportMode] = useState<"fields" | "collections">(
     "fields"
   );
@@ -279,14 +279,14 @@ export default function CustomExportPage() {
               🔧 Custom Export
             </button>
             <button
-              onClick={() => setActiveTab("notion")}
+              onClick={() => setActiveTab("report")}
               className={`${
-                activeTab === "notion"
+                activeTab === "report"
                   ? "border-blue-500 text-blue-600"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
-              📝 Notion Documents
+              📊 Report Generator
             </button>
           </nav>
         </div>
@@ -294,9 +294,9 @@ export default function CustomExportPage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto">
-        {activeTab === "notion" ? (
-          /* Notion Export Tab */
-          <NotionExportPanel />
+        {activeTab === "report" ? (
+          /* Report Generator Tab */
+          <ReportGeneratorPanel />
         ) : (
           /* Custom Export Tab */
           <>

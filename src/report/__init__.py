@@ -7,7 +7,6 @@ integrating GitHub activity data with external ecosystem data
 
 Main components:
 - external_data: Fetchers for staking, transactions, market cap data
-- generators: Report generators (developer, biweekly, weekly)
 - templates: Report templates
 - ai_client: AI API wrapper for Tokamak AI
 """
@@ -20,6 +19,7 @@ from .external_data import (
     get_market_cap_data,
     get_market_cap_summary_text,
 )
+from .ai_client import generate_completion, generate_completion_sync
 
 __all__ = [
     "get_staking_data",
@@ -28,4 +28,6 @@ __all__ = [
     "get_transactions_summary_text",
     "get_market_cap_data",
     "get_market_cap_summary_text",
+    "generate_completion",
+    "generate_completion_sync",
 ]
