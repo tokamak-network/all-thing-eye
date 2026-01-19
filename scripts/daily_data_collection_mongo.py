@@ -14,6 +14,7 @@ Usage:
     python scripts/daily_data_collection_mongo.py --date 2025-11-17
 """
 
+import os
 import sys
 import asyncio
 from pathlib import Path
@@ -342,6 +343,59 @@ async def collect_google_drive(mongo_manager: MongoDBManager, start_date: dateti
         )
 
 
+async def collect_ecosystem(mongo_manager: MongoDBManager, start_date: datetime, end_date: datetime):
+    """
+    Collect ecosystem data (staking, transactions, market cap) for the specified date range.
+    
+    This data is used for biweekly reports and ecosystem dashboards.
+    """
+    start_time = datetime.utcnow()
+    status = "failed"
+    items_collected = 0
+    error_message = None
+    
+    try:
+        logger.info("📂 Collecting Ecosystem data (staking, transactions, market cap)...")
+        
+        from src.plugins.ecosystem_plugin_mongo import EcosystemPluginMongo
+        
+        # Ecosystem plugin doesn't need special config, uses env vars
+        plugin_config = {
+            'enabled': True,
+            'subgraph_api_key': os.getenv('SUBGRAPH_API_KEY', ''),
+            'etherscan_api_key': os.getenv('ETHERSCAN_API_KEY', '')
+        }
+        
+        plugin = EcosystemPluginMongo(plugin_config, mongo_manager)
+        
+        if not plugin.authenticate():
+            logger.warning("   ⚠️  Some ecosystem APIs may not be configured")
+        
+        # Collect all ecosystem data
+        results = await plugin.collect_all(start_date, end_date)
+        
+        # Count items
+        staking_count = results.get("staking", {}).get("count", 0)
+        tx_success = results.get("transactions", {}).get("success", False)
+        market_success = results.get("market_cap", {}).get("success", False)
+        
+        items_collected = staking_count + (1 if tx_success else 0) + (1 if market_success else 0)
+        
+        logger.info(f"   ✅ Ecosystem: {staking_count} staking records, "
+                   f"TX={'✓' if tx_success else '✗'}, "
+                   f"Market={'✓' if market_success else '✗'}")
+        status = "success"
+        
+    except Exception as e:
+        logger.error(f"   ❌ Ecosystem collection failed: {e}", exc_info=True)
+        error_message = str(e)
+    finally:
+        # Record collection status
+        await record_collection_status(
+            mongo_manager, "ecosystem", start_time, status, items_collected, error_message
+        )
+
+
 async def main():
     """Main collection function"""
     import argparse
@@ -367,7 +421,7 @@ async def main():
     parser.add_argument(
         '--sources',
         nargs='+',
-        choices=['github', 'slack', 'notion', 'drive', 'all'],
+        choices=['github', 'slack', 'notion', 'drive', 'ecosystem', 'all'],
         default=['all'],
         help='Sources to collect from (default: all)'
     )
@@ -426,7 +480,7 @@ async def main():
     
     try:
         # Determine which sources to collect
-        sources = args.sources if 'all' not in args.sources else ['github', 'slack', 'notion', 'drive']
+        sources = args.sources if 'all' not in args.sources else ['github', 'slack', 'notion', 'drive', 'ecosystem']
         
         logger.info(f"📦 Collecting from: {', '.join(sources)}")
         logger.info("=" * 80)
@@ -443,6 +497,9 @@ async def main():
         
         if 'drive' in sources:
             await collect_google_drive(mongo_manager, start_utc, end_utc)
+        
+        if 'ecosystem' in sources:
+            await collect_ecosystem(mongo_manager, start_utc, end_utc)
         
         # Show summary
         logger.info("\n" + "=" * 80)
@@ -461,7 +518,10 @@ async def main():
             'github_issues': 'GitHub Issues',
             'slack_messages': 'Slack Messages',
             'notion_pages': 'Notion Pages',
-            'drive_activities': 'Drive Activities'
+            'drive_activities': 'Drive Activities',
+            'ecosystem_staking': 'Ecosystem Staking',
+            'ecosystem_transactions': 'Ecosystem Transactions',
+            'ecosystem_market_cap': 'Ecosystem Market Cap'
         }
         
         for collection_name, display_name in collections_to_check.items():
