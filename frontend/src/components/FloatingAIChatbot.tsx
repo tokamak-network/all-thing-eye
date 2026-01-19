@@ -193,6 +193,25 @@ export default function FloatingAIChatbot({
     }
   }, [isOpen, availableModels.length]);
 
+  // Validate selected model against available models
+  useEffect(() => {
+    if (availableModels.length > 0) {
+      const isModelAvailable = availableModels.some(
+        (m) => m.name === selectedModel
+      );
+      if (!isModelAvailable) {
+        // Default to qwen3-235b or first available model
+        const defaultModel =
+          availableModels.find((m) => m.name === "qwen3-235b") ||
+          availableModels[0];
+        if (defaultModel) {
+          setSelectedModel(defaultModel.name);
+          localStorage.setItem(AI_CHAT_MODEL_KEY, defaultModel.name);
+        }
+      }
+    }
+  }, [availableModels, selectedModel]);
+
   // Close model selector when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
