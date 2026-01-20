@@ -146,13 +146,13 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
                 }
             }
         
-        # Notion
-        notion_pages = await db["notion_pages"].count_documents({})
-        if notion_pages > 0:
+        # Notion (using diff tracking data - collected every minute)
+        notion_diffs = await db["notion_content_diffs"].count_documents({})
+        if notion_diffs > 0:
             activity_summary["notion"] = {
-                "total_activities": notion_pages,
+                "total_activities": notion_diffs,
                 "activity_types": {
-                    "page": notion_pages
+                    "content_diff": notion_diffs
                 }
             }
         
@@ -215,7 +215,7 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             # Execute aggregations
             github_trend = await get_daily_counts("github_commits", "date")
             slack_trend = await get_daily_counts("slack_messages", "posted_at")
-            notion_trend = await get_daily_counts("notion_pages", "last_edited_time")
+            notion_trend = await get_daily_counts("notion_content_diffs", "timestamp")  # Use diff tracking
             drive_trend = await get_daily_counts("drive_activities", "time")
             
             # Initialize map with 0s for all dates in range
@@ -273,7 +273,7 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             # Fetch texts
             github_texts = await get_recent_texts("github_commits", "message", "date")
             slack_texts = await get_recent_texts("slack_messages", "text", "posted_at")
-            notion_texts = await get_recent_texts("notion_pages", "title", "last_edited_time")
+            notion_texts = await get_recent_texts("notion_content_diffs", "page_title", "timestamp")  # Use diff tracking
             # drive_texts = await get_recent_texts("drive_activities", "title", "time") # Re-enable if possible, but title might be missing
             
             all_texts = github_texts + slack_texts + notion_texts
@@ -356,25 +356,32 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             # Fallback: Use data timestamps (old method)
             logger.info("collection_status not found, using fallback method")
             
+            # Map collections with their timestamp field names
             source_collections = {
-                'github': ['github_commits', 'github_pull_requests', 'github_issues'],
-                'slack': ['slack_messages'],
-                'notion': ['notion_pages'],
-                'drive': ['drive_files', 'drive_activities']
+                'github': [('github_commits', 'collected_at'), ('github_pull_requests', 'collected_at'), ('github_issues', 'collected_at')],
+                'slack': [('slack_messages', 'collected_at')],
+                'notion': [('notion_content_diffs', 'timestamp')],  # Use diff tracking (collected every minute)
+                'drive': [('drive_files', 'collected_at'), ('drive_activities', 'collected_at')]
             }
             
             for source, collections in source_collections.items():
                 latest_time = None
-                for coll_name in collections:
+                for coll_name, time_field in collections:
                     try:
                         if coll_name in collection_names_list:
                             # Find most recent document
                             doc = await db[coll_name].find_one(
                                 {},
-                                sort=[('collected_at', -1)]
+                                sort=[(time_field, -1)]
                             )
-                            if doc and 'collected_at' in doc:
-                                doc_time = doc['collected_at']
+                            if doc and time_field in doc:
+                                doc_time = doc[time_field]
+                                # Handle string timestamps (ISO format)
+                                if isinstance(doc_time, str):
+                                    try:
+                                        doc_time = datetime.fromisoformat(doc_time.replace('Z', '+00:00'))
+                                    except:
+                                        continue
                                 if isinstance(doc_time, datetime):
                                     if not latest_time or doc_time > latest_time:
                                         latest_time = doc_time

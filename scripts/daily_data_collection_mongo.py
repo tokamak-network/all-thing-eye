@@ -538,14 +538,8 @@ async def main():
         logger.info(f"✅ Daily collection completed - {datetime.now(KST).isoformat()}")
         logger.info("=" * 80)
         
-        # Update member index
-        logger.info("\n🔄 Updating member index...")
-        try:
-            from scripts.build_member_index_mongo import build_member_index
-            await build_member_index(mongo_manager, incremental=True)
-            logger.info("✅ Member index updated")
-        except Exception as e:
-            logger.error(f"❌ Member index update failed: {e}")
+        # Note: Member index is now managed exclusively through the frontend UI
+        # No longer syncing from members.yaml to preserve database changes (is_active, resigned_at, etc.)
         
     finally:
         mongo_manager.close()
