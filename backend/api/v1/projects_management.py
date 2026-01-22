@@ -359,52 +359,110 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
             old_member_ids = set(str(mid) for mid in existing.get("member_ids", []))
             new_member_ids = set(body.member_ids)
             
+            logger.info(f"[Project-Member Sync] Project: {project_key}")
+            logger.info(f"[Project-Member Sync] Old member_ids: {old_member_ids}")
+            logger.info(f"[Project-Member Sync] New member_ids: {new_member_ids}")
+            
             # Members removed from project - remove project key from their projects array
             removed_members = old_member_ids - new_member_ids
+            logger.info(f"[Project-Member Sync] Members to remove: {removed_members}")
+            
             for member_id in removed_members:
                 try:
-                    members_collection.update_one(
-                        {"_id": ObjectId(member_id)},
-                        {
-                            "$pull": {"projects": project_key},
-                            "$set": {"updated_at": datetime.utcnow()}
-                        }
-                    )
-                    # Also update team field if it matches this project
-                    member = members_collection.find_one({"_id": ObjectId(member_id)})
-                    if member and member.get("team") == project_key:
+                    member_obj_id = ObjectId(member_id)
+                    
+                    # Get member before update to see current projects
+                    member = members_collection.find_one({"_id": member_obj_id})
+                    if not member:
+                        logger.warning(f"[Project-Member Sync] Member {member_id} not found in database")
+                        continue
+                    
+                    member_name = member.get('name', 'Unknown')
+                    current_projects = member.get('projects', [])
+                    logger.info(f"[Project-Member Sync] Member {member_id} ({member_name}) current projects: {current_projects}")
+                    
+                    # Remove project_key from member's projects array (case-insensitive)
+                    # Filter out any project keys that match (case-insensitive)
+                    project_key_lower = project_key.lower()
+                    updated_projects = [
+                        p for p in current_projects 
+                        if p.lower() != project_key_lower
+                    ]
+                    
+                    if len(updated_projects) != len(current_projects):
+                        # Projects were actually removed
+                        result = members_collection.update_one(
+                            {"_id": member_obj_id},
+                            {
+                                "$set": {
+                                    "projects": updated_projects,
+                                    "updated_at": datetime.utcnow()
+                                }
+                            }
+                        )
+                        logger.info(f"[Project-Member Sync] Removed {project_key} from member {member_id} ({member_name}): {current_projects} -> {updated_projects}, modified={result.modified_count}")
+                    else:
+                        logger.info(f"[Project-Member Sync] Project {project_key} not found in member {member_id} ({member_name}) projects: {current_projects}")
+                    
+                    # Also update team field if it matches this project (case-insensitive)
+                    current_team = member.get("team", "")
+                    if current_team and current_team.lower() == project_key_lower:
                         # Set team to first remaining project or None
-                        remaining_projects = member.get("projects", [])
-                        new_team = remaining_projects[0] if remaining_projects else None
+                        new_team = updated_projects[0] if updated_projects else None
                         members_collection.update_one(
-                            {"_id": ObjectId(member_id)},
+                            {"_id": member_obj_id},
                             {"$set": {"team": new_team}}
                         )
-                    logger.info(f"Removed {project_key} from member {member_id}")
+                        logger.info(f"[Project-Member Sync] Updated team for member {member_id} ({member_name}): {current_team} -> {new_team}")
+                    
                 except Exception as e:
-                    logger.warning(f"Failed to update member {member_id}: {e}")
+                    logger.error(f"[Project-Member Sync] Failed to remove {project_key} from member {member_id}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             # Members added to project - add project key to their projects array
             added_members = new_member_ids - old_member_ids
+            logger.info(f"[Project-Member Sync] Members to add: {added_members}")
+            
             for member_id in added_members:
                 try:
-                    members_collection.update_one(
-                        {"_id": ObjectId(member_id)},
-                        {
-                            "$addToSet": {"projects": project_key},
-                            "$set": {"updated_at": datetime.utcnow()}
-                        }
-                    )
+                    member_obj_id = ObjectId(member_id)
+                    
+                    # Get member first to check if project is already in list
+                    member = members_collection.find_one({"_id": member_obj_id})
+                    if not member:
+                        logger.warning(f"[Project-Member Sync] Member {member_id} not found in database")
+                        continue
+                    
+                    member_name = member.get('name', 'Unknown')
+                    current_projects = member.get('projects', [])
+                    
+                    # Check if project is already in list (case-insensitive)
+                    project_key_lower = project_key.lower()
+                    if any(p.lower() == project_key_lower for p in current_projects):
+                        logger.info(f"[Project-Member Sync] Project {project_key} already in member {member_id} ({member_name}) projects: {current_projects}")
+                    else:
+                        result = members_collection.update_one(
+                            {"_id": member_obj_id},
+                            {
+                                "$addToSet": {"projects": project_key},
+                                "$set": {"updated_at": datetime.utcnow()}
+                            }
+                        )
+                        logger.info(f"[Project-Member Sync] Added {project_key} to member {member_id} ({member_name}): matched={result.matched_count}, modified={result.modified_count}")
+                    
                     # Also update team field if not set
-                    member = members_collection.find_one({"_id": ObjectId(member_id)})
-                    if member and not member.get("team"):
+                    if not member.get("team"):
                         members_collection.update_one(
-                            {"_id": ObjectId(member_id)},
+                            {"_id": member_obj_id},
                             {"$set": {"team": project_key}}
                         )
-                    logger.info(f"Added {project_key} to member {member_id}")
+                        logger.info(f"[Project-Member Sync] Set team for member {member_id} ({member_name}): {project_key}")
+                        
                 except Exception as e:
-                    logger.warning(f"Failed to update member {member_id}: {e}")
+                    logger.error(f"[Project-Member Sync] Failed to add {project_key} to member {member_id}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
         
         # Update document
         projects_collection.update_one(
