@@ -32,6 +32,8 @@ services:
       dockerfile: Dockerfile.backend
     container_name: all-thing-eye-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       # Timezone
       TZ: Asia/Seoul
@@ -96,6 +98,8 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: all-thing-eye-frontend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       TZ: Asia/Seoul
       NODE_ENV: production
@@ -115,6 +119,8 @@ services:
       dockerfile: Dockerfile.backend
     container_name: all-thing-eye-data-collector
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       TZ: Asia/Seoul
 
@@ -185,6 +191,8 @@ services:
       dockerfile: Dockerfile.backend
     container_name: all-thing-eye-notion-diff-collector
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       TZ: Asia/Seoul
 
