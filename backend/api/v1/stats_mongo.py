@@ -316,10 +316,12 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
         collection_names_list = await db.list_collection_names()
         has_collection_status = 'collection_status' in collection_names_list
         
-        sources_list = ['github', 'slack', 'notion', 'drive']
+        # For Notion, always use notion_content_diffs timestamp since it's collected every minute
+        # Other sources use collection_status if available
+        sources_list = ['github', 'slack', 'drive']  # Notion handled separately
         
         if has_collection_status:
-            # New method: Use collection_status tracking
+            # New method: Use collection_status tracking for non-Notion sources
             collection_status_coll = db['collection_status']
             
             for source in sources_list:
@@ -353,14 +355,13 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
                     logger.warning(f"Error checking collection_status for {source}: {e}")
                     last_collected[source] = None
         else:
-            # Fallback: Use data timestamps (old method)
+            # Fallback: Use data timestamps (old method) for non-Notion sources
             logger.info("collection_status not found, using fallback method")
             
             # Map collections with their timestamp field names
             source_collections = {
                 'github': [('github_commits', 'collected_at'), ('github_pull_requests', 'collected_at'), ('github_issues', 'collected_at')],
                 'slack': [('slack_messages', 'collected_at')],
-                'notion': [('notion_content_diffs', 'timestamp')],  # Use diff tracking (collected every minute)
                 'drive': [('drive_files', 'collected_at'), ('drive_activities', 'collected_at')]
             }
             
@@ -392,6 +393,72 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
                     last_collected[source] = latest_time.isoformat() + 'Z'
                 else:
                     last_collected[source] = None
+        
+        # Notion: Use collection_status for "notion_diff" source
+        # This tracks when the collector last ran successfully, not when data was created
+        # This way, even if no changes are detected, we know the collector is running
+        try:
+            if has_collection_status:
+                # Look for notion_diff in collection_status (new diff-based collector)
+                status_doc = await collection_status_coll.find_one(
+                    {'source': 'notion_diff'},
+                    sort=[('completed_at', -1)]
+                )
+                
+                if status_doc and 'completed_at' in status_doc:
+                    completed_time = status_doc['completed_at']
+                    
+                    if isinstance(completed_time, datetime):
+                        last_collected['notion'] = completed_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                    elif isinstance(completed_time, str):
+                        try:
+                            parsed_time = datetime.fromisoformat(completed_time.replace('Z', '+00:00'))
+                            last_collected['notion'] = parsed_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                        except:
+                            last_collected['notion'] = completed_time
+                    else:
+                        last_collected['notion'] = None
+                else:
+                    # Fallback: check old "notion" source
+                    old_status_doc = await collection_status_coll.find_one(
+                        {'source': 'notion'},
+                        sort=[('completed_at', -1)]
+                    )
+                    if old_status_doc and 'completed_at' in old_status_doc:
+                        completed_time = old_status_doc['completed_at']
+                        if isinstance(completed_time, datetime):
+                            last_collected['notion'] = completed_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                        elif isinstance(completed_time, str):
+                            last_collected['notion'] = completed_time
+                        else:
+                            last_collected['notion'] = None
+                    else:
+                        last_collected['notion'] = None
+                        logger.info("No collection_status found for notion_diff or notion")
+            else:
+                # No collection_status collection - fallback to data timestamp
+                if 'notion_content_diffs' in collection_names_list:
+                    notion_doc = await db['notion_content_diffs'].find_one(
+                        {},
+                        sort=[('timestamp', -1)]
+                    )
+                    if notion_doc and 'timestamp' in notion_doc:
+                        notion_time = notion_doc['timestamp']
+                        if isinstance(notion_time, datetime):
+                            last_collected['notion'] = notion_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                        elif isinstance(notion_time, str) and 'T' in notion_time:
+                            last_collected['notion'] = notion_time
+                        else:
+                            last_collected['notion'] = None
+                    else:
+                        last_collected['notion'] = None
+                else:
+                    last_collected['notion'] = None
+        except Exception as e:
+            logger.warning(f"Error checking notion collection_status: {e}")
+            import traceback
+            logger.warning(traceback.format_exc())
+            last_collected['notion'] = None
         
         # 8. Compile final response
         return {

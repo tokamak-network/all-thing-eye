@@ -132,6 +132,12 @@ export default function Home() {
     if (!isoTime) return { status: 'Never', color: 'text-gray-500', bgColor: 'bg-gray-100' };
     
     const date = new Date(isoTime);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return { status: 'No data', color: 'text-gray-500', bgColor: 'bg-gray-100' };
+    }
+    
     const now = new Date();
     const diffHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
     

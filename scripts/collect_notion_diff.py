@@ -92,9 +92,41 @@ def create_plugin() -> Optional[NotionDiffPlugin]:
     return plugin
 
 
+def record_collection_status(
+    db,
+    source: str,
+    start_time: datetime,
+    status: str,
+    items_collected: int = 0,
+    error_message: str = None
+):
+    """
+    Record collection status to MongoDB.
+    This tracks when the collector ran, regardless of whether data was found.
+    """
+    try:
+        collection = db['collection_status']
+        
+        status_doc = {
+            'source': source,
+            'started_at': start_time,
+            'completed_at': datetime.now(timezone.utc),
+            'status': status,
+            'items_collected': items_collected,
+            'error_message': error_message
+        }
+        
+        collection.insert_one(status_doc)
+        logger.info(f"📝 Recorded collection status: {source} - {status}")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to record collection status: {e}")
+
+
 def run_collection(plugin: NotionDiffPlugin, hours: float = 1.0):
     """Run a single collection cycle"""
     
+    start_time = datetime.now(timezone.utc)
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(hours=hours)
     
@@ -103,7 +135,16 @@ def run_collection(plugin: NotionDiffPlugin, hours: float = 1.0):
     print(f"   Looking back {hours} hours", flush=True)
     print(f"{'=' * 70}", flush=True)
     
-    diffs = plugin.collect_data(start_date=start_date, end_date=end_date)
+    status = "success"
+    error_message = None
+    diffs = []
+    
+    try:
+        diffs = plugin.collect_data(start_date=start_date, end_date=end_date)
+    except Exception as e:
+        status = "failed"
+        error_message = str(e)
+        print(f"❌ Collection failed: {e}", flush=True)
     
     # Summary
     block_diffs = [d for d in diffs if d.get('diff_type') == 'block']
@@ -126,6 +167,16 @@ def run_collection(plugin: NotionDiffPlugin, hours: float = 1.0):
             modified = len(changes.get('modified', []))
             
             print(f"   - [{diff_type}] {title}... (+{added} -{deleted} ~{modified})", flush=True)
+    
+    # Record collection status (even if no diffs found)
+    record_collection_status(
+        plugin.db,
+        "notion_diff",  # Use "notion_diff" to distinguish from old "notion" collector
+        start_time,
+        status,
+        len(diffs),
+        error_message
+    )
     
     return diffs
 

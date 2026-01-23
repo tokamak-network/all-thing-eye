@@ -47,7 +47,7 @@ async def get_last_collected_times(request: Request, _admin: str = Depends(requi
                 "slack_messages": "posted_at"
             },
             "notion": {
-                "notion_pages": "last_edited_time"  # Use last_edited_time as it's more recent
+                "notion_content_diffs": "timestamp"  # Use diff tracking (collected every minute)
             },
             "drive": {
                 "drive_activities": "timestamp"
