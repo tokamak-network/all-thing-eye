@@ -299,6 +299,24 @@ class ApiClient {
     return response.data;
   }
 
+  // Grant Report Summary API
+  async summarizeGrantReport(projectKey: string, reportId: string, forceRefresh: boolean = false) {
+    const response = await this.client.post(
+      `/projects-management/projects/${projectKey}/grant-reports/${reportId}/summarize`,
+      null,
+      { params: { force_refresh: forceRefresh }, timeout: 180000 } // 3 min timeout for AI
+    );
+    return response.data;
+  }
+
+  async getProjectSummary(projectKey: string) {
+    const response = await this.client.get(
+      `/projects-management/projects/${projectKey}/grant-reports/summary`,
+      { timeout: 180000 } // 3 min timeout for AI
+    );
+    return response.data;
+  }
+
   // Drive Folder API
   async getDriveFolderFiles(folderId: string) {
     const response = await this.client.get(`/projects-management/drive/folder/${folderId}/files`);

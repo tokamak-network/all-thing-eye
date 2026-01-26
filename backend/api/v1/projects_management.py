@@ -1198,3 +1198,719 @@ async def download_drive_file(request: Request, file_id: str):
         logger.error(f"Error downloading Drive file: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
+
+# ============================================
+# Grant Report Auto-Discovery API
+# ============================================
+
+class DiscoveredReportResponse(BaseModel):
+    """Response model for discovered grant report"""
+    id: str
+    name: str
+    link: str
+    project_key: Optional[str] = None
+    year: Optional[int] = None
+    quarter: Optional[int] = None
+    mimeType: Optional[str] = None
+    modifiedTime: Optional[str] = None
+
+
+class DiscoverReportsResponse(BaseModel):
+    """Response model for discovered reports"""
+    total: int
+    reports: List[DiscoveredReportResponse]
+
+
+def detect_project_from_filename(filename: str) -> Optional[str]:
+    """Detect project key from filename pattern."""
+    name_lower = filename.lower()
+    
+    if 'ooo' in name_lower or 'zk-evm' in name_lower or 'zkevm' in name_lower or 'zk_evm' in name_lower:
+        return 'project-ooo'
+    elif 'eco' in name_lower or 'l2 economics' in name_lower or 'l2economics' in name_lower or 'feetoken' in name_lower or 'fee token' in name_lower:
+        return 'project-eco'
+    elif 'syb' in name_lower or 'sybil' in name_lower:
+        return 'project-syb'
+    elif 'trh' in name_lower:
+        return 'project-trh'
+    
+    return None
+
+
+@router.get("/drive/search-reports", response_model=DiscoverReportsResponse)
+async def search_grant_reports(
+    request: Request,
+    project_key: Optional[str] = None,
+    year: Optional[int] = None,
+    quarter: Optional[int] = None
+):
+    """
+    Search for grant reports across all of Google Drive using filename patterns.
+    
+    This searches recursively across all accessible folders.
+    
+    Args:
+        project_key: Filter by project (e.g., 'project-ooo')
+        year: Filter by year (e.g., 2024)
+        quarter: Filter by quarter (1-4)
+    
+    Returns:
+        List of discovered grant reports with metadata
+    """
+    try:
+        service = get_drive_service()
+        
+        # Build search query for PDF files with grant report naming patterns
+        # Common patterns: Ooo_2025_Q1.pdf, ECO_2024_Q3.pdf, TRH_2025_Q4.pdf, etc.
+        queries = []
+        
+        if project_key:
+            # Project-specific search
+            project_patterns = {
+                'project-ooo': ['Ooo_', 'zk-EVM_', 'zkevm_'],
+                'project-eco': ['ECO_', 'L2 Economics_', 'L2Economics_', 'FeeToken_', 'Fee Token_'],
+                'project-syb': ['SYB_', 'Sybil_', 'TokamakSybil'],
+                'project-trh': ['TRH_'],
+            }
+            patterns = project_patterns.get(project_key, [])
+            if patterns:
+                pattern_queries = [f"name contains '{p}'" for p in patterns]
+                queries.append(f"({' or '.join(pattern_queries)})")
+        
+        if year:
+            queries.append(f"name contains '{year}'")
+        
+        if quarter:
+            queries.append(f"(name contains 'Q{quarter}' or name contains '_Q{quarter}')")
+        
+        # Default: search for common grant report patterns
+        if not queries:
+            queries.append("(name contains '_Q1' or name contains '_Q2' or name contains '_Q3' or name contains '_Q4')")
+        
+        # Add PDF filter
+        queries.append("mimeType = 'application/pdf'")
+        
+        query = " and ".join(queries)
+        logger.info(f"Searching Drive with query: {query}")
+        
+        all_files = []
+        page_token = None
+        
+        while True:
+            response = service.files().list(
+                q=query,
+                spaces='drive',
+                fields='nextPageToken, files(id, name, mimeType, modifiedTime, parents)',
+                orderBy='modifiedTime desc',
+                pageSize=100,
+                pageToken=page_token
+            ).execute()
+            
+            for file in response.get('files', []):
+                file_name = file['name']
+                file_id = file['id']
+                
+                # Extract year and quarter from filename
+                file_year, file_quarter = extract_year_quarter(file_name)
+                
+                # Detect project
+                detected_project = detect_project_from_filename(file_name)
+                
+                # Apply filters
+                if project_key and detected_project != project_key:
+                    continue
+                if year and file_year != year:
+                    continue
+                if quarter and file_quarter != quarter:
+                    continue
+                
+                all_files.append(DiscoveredReportResponse(
+                    id=file_id,
+                    name=file_name,
+                    link=f"https://drive.google.com/file/d/{file_id}/view",
+                    project_key=detected_project,
+                    year=file_year,
+                    quarter=file_quarter,
+                    mimeType=file.get('mimeType'),
+                    modifiedTime=file.get('modifiedTime')
+                ))
+            
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+        
+        # Sort by year desc, quarter desc
+        all_files.sort(key=lambda x: (x.year or 0, x.quarter or 0), reverse=True)
+        
+        return DiscoverReportsResponse(
+            total=len(all_files),
+            reports=all_files
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching Drive for reports: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to search Drive: {str(e)}")
+
+
+@router.post("/projects/{project_key}/grant-reports/sync")
+async def sync_grant_reports_from_drive(
+    request: Request,
+    project_key: str,
+    replace_existing: bool = False
+):
+    """
+    Auto-discover and sync grant reports from Google Drive for a project.
+    
+    Searches Drive for all reports matching the project's naming pattern
+    and adds them to the project's grant_reports.
+    
+    Args:
+        project_key: Project identifier
+        replace_existing: If True, replace all existing reports. If False, only add new ones.
+    
+    Returns:
+        Summary of sync operation
+    """
+    mongo = get_mongo_manager()
+    db = mongo.db
+    
+    # Check project exists
+    project = db["projects"].find_one({"key": project_key})
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
+    
+    try:
+        # Search for reports
+        service = get_drive_service()
+        
+        project_patterns = {
+            'project-ooo': ['Ooo_', 'zk-EVM_', 'zkevm_'],
+            'project-eco': ['ECO_', 'L2 Economics_', 'L2Economics_', 'FeeToken_', 'Fee Token_'],
+            'project-syb': ['SYB_', 'Sybil_', 'TokamakSybil'],
+            'project-trh': ['TRH_'],
+        }
+        
+        patterns = project_patterns.get(project_key, [])
+        if not patterns:
+            raise HTTPException(status_code=400, detail=f"No search patterns defined for project '{project_key}'")
+        
+        pattern_queries = [f"name contains '{p}'" for p in patterns]
+        query = f"({' or '.join(pattern_queries)}) and mimeType = 'application/pdf'"
+        
+        logger.info(f"Syncing reports for {project_key} with query: {query}")
+        
+        discovered_files = []
+        page_token = None
+        
+        while True:
+            response = service.files().list(
+                q=query,
+                spaces='drive',
+                fields='nextPageToken, files(id, name, mimeType, modifiedTime)',
+                orderBy='modifiedTime desc',
+                pageSize=100,
+                pageToken=page_token
+            ).execute()
+            
+            for file in response.get('files', []):
+                file_year, file_quarter = extract_year_quarter(file['name'])
+                if file_year and file_quarter:
+                    discovered_files.append({
+                        'id': file['id'],
+                        'name': file['name'],
+                        'year': file_year,
+                        'quarter': file_quarter,
+                        'modifiedTime': file.get('modifiedTime')
+                    })
+            
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+        
+        # Deduplicate by year+quarter (keep most recent version)
+        unique_reports = {}
+        for f in discovered_files:
+            key = (f['year'], f['quarter'])
+            if key not in unique_reports or (f.get('modifiedTime') or '') > (unique_reports[key].get('modifiedTime') or ''):
+                unique_reports[key] = f
+        
+        # Get existing reports
+        existing_reports = project.get('grant_reports', [])
+        existing_keys = {(r.get('year'), r.get('quarter')) for r in existing_reports}
+        
+        # Prepare new reports
+        import uuid
+        from datetime import datetime
+        
+        new_reports = []
+        for (year, quarter), f in sorted(unique_reports.items(), key=lambda x: (x[0][0], x[0][1]), reverse=True):
+            if replace_existing or (year, quarter) not in existing_keys:
+                # Generate title
+                project_name = project.get('name', project_key.replace('project-', '').upper())
+                title = f"{project_name} {year} Q{quarter} Report"
+                
+                new_reports.append({
+                    'id': str(uuid.uuid4()),
+                    'title': title,
+                    'year': year,
+                    'quarter': quarter,
+                    'drive_url': f"https://drive.google.com/file/d/{f['id']}/view",
+                    'file_name': f['name'],
+                    'created_at': datetime.utcnow()
+                })
+        
+        # Update database
+        if replace_existing:
+            db["projects"].update_one(
+                {"key": project_key},
+                {"$set": {"grant_reports": new_reports}}
+            )
+            action = "replaced"
+        else:
+            if new_reports:
+                # Add new reports to existing
+                all_reports = existing_reports + new_reports
+                # Sort by year desc, quarter desc
+                all_reports.sort(key=lambda x: (x.get('year', 0), x.get('quarter', 0)), reverse=True)
+                db["projects"].update_one(
+                    {"key": project_key},
+                    {"$set": {"grant_reports": all_reports}}
+                )
+            action = "added"
+        
+        return {
+            "project_key": project_key,
+            "action": action,
+            "discovered": len(unique_reports),
+            "new_reports_added": len(new_reports),
+            "total_reports": len(new_reports) if replace_existing else len(existing_reports) + len(new_reports),
+            "reports": [
+                {"year": r['year'], "quarter": r['quarter'], "title": r['title']}
+                for r in new_reports
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing reports for {project_key}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to sync reports: {str(e)}")
+
+
+# ============================================
+# Grant Report AI Summary API
+# ============================================
+
+class ReportSummaryResponse(BaseModel):
+    """Response model for report summary"""
+    report_id: str
+    title: str
+    year: int
+    quarter: int
+    summary: str
+    progress_percentage: Optional[int] = None
+    key_achievements: List[str] = Field(default_factory=list)
+    challenges: List[str] = Field(default_factory=list)
+    next_quarter_goals: List[str] = Field(default_factory=list)
+    generated_at: datetime
+    is_cached: bool = False
+
+
+class ProjectSummaryResponse(BaseModel):
+    """Response model for project-wide summary"""
+    project_key: str
+    project_name: str
+    overall_summary: str
+    progress_trend: str  # "improving", "stable", "declining"
+    quarterly_summaries: List[ReportSummaryResponse]
+    generated_at: datetime
+
+
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    """Extract text from PDF bytes using PyMuPDF if available."""
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+        return text.strip()
+    except ImportError:
+        logger.warning("PyMuPDF not installed. Install with: pip install pymupdf")
+        return ""
+    except Exception as e:
+        logger.error(f"Error extracting PDF text: {e}")
+        return ""
+
+
+async def generate_report_summary_with_ai(
+    report_title: str,
+    year: int,
+    quarter: int,
+    pdf_text: str,
+    project_name: str
+) -> dict:
+    """Generate summary using Tokamak AI API."""
+    import httpx
+    import os
+    import json
+    
+    api_key = os.getenv("AI_API_KEY", "").strip()
+    api_url = os.getenv("AI_API_URL", "https://api.ai.tokamak.network").strip()
+    model = os.getenv("AI_MODEL", "qwen3-235b")
+    
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AI API key not configured")
+    
+    # Build prompt based on whether we have PDF text
+    if pdf_text and len(pdf_text) > 100:
+        prompt = f"""Analyze this quarterly grant report and provide a structured summary.
+
+Project: {project_name}
+Report: {report_title}
+Period: {year} Q{quarter}
+
+Report Content:
+{pdf_text[:15000]}  # Limit to avoid token limits
+
+Please provide:
+1. A concise summary (2-3 paragraphs)
+2. Estimated progress percentage (0-100)
+3. Key achievements (bullet points)
+4. Challenges faced (bullet points)
+5. Goals for next quarter (bullet points)
+
+Respond in JSON format:
+{{
+    "summary": "...",
+    "progress_percentage": 75,
+    "key_achievements": ["...", "..."],
+    "challenges": ["...", "..."],
+    "next_quarter_goals": ["...", "..."]
+}}"""
+    else:
+        # Metadata-based summary when PDF text not available
+        prompt = f"""Generate a template summary for a quarterly grant report based on available metadata.
+
+Project: {project_name}
+Report: {report_title}
+Period: {year} Q{quarter}
+
+Since the full report content is not available, provide a generic but helpful template summary.
+Include placeholder information that indicates what should be in each section.
+
+Respond in JSON format:
+{{
+    "summary": "This is the Q{quarter} {year} report for {project_name}. [PDF content extraction not available - please view the full report for details]",
+    "progress_percentage": null,
+    "key_achievements": ["[View full report for achievements]"],
+    "challenges": ["[View full report for challenges]"],
+    "next_quarter_goals": ["[View full report for goals]"]
+}}"""
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are an analyst that summarizes project grant reports. Always respond in valid JSON format."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 2000
+    }
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{api_url}/v1/chat/completions",
+            json=payload,
+            headers=headers
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"AI API error: {response.text}")
+            raise HTTPException(status_code=500, detail=f"AI API error: {response.status_code}")
+        
+        data = response.json()
+        ai_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        
+        # Parse JSON from AI response
+        try:
+            # Try to extract JSON from the response
+            json_match = re.search(r'\{[\s\S]*\}', ai_content)
+            if json_match:
+                return json.loads(json_match.group())
+            else:
+                return {
+                    "summary": ai_content,
+                    "progress_percentage": None,
+                    "key_achievements": [],
+                    "challenges": [],
+                    "next_quarter_goals": []
+                }
+        except json.JSONDecodeError:
+            return {
+                "summary": ai_content,
+                "progress_percentage": None,
+                "key_achievements": [],
+                "challenges": [],
+                "next_quarter_goals": []
+            }
+
+
+@router.post("/projects/{project_key}/grant-reports/{report_id}/summarize", response_model=ReportSummaryResponse)
+async def summarize_grant_report(request: Request, project_key: str, report_id: str, force_refresh: bool = False):
+    """
+    Generate AI summary for a specific grant report.
+    
+    Args:
+        project_key: Project identifier
+        report_id: Grant report ID
+        force_refresh: If True, regenerate even if cached
+    
+    Returns:
+        AI-generated summary of the report
+    """
+    mongo = get_mongo_manager()
+    db = mongo.db
+    
+    # Get project
+    project = db["projects"].find_one({"key": project_key})
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
+    
+    # Find the specific report
+    grant_reports = project.get("grant_reports", [])
+    report = None
+    for r in grant_reports:
+        if r.get("id") == report_id:
+            report = r
+            break
+    
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found")
+    
+    # Check for cached summary
+    if not force_refresh and report.get("summary"):
+        return ReportSummaryResponse(
+            report_id=report_id,
+            title=report.get("title", ""),
+            year=report.get("year", 0),
+            quarter=report.get("quarter", 0),
+            summary=report.get("summary", ""),
+            progress_percentage=report.get("progress_percentage"),
+            key_achievements=report.get("key_achievements", []),
+            challenges=report.get("challenges", []),
+            next_quarter_goals=report.get("next_quarter_goals", []),
+            generated_at=report.get("summary_generated_at", datetime.utcnow()),
+            is_cached=True
+        )
+    
+    # Try to extract PDF text
+    pdf_text = ""
+    drive_url = report.get("drive_url", "")
+    if drive_url:
+        # Extract file ID
+        match = re.search(r'/d/([a-zA-Z0-9_-]+)', drive_url)
+        if match:
+            file_id = match.group(1)
+            try:
+                service = get_drive_service()
+                from googleapiclient.http import MediaIoBaseDownload
+                import io
+                
+                request_download = service.files().get_media(fileId=file_id)
+                pdf_bytes = io.BytesIO()
+                downloader = MediaIoBaseDownload(pdf_bytes, request_download)
+                
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                
+                pdf_bytes.seek(0)
+                pdf_text = extract_text_from_pdf(pdf_bytes.read())
+                logger.info(f"Extracted {len(pdf_text)} characters from PDF")
+            except Exception as e:
+                logger.warning(f"Could not extract PDF text: {e}")
+    
+    # Generate summary with AI
+    ai_result = await generate_report_summary_with_ai(
+        report_title=report.get("title", ""),
+        year=report.get("year", 0),
+        quarter=report.get("quarter", 0),
+        pdf_text=pdf_text,
+        project_name=project.get("name", project_key)
+    )
+    
+    # Cache the summary in MongoDB
+    now = datetime.utcnow()
+    db["projects"].update_one(
+        {"key": project_key, "grant_reports.id": report_id},
+        {"$set": {
+            "grant_reports.$.summary": ai_result.get("summary", ""),
+            "grant_reports.$.progress_percentage": ai_result.get("progress_percentage"),
+            "grant_reports.$.key_achievements": ai_result.get("key_achievements", []),
+            "grant_reports.$.challenges": ai_result.get("challenges", []),
+            "grant_reports.$.next_quarter_goals": ai_result.get("next_quarter_goals", []),
+            "grant_reports.$.summary_generated_at": now
+        }}
+    )
+    
+    return ReportSummaryResponse(
+        report_id=report_id,
+        title=report.get("title", ""),
+        year=report.get("year", 0),
+        quarter=report.get("quarter", 0),
+        summary=ai_result.get("summary", ""),
+        progress_percentage=ai_result.get("progress_percentage"),
+        key_achievements=ai_result.get("key_achievements", []),
+        challenges=ai_result.get("challenges", []),
+        next_quarter_goals=ai_result.get("next_quarter_goals", []),
+        generated_at=now,
+        is_cached=False
+    )
+
+
+@router.get("/projects/{project_key}/grant-reports/summary", response_model=ProjectSummaryResponse)
+async def get_project_summary(request: Request, project_key: str):
+    """
+    Get overall project summary based on all quarterly reports.
+    
+    Args:
+        project_key: Project identifier
+    
+    Returns:
+        Overall project summary with progress trend
+    """
+    import httpx
+    import os
+    import json
+    
+    mongo = get_mongo_manager()
+    db = mongo.db
+    
+    # Get project
+    project = db["projects"].find_one({"key": project_key})
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
+    
+    grant_reports = project.get("grant_reports", [])
+    if not grant_reports:
+        raise HTTPException(status_code=404, detail="No grant reports found for this project")
+    
+    # Sort by year and quarter
+    sorted_reports = sorted(grant_reports, key=lambda x: (x.get("year", 0), x.get("quarter", 0)), reverse=True)
+    
+    # Collect existing summaries
+    quarterly_summaries = []
+    summaries_text = []
+    
+    for report in sorted_reports:
+        summary_data = ReportSummaryResponse(
+            report_id=report.get("id", ""),
+            title=report.get("title", ""),
+            year=report.get("year", 0),
+            quarter=report.get("quarter", 0),
+            summary=report.get("summary", "No summary available"),
+            progress_percentage=report.get("progress_percentage"),
+            key_achievements=report.get("key_achievements", []),
+            challenges=report.get("challenges", []),
+            next_quarter_goals=report.get("next_quarter_goals", []),
+            generated_at=report.get("summary_generated_at", datetime.utcnow()),
+            is_cached=True
+        )
+        quarterly_summaries.append(summary_data)
+        
+        if report.get("summary"):
+            summaries_text.append(f"Q{report.get('quarter')} {report.get('year')}: {report.get('summary')[:500]}")
+    
+    # Generate overall summary with AI
+    api_key = os.getenv("AI_API_KEY", "").strip()
+    api_url = os.getenv("AI_API_URL", "https://api.ai.tokamak.network").strip()
+    model = os.getenv("AI_MODEL", "qwen3-235b")
+    
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AI API key not configured")
+    
+    reports_info = "\n".join([
+        f"- Q{r.get('quarter')} {r.get('year')}: {r.get('title')}" + 
+        (f" (Progress: {r.get('progress_percentage')}%)" if r.get('progress_percentage') else "")
+        for r in sorted_reports
+    ])
+    
+    summaries_combined = "\n\n".join(summaries_text) if summaries_text else "No detailed summaries available yet."
+    
+    prompt = f"""Analyze the following quarterly grant reports for {project.get('name', project_key)} and provide:
+1. An overall project summary (2-3 paragraphs)
+2. Progress trend assessment: "improving", "stable", or "declining"
+
+Available Reports:
+{reports_info}
+
+Quarterly Summaries:
+{summaries_combined}
+
+Respond in JSON format:
+{{
+    "overall_summary": "...",
+    "progress_trend": "improving|stable|declining"
+}}"""
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are a project analyst. Analyze grant reports and assess project progress. Always respond in valid JSON."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1500
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{api_url}/v1/chat/completions",
+                json=payload,
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"AI API error: {response.status_code}")
+            
+            data = response.json()
+            ai_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            
+            # Parse JSON
+            json_match = re.search(r'\{[\s\S]*\}', ai_content)
+            if json_match:
+                ai_result = json.loads(json_match.group())
+            else:
+                ai_result = {"overall_summary": ai_content, "progress_trend": "stable"}
+                
+    except Exception as e:
+        logger.error(f"Error generating overall summary: {e}")
+        ai_result = {
+            "overall_summary": f"Project {project.get('name', project_key)} has {len(grant_reports)} quarterly reports. Generate individual summaries first for detailed analysis.",
+            "progress_trend": "stable"
+        }
+    
+    return ProjectSummaryResponse(
+        project_key=project_key,
+        project_name=project.get("name", project_key),
+        overall_summary=ai_result.get("overall_summary", ""),
+        progress_trend=ai_result.get("progress_trend", "stable"),
+        quarterly_summaries=quarterly_summaries,
+        generated_at=datetime.utcnow()
+    )
+

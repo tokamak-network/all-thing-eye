@@ -7,16 +7,21 @@ import { useDisconnect } from "wagmi";
 import { getAuthSession, clearAuthSession } from "@/lib/auth";
 import { clearToken } from "@/lib/jwt";
 
+// Admin wallet address
+const ADMIN_ADDRESS = '0xF9Fa94D45C49e879E46Ea783fc133F41709f3bc7'.toLowerCase();
+
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const { disconnect } = useDisconnect();
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const session = getAuthSession();
     if (session) {
       setWalletAddress(session.address);
+      setIsAdmin(session.address.toLowerCase() === ADMIN_ADDRESS);
     }
   }, []);
 
@@ -27,6 +32,8 @@ export default function Navigation() {
     { href: "/custom-export", label: "🎨 Custom Export" },
     { href: "/members", label: "Members" },
     { href: "/projects", label: "Projects" },
+    // Admin link only shown for admin users
+    ...(isAdmin ? [{ href: "/admin", label: "🔐 Admin" }] : []),
   ];
 
   const isActive = (href: string) => {

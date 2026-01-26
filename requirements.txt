@@ -38,6 +38,9 @@ google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.0
 google-generativeai==0.8.3  # Gemini AI for translation
 
+# PDF Processing
+pymupdf>=1.23.0  # For PDF text extraction in grant report summarization
+
 # Utilities
 python-dotenv==1.0.0
 pyyaml==6.0.1
