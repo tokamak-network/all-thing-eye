@@ -283,6 +283,31 @@ class ActivitySummary:
 
 
 @strawberry.type
+class GrantReport:
+    """
+    Grant report information for a project.
+    
+    Represents a quarterly grant report stored in Google Drive.
+    """
+    id: str
+    title: str  # e.g., "TRH 2024 Q4 Report"
+    year: int  # e.g., 2024
+    quarter: int  # 1, 2, 3, or 4
+    drive_url: str  # Google Drive URL to the report file
+    file_name: Optional[str] = None  # Original file name
+    created_at: Optional[datetime] = None  # When the report was added
+
+
+@strawberry.type
+class GrantReportFolder:
+    """
+    Grant report folder configuration for automatic sync from Google Drive.
+    """
+    folder_id: str  # Google Drive folder ID
+    folder_url: str  # Full Google Drive folder URL
+
+
+@strawberry.type
 class Project:
     """
     Project type representing a project/team.
@@ -296,9 +321,11 @@ class Project:
     slack_channel: Optional[str] = None
     slack_channel_id: Optional[str] = None  # Internal field
     lead: Optional[str] = None
-    repositories: List[str]
+    repositories: List[str] = strawberry.field(default_factory=list)
     is_active: bool = True
     member_ids: List[str] = strawberry.field(default_factory=list)  # Internal field
+    grant_reports_data: strawberry.Private[List[dict]] = None  # Internal field for raw grant report data
+    grant_reports_folder_id: Optional[str] = None  # Google Drive folder ID for auto-sync
     
     @strawberry.field
     def slackChannelId(self) -> Optional[str]:
@@ -309,6 +336,47 @@ class Project:
     def memberIds(self) -> List[str]:
         """Get list of member IDs for this project."""
         return self.member_ids
+    
+    @strawberry.field
+    def grantReports(self) -> List[GrantReport]:
+        """
+        Get grant reports for this project.
+        
+        Returns sorted list of grant reports (most recent first).
+        """
+        if not self.grant_reports_data:
+            return []
+        
+        reports = []
+        for report_data in self.grant_reports_data:
+            reports.append(GrantReport(
+                id=report_data.get('id', ''),
+                title=report_data.get('title', ''),
+                year=report_data.get('year', 0),
+                quarter=report_data.get('quarter', 0),
+                drive_url=report_data.get('drive_url', ''),
+                file_name=report_data.get('file_name'),
+                created_at=report_data.get('created_at')
+            ))
+        
+        # Sort by year (desc) and quarter (desc) to show most recent first
+        reports.sort(key=lambda r: (r.year, r.quarter), reverse=True)
+        return reports
+    
+    @strawberry.field
+    def grantReportsFolder(self) -> Optional[GrantReportFolder]:
+        """
+        Get grant reports folder configuration for auto-sync.
+        
+        Returns folder info if configured, None otherwise.
+        """
+        if not self.grant_reports_folder_id:
+            return None
+        
+        return GrantReportFolder(
+            folder_id=self.grant_reports_folder_id,
+            folder_url=f"https://drive.google.com/drive/folders/{self.grant_reports_folder_id}"
+        )
     
     @strawberry.field
     async def members(self, info) -> List['Member']:

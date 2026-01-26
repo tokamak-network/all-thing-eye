@@ -1686,7 +1686,9 @@ class Query:
                 lead=doc.get('lead'),
                 repositories=doc.get('repositories', []),
                 is_active=doc.get('is_active', True),
-                member_ids=member_ids_str
+                member_ids=member_ids_str,
+                grant_reports_data=doc.get('grant_reports', []),
+                grant_reports_folder_id=doc.get('grant_reports_folder_id')
             ))
         
         return projects
@@ -1739,7 +1741,9 @@ class Query:
             lead=doc.get('lead'),
             repositories=doc.get('repositories', []),
             is_active=doc.get('is_active', True),
-            member_ids=member_ids_str
+            member_ids=member_ids_str,
+            grant_reports_data=doc.get('grant_reports', []),
+            grant_reports_folder_id=doc.get('grant_reports_folder_id')
         )
     
     @strawberry.field

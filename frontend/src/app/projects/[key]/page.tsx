@@ -10,6 +10,8 @@ import {
   UserIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  DocumentTextIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { useProject } from '@/graphql/hooks';
 import ActivitiesView from '@/components/ActivitiesView';
@@ -19,6 +21,8 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const projectKey = params.key as string;
   const [isReposExpanded, setIsReposExpanded] = useState(false);
+  const [isReportsExpanded, setIsReportsExpanded] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<{ title: string; url: string } | null>(null);
 
   // GraphQL: Fetch project data
   const { data: projectData, loading: projectLoading, error: projectError } = useProject({
@@ -26,6 +30,32 @@ export default function ProjectDetailPage() {
   });
 
   const project = projectData?.project;
+
+  // Extract file ID from Google Drive URL
+  const extractFileId = (driveUrl: string): string | null => {
+    const match = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+  };
+
+  // Convert Drive URL to embeddable preview URL
+  const getPreviewUrl = (driveUrl: string) => {
+    const fileId = extractFileId(driveUrl);
+    if (fileId) {
+      return `https://drive.google.com/file/d/${fileId}/preview`;
+    }
+    // If it's a folder URL or other format, return as-is
+    return driveUrl;
+  };
+
+  // Convert Drive URL to backend download URL (uses backend proxy to avoid CORS/auth issues)
+  const getDownloadUrl = (driveUrl: string) => {
+    const fileId = extractFileId(driveUrl);
+    if (fileId) {
+      // Use backend API to download the file
+      return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/projects-management/drive/file/${fileId}/download`;
+    }
+    return driveUrl;
+  };
 
   const loading = projectLoading;
   const error = projectError?.message || null;
@@ -198,6 +228,101 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Grant Reports (Collapsible) */}
+        {project.grantReports && project.grantReports.length > 0 && (
+          <div className="bg-white rounded-lg shadow">
+            <button
+              onClick={() => setIsReportsExpanded(!isReportsExpanded)}
+              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors rounded-lg"
+            >
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                {isReportsExpanded ? (
+                  <ChevronDownIcon className="h-5 w-5 text-gray-500" />
+                ) : (
+                  <ChevronRightIcon className="h-5 w-5 text-gray-500" />
+                )}
+                <DocumentTextIcon className="h-5 w-5" />
+                Grant Reports
+              </h2>
+              <span className="text-sm text-gray-500">
+                {project.grantReports.length} {project.grantReports.length === 1 ? 'report' : 'reports'}
+              </span>
+            </button>
+            {isReportsExpanded && (
+              <div className="px-6 pb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {project.grantReports.map((report) => (
+                    <button
+                      key={report.id}
+                      onClick={() => setSelectedReport({ title: report.title, url: report.driveUrl })}
+                      className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors group text-left"
+                    >
+                      <div className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                        <DocumentTextIcon className="h-5 w-5 text-red-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {report.title}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {report.year} Q{report.quarter}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PDF Viewer Modal */}
+        {selectedReport && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-[90vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex justify-between items-center px-6 py-4 border-b">
+                <h3 className="text-lg font-medium text-gray-900">{selectedReport.title}</h3>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={getDownloadUrl(selectedReport.url)}
+                    download
+                    className="px-3 py-1.5 text-sm text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                  </a>
+                  <a
+                    href={selectedReport.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                  >
+                    Open in Drive
+                  </a>
+                  <button
+                    onClick={() => setSelectedReport(null)}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+              {/* PDF Viewer */}
+              <div className="flex-1 bg-gray-100">
+                <iframe
+                  src={getPreviewUrl(selectedReport.url)}
+                  className="w-full h-full"
+                  allow="autoplay"
+                  title={selectedReport.title}
+                />
+              </div>
+            </div>
           </div>
         )}
 

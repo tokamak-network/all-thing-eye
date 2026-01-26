@@ -259,6 +259,52 @@ class ApiClient {
     return response.data;
   }
 
+  // Grant Reports Management
+  async getGrantReports(projectKey: string) {
+    const response = await this.client.get(`/projects-management/projects/${projectKey}/grant-reports`);
+    return response.data;
+  }
+
+  async addGrantReport(
+    projectKey: string,
+    reportData: {
+      title: string;
+      year: number;
+      quarter: number;
+      drive_url: string;
+      file_name?: string;
+    }
+  ) {
+    const response = await this.client.post(`/projects-management/projects/${projectKey}/grant-reports`, reportData);
+    return response.data;
+  }
+
+  async updateGrantReport(
+    projectKey: string,
+    reportId: string,
+    reportData: {
+      title: string;
+      year: number;
+      quarter: number;
+      drive_url: string;
+      file_name?: string;
+    }
+  ) {
+    const response = await this.client.put(`/projects-management/projects/${projectKey}/grant-reports/${reportId}`, reportData);
+    return response.data;
+  }
+
+  async deleteGrantReport(projectKey: string, reportId: string) {
+    const response = await this.client.delete(`/projects-management/projects/${projectKey}/grant-reports/${reportId}`);
+    return response.data;
+  }
+
+  // Drive Folder API
+  async getDriveFolderFiles(folderId: string) {
+    const response = await this.client.get(`/projects-management/drive/folder/${folderId}/files`);
+    return response.data;
+  }
+
   async findSlackChannelId(channelName: string): Promise<string | undefined> {
     if (!channelName || !channelName.trim()) {
       return undefined;

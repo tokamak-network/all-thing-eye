@@ -58,6 +58,17 @@ export interface ActivitySummary {
   dateRangeEnd?: string;
 }
 
+// Grant report type
+export interface GrantReport {
+  id: string;
+  title: string;
+  year: number;
+  quarter: number;
+  driveUrl: string;
+  fileName?: string;
+  createdAt?: string;
+}
+
 // Project type
 export interface Project {
   id: string;
@@ -72,6 +83,7 @@ export interface Project {
   memberIds: string[];
   memberCount?: number;
   members?: Member[];
+  grantReports?: GrantReport[];
 }
 
 // Query variables types

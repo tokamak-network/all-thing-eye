@@ -10,6 +10,9 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from bson import ObjectId
+import re
+import pickle
+from pathlib import Path
 
 from src.utils.logger import get_logger
 from src.core.mongo_manager import get_mongo_manager
@@ -52,6 +55,7 @@ class ProjectUpdateRequest(BaseModel):
     sub_projects: Optional[List[str]] = None
     member_ids: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    grant_reports_folder_id: Optional[str] = None  # Google Drive folder ID for auto-sync grant reports
 
 
 class ProjectResponse(BaseModel):
@@ -80,6 +84,49 @@ class ProjectListResponse(BaseModel):
     """Response model for project list"""
     total: int
     projects: List[ProjectResponse]
+
+
+class GrantReportRequest(BaseModel):
+    """Request model for adding/updating a grant report"""
+    title: str = Field(..., description="Report title (e.g., 'TRH 2024 Q4 Report')")
+    year: int = Field(..., description="Report year (e.g., 2024)")
+    quarter: int = Field(..., ge=1, le=4, description="Report quarter (1-4)")
+    drive_url: str = Field(..., description="Google Drive URL to the report file")
+    file_name: Optional[str] = None
+
+
+class GrantReportResponse(BaseModel):
+    """Response model for grant report"""
+    id: str
+    title: str
+    year: int
+    quarter: int
+    drive_url: str
+    file_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class GrantReportsResponse(BaseModel):
+    """Response model for list of grant reports"""
+    project_key: str
+    reports: List[GrantReportResponse]
+
+
+class DriveFileResponse(BaseModel):
+    """Response model for a Drive file"""
+    id: str
+    name: str
+    link: str
+    mimeType: Optional[str] = None
+    modifiedTime: Optional[str] = None
+    year: Optional[int] = None
+    quarter: Optional[int] = None
+
+
+class DriveFolderFilesResponse(BaseModel):
+    """Response model for Drive folder files"""
+    folder_id: str
+    files: List[DriveFileResponse]
 
 
 def get_mongo():
@@ -353,6 +400,14 @@ async def update_project(request: Request, project_key: str, body: ProjectUpdate
             update_doc["member_ids"] = [ObjectId(mid) if not isinstance(mid, ObjectId) else mid for mid in body.member_ids]
         if body.is_active is not None:
             update_doc["is_active"] = body.is_active
+        if body.grant_reports_folder_id is not None:
+            # Extract folder ID from URL if needed
+            folder_id = body.grant_reports_folder_id.strip()
+            if '/' in folder_id:
+                match = re.search(r'/folders/([a-zA-Z0-9_-]+)', folder_id)
+                if match:
+                    folder_id = match.group(1)
+            update_doc["grant_reports_folder_id"] = folder_id if folder_id else None
         
         # Sync member's projects field when member_ids changes
         if body.member_ids is not None:
@@ -633,4 +688,513 @@ async def sync_repositories(request: Request, project_key: str):
     except Exception as e:
         logger.error(f"Error syncing repositories: {e}")
         raise HTTPException(status_code=500, detail="Failed to sync repositories")
+
+
+# ============================================
+# Grant Reports Management
+# ============================================
+
+@router.get("/projects/{project_key}/grant-reports", response_model=GrantReportsResponse)
+async def get_grant_reports(request: Request, project_key: str):
+    """
+    Get all grant reports for a project
+    
+    Args:
+        project_key: Project identifier (e.g., 'project-trh')
+    
+    Returns:
+        List of grant reports sorted by year and quarter (most recent first)
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.db
+        projects_collection = db["projects"]
+        
+        # Check if project exists
+        project = projects_collection.find_one({"key": project_key})
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
+        
+        # Get grant reports
+        grant_reports = project.get("grant_reports", [])
+        
+        # Sort by year (desc) and quarter (desc)
+        sorted_reports = sorted(
+            grant_reports,
+            key=lambda r: (r.get("year", 0), r.get("quarter", 0)),
+            reverse=True
+        )
+        
+        reports = [
+            GrantReportResponse(
+                id=report.get("id", ""),
+                title=report.get("title", ""),
+                year=report.get("year", 0),
+                quarter=report.get("quarter", 0),
+                drive_url=report.get("drive_url", ""),
+                file_name=report.get("file_name"),
+                created_at=report.get("created_at")
+            )
+            for report in sorted_reports
+        ]
+        
+        return GrantReportsResponse(project_key=project_key, reports=reports)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching grant reports: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch grant reports: {str(e)}")
+
+
+@router.post("/projects/{project_key}/grant-reports", response_model=GrantReportResponse, status_code=201)
+async def add_grant_report(request: Request, project_key: str, body: GrantReportRequest):
+    """
+    Add a grant report to a project
+    
+    Args:
+        project_key: Project identifier
+        body: Grant report data
+    
+    Returns:
+        Created grant report
+    """
+    try:
+        import uuid
+        
+        mongo = get_mongo()
+        db = mongo.db
+        projects_collection = db["projects"]
+        
+        # Check if project exists
+        project = projects_collection.find_one({"key": project_key})
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
+        
+        # Check if report for this year/quarter already exists
+        existing_reports = project.get("grant_reports", [])
+        for report in existing_reports:
+            if report.get("year") == body.year and report.get("quarter") == body.quarter:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Grant report for {body.year} Q{body.quarter} already exists"
+                )
+        
+        # Create new report
+        now = datetime.utcnow()
+        new_report = {
+            "id": str(uuid.uuid4()),
+            "title": body.title,
+            "year": body.year,
+            "quarter": body.quarter,
+            "drive_url": body.drive_url,
+            "file_name": body.file_name,
+            "created_at": now
+        }
+        
+        # Add to project's grant_reports array
+        projects_collection.update_one(
+            {"key": project_key},
+            {
+                "$push": {"grant_reports": new_report},
+                "$set": {"updated_at": now}
+            }
+        )
+        
+        logger.info(f"Added grant report for {project_key}: {body.year} Q{body.quarter}")
+        
+        return GrantReportResponse(
+            id=new_report["id"],
+            title=new_report["title"],
+            year=new_report["year"],
+            quarter=new_report["quarter"],
+            drive_url=new_report["drive_url"],
+            file_name=new_report.get("file_name"),
+            created_at=new_report.get("created_at")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding grant report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to add grant report: {str(e)}")
+
+
+@router.put("/projects/{project_key}/grant-reports/{report_id}", response_model=GrantReportResponse)
+async def update_grant_report(request: Request, project_key: str, report_id: str, body: GrantReportRequest):
+    """
+    Update an existing grant report
+    
+    Args:
+        project_key: Project identifier
+        report_id: Grant report ID
+        body: Updated grant report data
+    
+    Returns:
+        Updated grant report
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.db
+        projects_collection = db["projects"]
+        
+        # Check if project exists
+        project = projects_collection.find_one({"key": project_key})
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
+        
+        # Find the report
+        grant_reports = project.get("grant_reports", [])
+        report_index = None
+        for i, report in enumerate(grant_reports):
+            if report.get("id") == report_id:
+                report_index = i
+                break
+        
+        if report_index is None:
+            raise HTTPException(status_code=404, detail=f"Grant report '{report_id}' not found")
+        
+        # Check if new year/quarter conflicts with existing report
+        for i, report in enumerate(grant_reports):
+            if i != report_index and report.get("year") == body.year and report.get("quarter") == body.quarter:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Grant report for {body.year} Q{body.quarter} already exists"
+                )
+        
+        # Update report
+        grant_reports[report_index].update({
+            "title": body.title,
+            "year": body.year,
+            "quarter": body.quarter,
+            "drive_url": body.drive_url,
+            "file_name": body.file_name
+        })
+        
+        # Save to database
+        now = datetime.utcnow()
+        projects_collection.update_one(
+            {"key": project_key},
+            {
+                "$set": {
+                    "grant_reports": grant_reports,
+                    "updated_at": now
+                }
+            }
+        )
+        
+        updated_report = grant_reports[report_index]
+        logger.info(f"Updated grant report for {project_key}: {report_id}")
+        
+        return GrantReportResponse(
+            id=updated_report["id"],
+            title=updated_report["title"],
+            year=updated_report["year"],
+            quarter=updated_report["quarter"],
+            drive_url=updated_report["drive_url"],
+            file_name=updated_report.get("file_name"),
+            created_at=updated_report.get("created_at")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating grant report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update grant report: {str(e)}")
+
+
+@router.delete("/projects/{project_key}/grant-reports/{report_id}", status_code=204)
+async def delete_grant_report(request: Request, project_key: str, report_id: str):
+    """
+    Delete a grant report
+    
+    Args:
+        project_key: Project identifier
+        report_id: Grant report ID
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.db
+        projects_collection = db["projects"]
+        
+        # Check if project exists
+        project = projects_collection.find_one({"key": project_key})
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project '{project_key}' not found")
+        
+        # Find and remove the report
+        grant_reports = project.get("grant_reports", [])
+        report_found = False
+        updated_reports = []
+        
+        for report in grant_reports:
+            if report.get("id") == report_id:
+                report_found = True
+            else:
+                updated_reports.append(report)
+        
+        if not report_found:
+            raise HTTPException(status_code=404, detail=f"Grant report '{report_id}' not found")
+        
+        # Save to database
+        now = datetime.utcnow()
+        projects_collection.update_one(
+            {"key": project_key},
+            {
+                "$set": {
+                    "grant_reports": updated_reports,
+                    "updated_at": now
+                }
+            }
+        )
+        
+        logger.info(f"Deleted grant report for {project_key}: {report_id}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting grant report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete grant report: {str(e)}")
+
+
+# ============================================
+# Drive Folder Files API
+# ============================================
+
+def get_drive_service():
+    """Get authenticated Google Drive service."""
+    try:
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+    except ImportError:
+        raise HTTPException(
+            status_code=500, 
+            detail="Google API libraries not installed"
+        )
+    
+    creds = None
+    
+    # Check for existing token (prefer token_diff.pickle which has drive.readonly scope)
+    token_paths = [
+        Path("config/google_drive/token_diff.pickle"),
+        Path("config/google_drive/token_admin.pickle"),
+        Path("config/google_drive/token.pickle"),
+        Path("logs/token_admin.pickle"),
+        Path("/app/logs/token_admin.pickle"),
+    ]
+    
+    for token_path in token_paths:
+        if token_path.exists():
+            with open(token_path, 'rb') as token:
+                creds = pickle.load(token)
+            logger.info(f"Loaded Drive credentials from {token_path}")
+            break
+    
+    if not creds:
+        raise HTTPException(
+            status_code=500,
+            detail="No Google Drive credentials found. Please authenticate first."
+        )
+    
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    
+    return build('drive', 'v3', credentials=creds)
+
+
+def extract_year_quarter(filename: str) -> tuple:
+    """Extract year and quarter from filename like TRH_2024_Q4.pdf"""
+    year = None
+    quarter = None
+    
+    # Pattern: XXX_2024_Q4.pdf or 2024_Q4 or Q4_2024
+    match = re.search(r'(\d{4}).*[Qq](\d)', filename)
+    if match:
+        year = int(match.group(1))
+        quarter = int(match.group(2))
+    else:
+        # Try reverse pattern: Q4_2024
+        match = re.search(r'[Qq](\d).*(\d{4})', filename)
+        if match:
+            quarter = int(match.group(1))
+            year = int(match.group(2))
+    
+    return year, quarter
+
+
+@router.get("/drive/folders")
+async def list_drive_folders(request: Request):
+    """
+    List all folders accessible by the Drive API.
+    """
+    try:
+        service = get_drive_service()
+        
+        folders = []
+        query = "mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        page_token = None
+        
+        while True:
+            response = service.files().list(
+                q=query,
+                spaces='drive',
+                fields='nextPageToken, files(id, name, parents)',
+                orderBy='name',
+                pageSize=100,
+                pageToken=page_token
+            ).execute()
+            
+            for file in response.get('files', []):
+                folders.append({
+                    'id': file['id'],
+                    'name': file['name'],
+                    'url': f"https://drive.google.com/drive/folders/{file['id']}",
+                    'parents': file.get('parents', [])
+                })
+            
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+        
+        return {"folders": folders}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing Drive folders: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list Drive folders: {str(e)}")
+
+
+@router.get("/drive/folder/{folder_id}/files", response_model=DriveFolderFilesResponse)
+async def list_drive_folder_files(request: Request, folder_id: str, include_subfolders: bool = True):
+    """
+    List files in a Google Drive folder.
+    
+    Args:
+        folder_id: Google Drive folder ID
+        include_subfolders: Whether to include files from subfolders
+    
+    Returns:
+        List of files with their direct links
+    """
+    try:
+        service = get_drive_service()
+        
+        all_files = []
+        folders_to_process = [(folder_id, "")]
+        
+        while folders_to_process:
+            current_folder_id, path_prefix = folders_to_process.pop(0)
+            
+            query = f"'{current_folder_id}' in parents and trashed = false"
+            page_token = None
+            
+            while True:
+                response = service.files().list(
+                    q=query,
+                    spaces='drive',
+                    fields='nextPageToken, files(id, name, mimeType, modifiedTime)',
+                    orderBy='name',
+                    pageSize=100,
+                    pageToken=page_token
+                ).execute()
+                
+                for file in response.get('files', []):
+                    file_path = f"{path_prefix}/{file['name']}" if path_prefix else file['name']
+                    
+                    if file['mimeType'] == 'application/vnd.google-apps.folder':
+                        if include_subfolders:
+                            folders_to_process.append((file['id'], file_path))
+                    else:
+                        # Construct direct file link
+                        file_id = file['id']
+                        direct_link = f"https://drive.google.com/file/d/{file_id}/view"
+                        
+                        year, quarter = extract_year_quarter(file['name'])
+                        
+                        all_files.append(DriveFileResponse(
+                            id=file_id,
+                            name=file['name'],
+                            link=direct_link,
+                            mimeType=file.get('mimeType'),
+                            modifiedTime=file.get('modifiedTime'),
+                            year=year,
+                            quarter=quarter
+                        ))
+                
+                page_token = response.get('nextPageToken')
+                if not page_token:
+                    break
+        
+        # Sort by year (desc) and quarter (desc)
+        all_files.sort(key=lambda x: (x.year or 0, x.quarter or 0), reverse=True)
+        
+        return DriveFolderFilesResponse(
+            folder_id=folder_id,
+            files=all_files
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing Drive folder: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list Drive folder: {str(e)}")
+
+
+@router.get("/drive/file/{file_id}/download")
+async def download_drive_file(request: Request, file_id: str):
+    """
+    Download a file from Google Drive.
+    
+    Args:
+        file_id: Google Drive file ID
+    
+    Returns:
+        The file content as a streaming response
+    """
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    try:
+        service = get_drive_service()
+        
+        # Get file metadata first
+        file_metadata = service.files().get(
+            fileId=file_id, 
+            fields='name, mimeType'
+        ).execute()
+        
+        file_name = file_metadata.get('name', 'download')
+        mime_type = file_metadata.get('mimeType', 'application/octet-stream')
+        
+        # Download file content
+        from googleapiclient.http import MediaIoBaseDownload
+        
+        request_download = service.files().get_media(fileId=file_id)
+        file_content = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_content, request_download)
+        
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        file_content.seek(0)
+        
+        # Return as streaming response
+        headers = {
+            'Content-Disposition': f'attachment; filename="{file_name}"'
+        }
+        
+        return StreamingResponse(
+            file_content,
+            media_type=mime_type,
+            headers=headers
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading Drive file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 

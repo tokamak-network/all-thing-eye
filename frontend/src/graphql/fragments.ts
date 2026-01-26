@@ -52,9 +52,23 @@ export const ACTIVITY_SUMMARY_FRAGMENT = gql`
   }
 `;
 
+// Grant report fragment
+export const GRANT_REPORT_FRAGMENT = gql`
+  fragment GrantReportFields on GrantReport {
+    id
+    title
+    year
+    quarter
+    driveUrl
+    fileName
+    createdAt
+  }
+`;
+
 // Project fragment
 export const PROJECT_FRAGMENT = gql`
   ${MEMBER_FRAGMENT}
+  ${GRANT_REPORT_FRAGMENT}
   fragment ProjectFields on Project {
     id
     key
@@ -68,6 +82,9 @@ export const PROJECT_FRAGMENT = gql`
     memberIds
     members {
       ...MemberFields
+    }
+    grantReports {
+      ...GrantReportFields
     }
   }
 `;
