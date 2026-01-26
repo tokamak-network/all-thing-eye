@@ -41,6 +41,7 @@ interface Member {
   email?: string;
   role?: string;
   eoa_address?: string;
+  is_active?: boolean;
 }
 
 interface ProjectListResponse {
@@ -62,7 +63,7 @@ export default function ProjectsPage() {
     error: projectsError,
     refetch: refetchProjects,
   } = useProjects({ isActive: activeTab === "active" });
-  const { data: membersData } = useMembers({ limit: 1000 });
+  const { data: membersData } = useMembers({ limit: 1000, includeInactive: true });
 
   // Transform GraphQL data to REST API format
   const projects = (projectsData?.projects || []).map((p) => ({
@@ -99,13 +100,14 @@ export default function ProjectsPage() {
 
   const error = projectsError?.message || localError;
 
-  // Transform GraphQL members to REST API format
+  // Transform GraphQL members to REST API format (include inactive for lookup)
   const allMembers: Member[] = (membersData?.members || []).map((m) => ({
     id: m.id,
     name: m.name,
     email: m.email,
     role: m.role,
     eoa_address: m.eoaAddress,
+    is_active: m.isActive ?? true,
   }));
 
   // Get current user from auth session
@@ -727,35 +729,64 @@ export default function ProjectsPage() {
                       />
                       {showMemberSelector && filteredMembers.length > 0 && (
                         <div className="absolute z-20 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                          {filteredMembers.map((member) => (
-                            <label key={member.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={formData.member_ids.includes(member.id)}
-                                onChange={() => toggleMember(member.id)}
-                                className="rounded border-gray-300 text-primary-600"
-                              />
-                              <span className="text-sm">{member.name}</span>
-                            </label>
-                          ))}
+                          {filteredMembers.map((member) => {
+                            const isInactive = member.is_active === false;
+                            return (
+                              <label 
+                                key={member.id} 
+                                className={`flex items-center gap-2 px-3 py-2 cursor-pointer ${
+                                  isInactive ? 'bg-gray-50 hover:bg-gray-100' : 'hover:bg-gray-50'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={formData.member_ids.includes(member.id)}
+                                  onChange={() => toggleMember(member.id)}
+                                  className="rounded border-gray-300 text-primary-600"
+                                />
+                                <span className={`text-sm ${isInactive ? 'text-gray-400 line-through' : ''}`}>
+                                  {member.name}
+                                </span>
+                                {isInactive && (
+                                  <span className="text-[10px] text-gray-400 ml-1">(inactive)</span>
+                                )}
+                              </label>
+                            );
+                          })}
                         </div>
                       )}
                       <div className="h-20 overflow-y-auto border border-gray-200 rounded-md p-2 bg-gray-50">
                         {formData.member_ids.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {formData.member_ids.map((memberId) => {
-                              // Look up member name in allMembers list (which contains all members from DB)
+                              // Look up member name in allMembers list (which now includes inactive members)
                               const member = allMembers.find((m) => String(m.id) === String(memberId));
                               
                               if (!member) {
+                                // Member not found in database (orphaned ID)
                                 return (
-                                  <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                                    Unknown ({String(memberId).slice(0, 8)}...)
-                                    <button type="button" onClick={() => toggleMember(memberId)} className="text-gray-600 hover:text-gray-800">×</button>
+                                  <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs border border-red-200">
+                                    <span title="Member not found in database">Orphaned ({String(memberId).slice(0, 8)}...)</span>
+                                    <button type="button" onClick={() => toggleMember(memberId)} className="text-red-500 hover:text-red-700">×</button>
                                   </span>
                                 );
                               }
                               
+                              // Check if member is inactive
+                              const isInactive = member.is_active === false;
+                              
+                              if (isInactive) {
+                                // Inactive member - show with gray/strikethrough style
+                                return (
+                                  <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs border border-gray-300">
+                                    <span className="line-through" title="Inactive member">{member.name}</span>
+                                    <span className="text-[10px] text-gray-400">(inactive)</span>
+                                    <button type="button" onClick={() => toggleMember(memberId)} className="text-gray-400 hover:text-gray-600">×</button>
+                                  </span>
+                                );
+                              }
+                              
+                              // Active member - normal green style
                               return (
                                 <span key={memberId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">
                                   {member.name}

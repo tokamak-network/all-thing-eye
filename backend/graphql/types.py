@@ -6,9 +6,13 @@ These types map to MongoDB collections and provide field resolvers.
 """
 
 import strawberry
+import logging
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
+
+# Configure logger for GraphQL types
+logger = logging.getLogger(__name__)
 
 
 @strawberry.enum
@@ -296,6 +300,14 @@ class GrantReport:
     drive_url: str  # Google Drive URL to the report file
     file_name: Optional[str] = None  # Original file name
     created_at: Optional[datetime] = None  # When the report was added
+    
+    # AI Summary fields (generated during sync)
+    summary: Optional[str] = None  # AI-generated summary
+    progress_percentage: Optional[int] = None  # Estimated progress (0-100)
+    key_achievements: List[str] = strawberry.field(default_factory=list)  # Key achievements
+    challenges: List[str] = strawberry.field(default_factory=list)  # Challenges faced
+    next_quarter_goals: List[str] = strawberry.field(default_factory=list)  # Goals for next quarter
+    summary_generated_at: Optional[datetime] = None  # When summary was generated
 
 
 @strawberry.type
@@ -305,6 +317,24 @@ class GrantReportFolder:
     """
     folder_id: str  # Google Drive folder ID
     folder_url: str  # Full Google Drive folder URL
+
+
+@strawberry.type
+class Milestone:
+    """
+    Project milestone extracted from grant reports.
+    
+    Tracks planned vs achieved milestones across quarters.
+    """
+    id: str
+    title: str
+    description: Optional[str] = None
+    planned_quarter: str  # When it was first planned (e.g., "2024-Q1")
+    achieved_quarter: Optional[str] = None  # When it was achieved (null if not yet)
+    status: str  # 'planned' | 'achieved' | 'delayed' | 'added' | 'cancelled'
+    is_major: bool = False  # True for main timeline milestones from "1-c. Timeline"
+    parent_milestone_id: Optional[str] = None  # Link to parent major milestone
+    created_at: Optional[datetime] = None
 
 
 @strawberry.type
@@ -326,6 +356,13 @@ class Project:
     member_ids: List[str] = strawberry.field(default_factory=list)  # Internal field
     grant_reports_data: strawberry.Private[List[dict]] = None  # Internal field for raw grant report data
     grant_reports_folder_id: Optional[str] = None  # Google Drive folder ID for auto-sync
+    milestones_data: strawberry.Private[List[dict]] = None  # Internal field for raw milestone data
+    
+    # Overall project summary (generated from all grant reports)
+    overall_summary: Optional[str] = None  # AI-generated overall project summary
+    progress_trend: Optional[str] = None  # "improving", "stable", or "declining"
+    overall_summary_generated_at: Optional[datetime] = None  # When overall summary was generated
+    milestones_generated_at: Optional[datetime] = None  # When milestones were last extracted
     
     @strawberry.field
     def slackChannelId(self) -> Optional[str]:
@@ -356,7 +393,14 @@ class Project:
                 quarter=report_data.get('quarter', 0),
                 drive_url=report_data.get('drive_url', ''),
                 file_name=report_data.get('file_name'),
-                created_at=report_data.get('created_at')
+                created_at=report_data.get('created_at'),
+                # AI Summary fields
+                summary=report_data.get('summary'),
+                progress_percentage=report_data.get('progress_percentage'),
+                key_achievements=report_data.get('key_achievements', []),
+                challenges=report_data.get('challenges', []),
+                next_quarter_goals=report_data.get('next_quarter_goals', []),
+                summary_generated_at=report_data.get('summary_generated_at')
             ))
         
         # Sort by year (desc) and quarter (desc) to show most recent first
@@ -379,6 +423,34 @@ class Project:
         )
     
     @strawberry.field
+    def milestones(self) -> List[Milestone]:
+        """
+        Get milestones for this project.
+        
+        Returns list of milestones sorted by: major first within each quarter, then by planned quarter.
+        """
+        if not self.milestones_data:
+            return []
+        
+        milestones = []
+        for m in self.milestones_data:
+            milestones.append(Milestone(
+                id=m.get('id', ''),
+                title=m.get('title', ''),
+                description=m.get('description'),
+                planned_quarter=m.get('planned_quarter', ''),
+                achieved_quarter=m.get('achieved_quarter'),
+                status=m.get('status', 'planned'),
+                is_major=m.get('is_major', False),
+                parent_milestone_id=m.get('parent_milestone_id'),
+                created_at=m.get('created_at')
+            ))
+        
+        # Sort by planned quarter, then major milestones first
+        milestones.sort(key=lambda m: (m.planned_quarter, not m.is_major))
+        return milestones
+    
+    @strawberry.field
     async def members(self, info) -> List['Member']:
         """Get list of members in this project."""
         if not self.member_ids:
@@ -387,8 +459,7 @@ class Project:
         db = info.context['db']
         from bson import ObjectId
         
-        print(f"🔍 [Project.members] Project {self.key}: Looking for {len(self.member_ids)} members")
-        print(f"🔍 [Project.members] member_ids: {self.member_ids[:3]}...")
+        logger.debug(f"[Project.members] Project {self.key}: Looking for {len(self.member_ids)} members")
         
         # Convert string IDs to ObjectIds for MongoDB query
         object_ids = []
@@ -402,18 +473,16 @@ class Project:
                     object_ids.append(ObjectId(str(member_id)))
             except Exception as e:
                 invalid_ids.append(str(member_id))
-                print(f"⚠️ [Project.members] Invalid member_id: {member_id}, error: {e}")
+                logger.warning(f"[Project.members] Project {self.key}: Invalid member_id format: {member_id}")
                 continue
         
         if not object_ids:
             if invalid_ids:
-                print(f"⚠️ [Project.members] Project {self.key}: All member_ids are invalid: {invalid_ids}")
+                logger.error(f"[Project.members] Project {self.key}: All {len(invalid_ids)} member_ids are invalid/malformed: {invalid_ids}")
             return []
         
         if invalid_ids:
-            print(f"⚠️ [Project.members] Project {self.key}: {len(invalid_ids)} invalid member_ids: {invalid_ids}")
-        
-        print(f"🔍 [Project.members] Querying with {len(object_ids)} ObjectIds: {[str(oid) for oid in object_ids[:3]]}...")
+            logger.warning(f"[Project.members] Project {self.key}: {len(invalid_ids)} invalid member_ids found: {invalid_ids}")
         
         # Fetch members from database
         members = []
@@ -436,21 +505,20 @@ class Project:
                 resignation_reason=doc.get('resignation_reason')
             ))
         
-        print(f"✅ [Project.members] Project {self.key}: Found {len(members)}/{len(object_ids)} members")
+        logger.debug(f"[Project.members] Project {self.key}: Found {len(members)}/{len(object_ids)} members")
         
+        # Detect and log orphaned member_ids (IDs that don't exist in members collection)
         if len(members) < len(object_ids):
-            missing_ids = [str(oid) for oid in object_ids if str(oid) not in found_ids]
-            print(f"⚠️ [Project.members] Project {self.key}: Missing {len(missing_ids)} members. IDs: {missing_ids[:3]}...")
-            
-            # Check if members exist with different ID format
-            print(f"🔍 [Project.members] Checking sample members in database...")
-            sample_members = []
-            async for doc in db['members'].find().limit(5):
-                sample_members.append({
-                    'id': str(doc['_id']),
-                    'name': doc.get('name', 'Unknown')
-                })
-            print(f"📋 [Project.members] Sample member IDs in DB: {sample_members}")
+            orphaned_ids = [str(oid) for oid in object_ids if str(oid) not in found_ids]
+            logger.warning(
+                f"[Project.members] ORPHANED_MEMBER_IDS DETECTED - "
+                f"Project: {self.key}, "
+                f"Orphaned count: {len(orphaned_ids)}, "
+                f"Orphaned IDs: {orphaned_ids}. "
+                f"These member IDs no longer exist in the members collection. "
+                f"This may indicate that build_member_index_mongo.py was run after members were added to projects, "
+                f"or members were manually deleted from the database."
+            )
         
         return members
     
