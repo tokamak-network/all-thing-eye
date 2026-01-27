@@ -3487,7 +3487,7 @@ export default function ActivitiesView({
                       </p>
                     )}
                     <div className="prose max-w-none">
-                      <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans bg-gray-50 p-4 rounded">
                         {translations[
                           `recording_analysis_${
                             recordingDetail?.id || meetingAnalysis?.id
