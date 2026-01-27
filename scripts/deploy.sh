@@ -123,13 +123,109 @@ deploy_backup() {
     log_info "💾 Creating MongoDB backup..."
     BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
     mkdir -p $BACKUP_DIR
-    
+
     # For local MongoDB in docker-compose
     docker exec -it all-thing-eye-mongodb mongodump --out /data/backup
     docker cp all-thing-eye-mongodb:/data/backup $BACKUP_DIR/
-    
+
     log_info "✅ Backup created: $BACKUP_DIR"
     log_info "   Note: For MongoDB Atlas, use automated backups in dashboard"
+}
+
+# Available services for selective build
+ALL_SERVICES=("frontend" "backend" "data-collector")
+
+# Build specific services
+deploy_build() {
+    local services=("$@")
+
+    if [ ${#services[@]} -eq 0 ]; then
+        # Interactive mode
+        deploy_build_interactive
+        return
+    fi
+
+    # Validate services
+    for service in "${services[@]}"; do
+        local valid=false
+        for s in "${ALL_SERVICES[@]}"; do
+            if [ "$service" == "$s" ]; then
+                valid=true
+                break
+            fi
+        done
+        if [ "$valid" == false ]; then
+            log_error "Unknown service: $service"
+            log_info "Available services: ${ALL_SERVICES[*]}"
+            exit 1
+        fi
+    done
+
+    log_info "🏗️  Building services: ${services[*]}"
+    docker-compose -f $COMPOSE_FILE up -d --build ${services[*]}
+
+    if [ $? -eq 0 ]; then
+        log_info "✅ Build completed!"
+        echo ""
+        deploy_status
+    else
+        log_error "Build failed!"
+        exit 1
+    fi
+}
+
+# Interactive build selection
+deploy_build_interactive() {
+    echo ""
+    log_info "🔧 Select services to build:"
+    echo ""
+    echo "  [1] frontend"
+    echo "  [2] backend"
+    echo "  [3] data-collector"
+    echo "  [a] All services"
+    echo "  [q] Quit"
+    echo ""
+    echo -n "Enter choice (e.g., 1 2 or a): "
+    read -r choices
+
+    if [ "$choices" == "q" ]; then
+        log_info "Cancelled."
+        exit 0
+    fi
+
+    if [ "$choices" == "a" ]; then
+        deploy_build "${ALL_SERVICES[@]}"
+        return
+    fi
+
+    local selected=()
+    for choice in $choices; do
+        case "$choice" in
+            1) selected+=("frontend") ;;
+            2) selected+=("backend") ;;
+            3) selected+=("data-collector") ;;
+            *)
+                log_warn "Invalid choice: $choice (skipped)"
+                ;;
+        esac
+    done
+
+    if [ ${#selected[@]} -eq 0 ]; then
+        log_error "No valid services selected."
+        exit 1
+    fi
+
+    echo ""
+    log_info "Selected: ${selected[*]}"
+    echo -n "Proceed? (y/n) "
+    read -r confirm
+
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        deploy_build "${selected[@]}"
+    else
+        log_info "Cancelled."
+        exit 0
+    fi
 }
 
 # Main
@@ -155,17 +251,30 @@ case "${1:-}" in
     backup)
         deploy_backup
         ;;
+    build)
+        shift
+        deploy_build "$@"
+        ;;
     *)
-        echo "Usage: $0 {init|update|restart|logs|stop|status|backup}"
+        echo "Usage: $0 {init|update|restart|logs|stop|status|backup|build}"
         echo ""
         echo "Commands:"
-        echo "  init     - Initial deployment (first time)"
-        echo "  update   - Update to latest code and restart"
-        echo "  restart  - Restart all services"
-        echo "  logs     - Show logs (optional: specify service name)"
-        echo "  stop     - Stop all services"
-        echo "  status   - Show service status"
-        echo "  backup   - Backup databases"
+        echo "  init              - Initial deployment (first time)"
+        echo "  update            - Update to latest code and restart"
+        echo "  restart           - Restart all services"
+        echo "  logs [service]    - Show logs (optional: specify service name)"
+        echo "  stop              - Stop all services"
+        echo "  status            - Show service status"
+        echo "  backup            - Backup databases"
+        echo "  build [services]  - Build and deploy specific services"
+        echo ""
+        echo "Build examples:"
+        echo "  $0 build                     # Interactive selection"
+        echo "  $0 build frontend            # Build frontend only"
+        echo "  $0 build frontend backend    # Build multiple services"
+        echo "  $0 build frontend backend data-collector  # Build all"
+        echo ""
+        echo "Available services: frontend, backend, data-collector"
         exit 1
         ;;
 esac
