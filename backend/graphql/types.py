@@ -51,33 +51,80 @@ class Member:
     resignation_reason: Optional[str] = None  # Optional reason for resignation
     
     @strawberry.field
-    def projectKeys(self) -> List[str]:
-        """Get list of project keys this member belongs to."""
-        return self.projects
-    
+    async def projectKeys(self, info) -> List[str]:
+        """
+        Get list of project keys this member belongs to.
+
+        Single Source of Truth: queries projects.member_ids instead of members.projects
+        This ensures consistency between Projects page and Members page.
+        """
+        from bson import ObjectId
+
+        db = info.context['db']
+        project_keys = []
+
+        # Find all active projects where this member's ID is in member_ids
+        try:
+            member_oid = ObjectId(self.id)
+            async for project in db['projects'].find({
+                'member_ids': member_oid,
+                'is_active': True
+            }):
+                project_keys.append(project['key'])
+        except Exception as e:
+            logger.warning(f"Error fetching project keys for member {self.id}: {e}")
+            # Fallback to legacy projects field if ObjectId conversion fails
+            return self.projects
+
+        return project_keys
+
     @strawberry.field
     async def projectDetails(self, info) -> List['Project']:
-        """Get detailed project information for projects this member belongs to."""
-        if not self.projects:
-            return []
-        
+        """
+        Get detailed project information for projects this member belongs to.
+
+        Single Source of Truth: queries projects.member_ids instead of members.projects
+        """
+        from bson import ObjectId
+
         db = info.context['db']
         projects = []
-        
-        # Find projects by keys
-        async for doc in db['projects'].find({'key': {'$in': self.projects}}):
-            projects.append(Project(
-                id=str(doc['_id']),
-                key=doc['key'],
-                name=doc.get('name', doc['key']),
-                description=doc.get('description'),
-                slack_channel=doc.get('slack_channel'),
-                lead=doc.get('lead'),
-                repositories=doc.get('repositories', []),
-                is_active=doc.get('is_active', True),
-                member_ids=doc.get('member_ids', [])
-            ))
-        
+
+        # Find all active projects where this member's ID is in member_ids
+        try:
+            member_oid = ObjectId(self.id)
+            async for doc in db['projects'].find({
+                'member_ids': member_oid,
+                'is_active': True
+            }):
+                projects.append(Project(
+                    id=str(doc['_id']),
+                    key=doc['key'],
+                    name=doc.get('name', doc['key']),
+                    description=doc.get('description'),
+                    slack_channel=doc.get('slack_channel'),
+                    lead=doc.get('lead'),
+                    repositories=doc.get('repositories', []),
+                    is_active=doc.get('is_active', True),
+                    member_ids=doc.get('member_ids', [])
+                ))
+        except Exception as e:
+            logger.warning(f"Error fetching project details for member {self.id}: {e}")
+            # Fallback to legacy behavior
+            if self.projects:
+                async for doc in db['projects'].find({'key': {'$in': self.projects}}):
+                    projects.append(Project(
+                        id=str(doc['_id']),
+                        key=doc['key'],
+                        name=doc.get('name', doc['key']),
+                        description=doc.get('description'),
+                        slack_channel=doc.get('slack_channel'),
+                        lead=doc.get('lead'),
+                        repositories=doc.get('repositories', []),
+                        is_active=doc.get('is_active', True),
+                        member_ids=doc.get('member_ids', [])
+                    ))
+
         return projects
     
     @strawberry.field
@@ -334,6 +381,7 @@ class Milestone:
     status: str  # 'planned' | 'achieved' | 'delayed' | 'added' | 'cancelled'
     is_major: bool = False  # True for main timeline milestones from "1-c. Timeline"
     parent_milestone_id: Optional[str] = None  # Link to parent major milestone
+    link: Optional[str] = None  # URL link for the deliverable (e.g., GitHub PR, commit)
     created_at: Optional[datetime] = None
 
 
@@ -363,6 +411,7 @@ class Project:
     progress_trend: Optional[str] = None  # "improving", "stable", or "declining"
     overall_summary_generated_at: Optional[datetime] = None  # When overall summary was generated
     milestones_generated_at: Optional[datetime] = None  # When milestones were last extracted
+    milestone_progress: Optional[int] = None  # Progress based on milestone achievement (0-100)
     
     @strawberry.field
     def slackChannelId(self) -> Optional[str]:
@@ -443,6 +492,7 @@ class Project:
                 status=m.get('status', 'planned'),
                 is_major=m.get('is_major', False),
                 parent_milestone_id=m.get('parent_milestone_id'),
+                link=m.get('link'),
                 created_at=m.get('created_at')
             ))
         

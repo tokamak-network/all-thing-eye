@@ -53,6 +53,7 @@ export function useMembers(
 ): QueryResult<GetMembersResponse, GetMembersVariables> {
   return useQuery<GetMembersResponse, GetMembersVariables>(GET_MEMBERS, {
     variables,
+    fetchPolicy: "network-only", // Always fetch from server, ignore cache completely
   });
 }
 

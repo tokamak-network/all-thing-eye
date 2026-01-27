@@ -503,15 +503,11 @@ export default function MembersPage() {
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
                         {(() => {
-                          let projectKeys: string[] = [];
-                          if (member.projectKeys && member.projectKeys.length > 0) {
-                            projectKeys = member.projectKeys;
-                          } else if (member.project) {
-                            projectKeys = member.project.split(",").map((p) => p.trim()).filter(Boolean);
-                          }
+                          // Use projectKeys directly (Single Source of Truth from projects.member_ids)
+                          const projectKeys = member.projectKeys || [];
 
                           // Filter to only show active projects
-                          const activeProjectKeys = projectKeys.filter((pk) => 
+                          const activeProjectKeys = projectKeys.filter((pk) =>
                             projects.some((p) => p.key === pk)
                           );
 
