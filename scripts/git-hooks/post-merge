@@ -52,7 +52,7 @@ if [ "$REBUILD_FRONTEND" = false ] && [ "$REBUILD_BACKEND" = false ] && [ "$REBU
     echo -e "  ${YELLOW}No service-related changes detected.${NC}"
     echo ""
     echo -n "Deploy anyway? (y/n) "
-    read -r answer
+    read -r answer < /dev/tty
     if [[ ! "$answer" =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}Skipping deploy.${NC}"
         exit 0
@@ -68,7 +68,7 @@ echo "  [3] Interactive selection"
 echo "  [4] Skip deploy"
 echo ""
 echo -n "Choice: "
-read -r choice
+read -r choice < /dev/tty
 
 case "$choice" in
     1)
