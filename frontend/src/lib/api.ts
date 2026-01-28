@@ -309,10 +309,13 @@ class ApiClient {
     return response.data;
   }
 
-  async getProjectSummary(projectKey: string) {
+  async getProjectSummary(projectKey: string, forceRefresh: boolean = false) {
     const response = await this.client.get(
       `/projects-management/projects/${projectKey}/grant-reports/summary`,
-      { timeout: 180000 } // 3 min timeout for AI
+      { 
+        params: { force_refresh: forceRefresh },
+        timeout: 180000 // 3 min timeout for AI
+      }
     );
     return response.data;
   }
@@ -388,6 +391,8 @@ class ApiClient {
       activity_type?: string;
       start_date?: string;
       end_date?: string;
+      project_key?: string;
+      member_name?: string;
       limit?: number;
     }
   ) {
@@ -395,7 +400,7 @@ class ApiClient {
     queryParams.append("format", format);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined) {
+        if (value !== undefined && value !== "") {
           queryParams.append(key, value.toString());
         }
       });

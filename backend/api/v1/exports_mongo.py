@@ -530,19 +530,23 @@ async def export_activities(
     activity_type: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    project_key: Optional[str] = Query(None, description="Filter by project (only members in project)"),
+    member_name: Optional[str] = Query(None, description="Filter by member name"),
     limit: int = Query(10000, ge=1, le=100000)
 ):
     """
     Export activities data from source collections (not member_activities)
-    
+
     Args:
         format: Export format (csv or json)
         source_type: Filter by source
         activity_type: Filter by activity type
         start_date: Start date filter
         end_date: End date filter
+        project_key: Filter by project (only activities from members in this project)
+        member_name: Filter by specific member name
         limit: Maximum number of records
-    
+
     Returns:
         File download response
     """
@@ -554,12 +558,44 @@ async def export_activities(
             get_mapped_member_name
         )
         from datetime import timezone
-        
+
         mongo = get_mongo()
         db = mongo.async_db
-        
+
         # Load member mappings
         member_mappings = await load_member_mappings(db)
+
+        # Get allowed member names if project_key is specified
+        allowed_member_names = None
+        if project_key:
+            # Get project and its member IDs
+            project = await db.projects.find_one({'key': project_key})
+            if project:
+                project_member_ids = project.get('member_ids', [])
+                if project_member_ids:
+                    # Convert to ObjectId if needed and get member names
+                    from bson import ObjectId
+                    member_object_ids = []
+                    for mid in project_member_ids:
+                        if isinstance(mid, str):
+                            try:
+                                member_object_ids.append(ObjectId(mid))
+                            except:
+                                pass
+                        elif isinstance(mid, ObjectId):
+                            member_object_ids.append(mid)
+
+                    # Get member names from members collection
+                    allowed_member_names = set()
+                    async for member in db.members.find({'_id': {'$in': member_object_ids}}):
+                        member_name_value = member.get('name', '')
+                        if member_name_value:
+                            allowed_member_names.add(member_name_value.lower())
+
+                    logger.info(f"Project {project_key} has {len(allowed_member_names)} members: {allowed_member_names}")
+
+        # If member_name filter is specified, use it
+        filter_member_name = member_name.lower() if member_name else None
         
         # Determine which sources to query
         sources_to_query = [source_type] if source_type else ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
@@ -891,13 +927,30 @@ async def export_activities(
                 except Exception as e:
                     logger.error(f"Error fetching recordings_daily data: {e}")
         
+        # Filter by member if project_key or member_name is specified
+        if allowed_member_names is not None or filter_member_name:
+            filtered_activities = []
+            for activity in activities:
+                act_member = activity.get('member_name', '').lower()
+                # Skip if member filter is specified and doesn't match
+                if filter_member_name and act_member != filter_member_name:
+                    continue
+                # Skip if project filter is specified and member is not in project
+                if allowed_member_names is not None and act_member not in allowed_member_names:
+                    continue
+                filtered_activities.append(activity)
+            activities = filtered_activities
+            logger.info(f"Filtered activities: {len(activities)} (project={project_key}, member={member_name})")
+
         # Sort all activities by timestamp (newest first)
         activities.sort(key=lambda x: x['timestamp'] or '', reverse=True)
-        
+
         # Apply limit
         activities = activities[:limit]
-        
+
         filename_base = f"activities_{datetime.now().strftime('%Y%m%d')}"
+        if project_key:
+            filename_base += f"_{project_key}"
         if source_type:
             filename_base += f"_{source_type}"
         

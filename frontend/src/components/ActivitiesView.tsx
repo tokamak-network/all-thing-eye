@@ -919,6 +919,10 @@ export default function ActivitiesView({
       const url = apiClient.getExportActivitiesUrl("csv", {
         limit: 10000,
         source_type: sourceFilter || undefined,
+        project_key: projectFilter || undefined,
+        member_name: memberFilter || undefined,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
       });
 
       const response = await fetch(url, {
