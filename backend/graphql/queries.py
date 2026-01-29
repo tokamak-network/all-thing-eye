@@ -1432,12 +1432,12 @@ class Query:
                 f"🔍 [{request_id}] 📝 Notion diff activities added: {notion_after - notion_before}"
             )
 
-        # Drive content diffs (revision-based change tracking)
-        # Uses drive_content_diffs collection for actual content changes
+        # Drive activities
+        # Uses drive_activities collection for Google Drive activity data
         if "drive" in sources:
             query = {}
 
-            # Filter by member name (editor_name or editor_id/email)
+            # Filter by member name (user_email)
             if member_name:
                 emails = member_identifiers.get("email", []) or member_identifiers.get(
                     "drive", []
@@ -1446,39 +1446,34 @@ class Query:
                     f"🔍 [{request_id}] 📁 Drive emails for '{member_name}': {emails}"
                 )
 
-                or_conditions = []
-                or_conditions.append(
-                    {"editor_name": {"$regex": f"^{member_name}", "$options": "i"}}
-                )
                 if emails:
-                    or_conditions.append({"editor_id": {"$in": emails}})
-                query["$or"] = or_conditions
+                    query["user_email"] = {"$in": emails}
+                else:
+                    # Fallback: try to match email by member name
+                    query["user_email"] = {
+                        "$regex": f"^{member_name.lower()}@",
+                        "$options": "i",
+                    }
 
-            # Date filters - timestamp is stored as ISO string
+            # Date filters - timestamp is datetime in drive_activities
             if start_date:
-                from datetime import timezone as tz
-
-                start_str = start_date.astimezone(tz.utc).isoformat()
-                query["timestamp"] = {"$gte": start_str}
+                query["timestamp"] = {"$gte": start_date}
             if end_date:
-                from datetime import timezone as tz
-
-                end_str = end_date.astimezone(tz.utc).isoformat()
                 query["timestamp"] = query.get("timestamp", {})
-                query["timestamp"]["$lte"] = end_str
+                query["timestamp"]["$lte"] = end_date
 
             # Keyword search in document title
             if keyword:
-                query["document_title"] = {"$regex": keyword, "$options": "i"}
+                query["doc_title"] = {"$regex": keyword, "$options": "i"}
 
             # Project filter by title
             if project_name:
-                if "document_title" in query:
+                if "doc_title" in query:
                     query = {
                         "$and": [
                             query,
                             {
-                                "document_title": {
+                                "doc_title": {
                                     "$regex": project_name,
                                     "$options": "i",
                                 }
@@ -1486,79 +1481,63 @@ class Query:
                         ]
                     }
                 else:
-                    query["document_title"] = {"$regex": project_name, "$options": "i"}
+                    query["doc_title"] = {"$regex": project_name, "$options": "i"}
                 print(
-                    f"🔍 [{request_id}] 📁 Filtering Drive diffs by project: {project_name}"
+                    f"🔍 [{request_id}] 📁 Filtering Drive activities by project: {project_name}"
                 )
 
             print(f"🔍 [{request_id}] 📁 Drive query: {query}")
 
             drive_before = len(activities)
             async for doc in (
-                db["drive_content_diffs"]
+                db["drive_activities"]
                 .find(query)
                 .sort("timestamp", -1)
                 .limit(limit * 2)
             ):
-                # Get editor name
-                doc_member_name = doc.get("editor_name", "Unknown")
-                if not doc_member_name or doc_member_name == "Unknown":
-                    editor_id = doc.get("editor_id", "")
-                    if editor_id and "@" in editor_id:
-                        doc_member_name = editor_id.split("@")[0].capitalize()
-                    else:
-                        doc_member_name = "Unknown"
+                # Get member name from email
+                user_email = doc.get("user_email", "")
+                doc_member_name = "Unknown"
 
-                # Capitalize first letter
-                if (
-                    doc_member_name
-                    and isinstance(doc_member_name, str)
-                    and len(doc_member_name) > 0
-                ):
-                    doc_member_name = doc_member_name[0].upper() + doc_member_name[1:]
+                # Try to find member name from identifier_to_member mapping
+                if user_email:
+                    doc_member_name = identifier_to_member.get(
+                        ("drive", user_email.lower()),
+                        identifier_to_member.get(("email", user_email.lower()), None),
+                    )
+                    if not doc_member_name:
+                        # Fallback: extract from email
+                        doc_member_name = user_email.split("@")[0].capitalize()
 
-                # Parse timestamp from ISO string
-                timestamp_str = doc.get("timestamp", "")
-                try:
-                    if timestamp_str:
-                        from datetime import datetime
-
-                        if timestamp_str.endswith("Z"):
-                            timestamp_str = timestamp_str[:-1] + "+00:00"
-                        timestamp = datetime.fromisoformat(timestamp_str)
-                    else:
-                        continue
-                except:
+                # Get timestamp (already datetime)
+                timestamp = doc.get("timestamp")
+                if not timestamp:
                     continue
 
-                # Get changes for metadata
-                changes = doc.get("changes", {})
-                added_items = changes.get("added", [])
-                deleted_items = changes.get("deleted", [])
-
-                # Calculate additions/deletions
-                additions = len(added_items)
-                deletions = len(deleted_items)
+                # Ensure timestamp is timezone-aware
+                timestamp = ensure_datetime(timestamp)
+                if not timestamp:
+                    continue
 
                 activities.append(
                     Activity(
                         id=str(doc["_id"]),
                         member_name=doc_member_name,
                         source_type="drive",
-                        activity_type="drive_revision",
+                        activity_type=doc.get("event_name", "drive_activity"),
                         timestamp=timestamp,
                         metadata=sanitize_metadata(
                             {
-                                "document_id": doc.get("document_id"),
-                                "title": doc.get("document_title"),
-                                "doc_title": doc.get("document_title"),
-                                "url": doc.get("document_url"),
-                                "diff_type": doc.get("diff_type", "revision"),
-                                "additions": additions,
-                                "deletions": deletions,
-                                "revision_id": doc.get("revision_id"),
-                                "previous_revision_id": doc.get("previous_revision_id"),
-                                "changes": changes,
+                                "doc_id": doc.get("doc_id"),
+                                "title": doc.get("doc_title"),
+                                "doc_title": doc.get("doc_title"),
+                                "doc_type": doc.get("doc_type"),
+                                "action": doc.get("action"),
+                                "event_name": doc.get("event_name"),
+                                "user_email": user_email,
+                                "url": f"https://docs.google.com/document/d/{doc.get('doc_id')}"
+                                if doc.get("doc_id")
+                                else None,
                             }
                         ),
                     )
@@ -1566,7 +1545,7 @@ class Query:
 
             drive_after = len(activities)
             print(
-                f"🔍 [{request_id}] 📁 Drive diff activities added: {drive_after - drive_before}"
+                f"🔍 [{request_id}] 📁 Drive activities added: {drive_after - drive_before}"
             )
 
         # Recordings (Google Drive recordings via shared_async_db)
