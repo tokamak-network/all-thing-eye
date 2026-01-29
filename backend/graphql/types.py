@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @strawberry.enum
 class SourceType(Enum):
     """Data source types"""
+
     GITHUB = "github"
     SLACK = "slack"
     NOTION = "notion"
@@ -30,9 +31,10 @@ class SourceType(Enum):
 class Member:
     """
     Member type representing a team member.
-    
+
     Corresponds to 'members' collection in MongoDB.
     """
+
     id: str
     name: str
     email: str
@@ -44,12 +46,12 @@ class Member:
     eoa_address: Optional[str] = None
     recording_name: Optional[str] = None
     projects: List[str] = strawberry.field(default_factory=list)  # Internal field
-    
+
     # Employment status fields
     is_active: bool = True  # False if member has resigned
     resigned_at: Optional[datetime] = None  # Resignation date (ISO format)
     resignation_reason: Optional[str] = None  # Optional reason for resignation
-    
+
     @strawberry.field
     async def projectKeys(self, info) -> List[str]:
         """
@@ -60,17 +62,16 @@ class Member:
         """
         from bson import ObjectId
 
-        db = info.context['db']
+        db = info.context["db"]
         project_keys = []
 
         # Find all active projects where this member's ID is in member_ids
         try:
             member_oid = ObjectId(self.id)
-            async for project in db['projects'].find({
-                'member_ids': member_oid,
-                'is_active': True
-            }):
-                project_keys.append(project['key'])
+            async for project in db["projects"].find(
+                {"member_ids": member_oid, "is_active": True}
+            ):
+                project_keys.append(project["key"])
         except Exception as e:
             logger.warning(f"Error fetching project keys for member {self.id}: {e}")
             # Fallback to legacy projects field if ObjectId conversion fails
@@ -79,7 +80,7 @@ class Member:
         return project_keys
 
     @strawberry.field
-    async def projectDetails(self, info) -> List['Project']:
+    async def projectDetails(self, info) -> List["Project"]:
         """
         Get detailed project information for projects this member belongs to.
 
@@ -87,238 +88,232 @@ class Member:
         """
         from bson import ObjectId
 
-        db = info.context['db']
+        db = info.context["db"]
         projects = []
 
         # Find all active projects where this member's ID is in member_ids
         try:
             member_oid = ObjectId(self.id)
-            async for doc in db['projects'].find({
-                'member_ids': member_oid,
-                'is_active': True
-            }):
-                projects.append(Project(
-                    id=str(doc['_id']),
-                    key=doc['key'],
-                    name=doc.get('name', doc['key']),
-                    description=doc.get('description'),
-                    slack_channel=doc.get('slack_channel'),
-                    lead=doc.get('lead'),
-                    repositories=doc.get('repositories', []),
-                    is_active=doc.get('is_active', True),
-                    member_ids=doc.get('member_ids', [])
-                ))
+            async for doc in db["projects"].find(
+                {"member_ids": member_oid, "is_active": True}
+            ):
+                projects.append(
+                    Project(
+                        id=str(doc["_id"]),
+                        key=doc["key"],
+                        name=doc.get("name", doc["key"]),
+                        description=doc.get("description"),
+                        slack_channel=doc.get("slack_channel"),
+                        lead=doc.get("lead"),
+                        repositories=doc.get("repositories", []),
+                        is_active=doc.get("is_active", True),
+                        member_ids=doc.get("member_ids", []),
+                    )
+                )
         except Exception as e:
             logger.warning(f"Error fetching project details for member {self.id}: {e}")
             # Fallback to legacy behavior
             if self.projects:
-                async for doc in db['projects'].find({'key': {'$in': self.projects}}):
-                    projects.append(Project(
-                        id=str(doc['_id']),
-                        key=doc['key'],
-                        name=doc.get('name', doc['key']),
-                        description=doc.get('description'),
-                        slack_channel=doc.get('slack_channel'),
-                        lead=doc.get('lead'),
-                        repositories=doc.get('repositories', []),
-                        is_active=doc.get('is_active', True),
-                        member_ids=doc.get('member_ids', [])
-                    ))
+                async for doc in db["projects"].find({"key": {"$in": self.projects}}):
+                    projects.append(
+                        Project(
+                            id=str(doc["_id"]),
+                            key=doc["key"],
+                            name=doc.get("name", doc["key"]),
+                            description=doc.get("description"),
+                            slack_channel=doc.get("slack_channel"),
+                            lead=doc.get("lead"),
+                            repositories=doc.get("repositories", []),
+                            is_active=doc.get("is_active", True),
+                            member_ids=doc.get("member_ids", []),
+                        )
+                    )
 
         return projects
-    
+
     @strawberry.field
-    async def activity_count(
-        self,
-        info,
-        source: Optional[SourceType] = None
-    ) -> int:
+    async def activity_count(self, info, source: Optional[SourceType] = None) -> int:
         """
         Get total activity count for this member.
-        
+
         Uses DataLoader for batch loading when no source filter is specified.
-        
+
         Args:
             source: Optional filter by data source
-            
+
         Returns:
             Total number of activities
         """
         # Use DataLoader for batch loading (all sources)
         if not source:
-            dataloaders = info.context.get('dataloaders')
+            dataloaders = info.context.get("dataloaders")
             if dataloaders:
-                return await dataloaders['activity_counts'].load(self.name)
-        
+                return await dataloaders["activity_counts"].load(self.name)
+
         # Fallback to direct query if source filter is specified
-        db = info.context['db']
+        db = info.context["db"]
         count = 0
-        
+
         # GitHub activities
         if not source or source == SourceType.GITHUB:
-            count += await db['github_commits'].count_documents({'author_name': self.name})
-            count += await db['github_pull_requests'].count_documents({'author': self.name})
-        
+            count += await db["github_commits"].count_documents(
+                {"author_name": self.name}
+            )
+            count += await db["github_pull_requests"].count_documents(
+                {"author": self.name}
+            )
+
         # Slack activities
         if not source or source == SourceType.SLACK:
-            count += await db['slack_messages'].count_documents({
-                'user_name': self.name,
-                'channel_name': {'$ne': 'tokamak-partners'}  # Exclude private channel
-            })
-        
+            count += await db["slack_messages"].count_documents(
+                {
+                    "user_name": self.name,
+                    "channel_name": {
+                        "$ne": "tokamak-partners"
+                    },  # Exclude private channel
+                }
+            )
+
         # Notion activities
         if not source or source == SourceType.NOTION:
-            notion_count = await db['notion_pages'].count_documents({
-                '$or': [
-                    {'created_by.name': self.name},
-                    {'last_edited_by.name': self.name}
-                ]
-            })
+            notion_count = await db["notion_pages"].count_documents(
+                {
+                    "$or": [
+                        {"created_by.name": self.name},
+                        {"last_edited_by.name": self.name},
+                    ]
+                }
+            )
             count += notion_count
-        
+
         # Drive activities
         if not source or source == SourceType.DRIVE:
-            count += await db['drive_activities'].count_documents({'actor_name': self.name})
-        
+            count += await db["drive_activities"].count_documents(
+                {"actor_name": self.name}
+            )
+
         return count
-    
+
     @strawberry.field
     async def recent_activities(
-        self,
-        info,
-        limit: int = 10,
-        source: Optional[SourceType] = None
-    ) -> List['Activity']:
+        self, info, limit: int = 10, source: Optional[SourceType] = None
+    ) -> List["Activity"]:
         """
         Get recent activities for this member.
-        
+
         Uses DataLoader for batch loading to prevent N+1 queries.
-        
+
         Args:
             limit: Maximum number of activities to return
             source: Optional filter by data source
-            
+
         Returns:
             List of recent activities
         """
         # Use DataLoader for batch loading
-        dataloaders = info.context.get('dataloaders')
-        
+        dataloaders = info.context.get("dataloaders")
+
         if dataloaders:
             # DataLoader key: (member_name, limit, source)
-            return await dataloaders['recent_activities'].load(
+            return await dataloaders["recent_activities"].load(
                 (self.name, limit, source)
             )
-        
+
         # Fallback to direct query if DataLoader not available
         from .queries import get_activities_for_member
+
         return await get_activities_for_member(
-            db=info.context['db'],
-            member_name=self.name,
-            limit=limit,
-            source=source
+            db=info.context["db"], member_name=self.name, limit=limit, source=source
         )
-    
+
     @strawberry.field
-    async def top_collaborators(
-        self,
-        info,
-        limit: int = 10
-    ) -> List['Collaborator']:
+    async def top_collaborators(self, info, limit: int = 10) -> List["Collaborator"]:
         """
         Get top collaborators for this member.
-        
+
         Analyzes GitHub and Slack data to find frequent collaborators.
-        
+
         Args:
             limit: Maximum number of collaborators to return
-            
+
         Returns:
             List of Collaborator objects
         """
         from .queries import get_top_collaborators
+
         return await get_top_collaborators(
-            db=info.context['db'],
-            member_name=self.name,
-            limit=limit
+            db=info.context["db"], member_name=self.name, limit=limit
         )
-    
+
     @strawberry.field
     async def active_repositories(
-        self,
-        info,
-        limit: int = 10
-    ) -> List['RepositoryActivity']:
+        self, info, limit: int = 10
+    ) -> List["RepositoryActivity"]:
         """
         Get repositories where this member is active.
-        
+
         Args:
             limit: Maximum number of repositories to return
-            
+
         Returns:
             List of RepositoryActivity objects
         """
         from .queries import get_active_repositories
+
         return await get_active_repositories(
-            db=info.context['db'],
-            member_name=self.name,
-            limit=limit
+            db=info.context["db"], member_name=self.name, limit=limit
         )
-    
+
     @strawberry.field
-    async def activity_stats(
-        self,
-        info
-    ) -> 'ActivityStats':
+    async def activity_stats(self, info) -> "ActivityStats":
         """
         Get comprehensive activity statistics for this member.
-        
+
         Returns:
             ActivityStats object with detailed metrics
         """
         from .queries import get_activity_stats
-        return await get_activity_stats(
-            db=info.context['db'],
-            member_name=self.name
-        )
+
+        return await get_activity_stats(db=info.context["db"], member_name=self.name)
 
 
 @strawberry.type
 class Activity:
     """
     Unified activity type representing any team activity.
-    
+
     Aggregates data from multiple sources (GitHub, Slack, Notion, Drive).
     """
+
     id: str
     member_name: str
     source_type: str
     activity_type: str
     timestamp: datetime
     metadata: strawberry.scalars.JSON
-    
+
     @strawberry.field
     def repository(self) -> Optional[str]:
         """Get repository name for GitHub activities"""
-        if self.source_type == 'github':
-            return self.metadata.get('repository')
+        if self.source_type == "github":
+            return self.metadata.get("repository")
         return None
-    
+
     @strawberry.field
     def message(self) -> Optional[str]:
         """Get message content (commit message, Slack message, etc.)"""
-        if self.source_type == 'github':
-            return self.metadata.get('message') or self.metadata.get('title')
-        elif self.source_type == 'slack':
-            return self.metadata.get('text')
-        elif self.source_type == 'notion':
-            return self.metadata.get('title')
+        if self.source_type == "github":
+            return self.metadata.get("message") or self.metadata.get("title")
+        elif self.source_type == "slack":
+            return self.metadata.get("text")
+        elif self.source_type == "notion":
+            return self.metadata.get("title")
         return None
-    
+
     @strawberry.field
     def url(self) -> Optional[str]:
         """Get URL to the original activity"""
-        return self.metadata.get('url')
+        return self.metadata.get("url")
 
 
 @strawberry.type
@@ -326,6 +321,7 @@ class ActivitySummary:
     """
     Summary statistics for activities.
     """
+
     total: int
     by_source: strawberry.scalars.JSON
     by_type: strawberry.scalars.JSON
@@ -337,9 +333,10 @@ class ActivitySummary:
 class GrantReport:
     """
     Grant report information for a project.
-    
+
     Represents a quarterly grant report stored in Google Drive.
     """
+
     id: str
     title: str  # e.g., "TRH 2024 Q4 Report"
     year: int  # e.g., 2024
@@ -347,14 +344,34 @@ class GrantReport:
     drive_url: str  # Google Drive URL to the report file
     file_name: Optional[str] = None  # Original file name
     created_at: Optional[datetime] = None  # When the report was added
-    
-    # AI Summary fields (generated during sync)
+
+    # AI Summary fields - Qwen (default)
     summary: Optional[str] = None  # AI-generated summary
     progress_percentage: Optional[int] = None  # Estimated progress (0-100)
-    key_achievements: List[str] = strawberry.field(default_factory=list)  # Key achievements
+    key_achievements: List[str] = strawberry.field(
+        default_factory=list
+    )  # Key achievements
     challenges: List[str] = strawberry.field(default_factory=list)  # Challenges faced
-    next_quarter_goals: List[str] = strawberry.field(default_factory=list)  # Goals for next quarter
+    next_quarter_goals: List[str] = strawberry.field(
+        default_factory=list
+    )  # Goals for next quarter
     summary_generated_at: Optional[datetime] = None  # When summary was generated
+
+    # AI Summary fields - Claude
+    summary_claude: Optional[str] = None
+    progress_percentage_claude: Optional[int] = None
+    key_achievements_claude: List[str] = strawberry.field(default_factory=list)
+    challenges_claude: List[str] = strawberry.field(default_factory=list)
+    next_quarter_goals_claude: List[str] = strawberry.field(default_factory=list)
+    summary_generated_at_claude: Optional[datetime] = None
+
+    # AI Summary fields - Gemini
+    summary_gemini: Optional[str] = None
+    progress_percentage_gemini: Optional[int] = None
+    key_achievements_gemini: List[str] = strawberry.field(default_factory=list)
+    challenges_gemini: List[str] = strawberry.field(default_factory=list)
+    next_quarter_goals_gemini: List[str] = strawberry.field(default_factory=list)
+    summary_generated_at_gemini: Optional[datetime] = None
 
 
 @strawberry.type
@@ -362,6 +379,7 @@ class GrantReportFolder:
     """
     Grant report folder configuration for automatic sync from Google Drive.
     """
+
     folder_id: str  # Google Drive folder ID
     folder_url: str  # Full Google Drive folder URL
 
@@ -370,9 +388,10 @@ class GrantReportFolder:
 class Milestone:
     """
     Project milestone extracted from grant reports.
-    
+
     Tracks planned vs achieved milestones across quarters.
     """
+
     id: str
     title: str
     description: Optional[str] = None
@@ -384,14 +403,25 @@ class Milestone:
     link: Optional[str] = None  # URL link for the deliverable (e.g., GitHub PR, commit)
     created_at: Optional[datetime] = None
 
+    # Claude AI evaluation
+    status_claude: Optional[str] = None  # AI-assessed status
+    evaluation_claude: Optional[str] = None  # Brief evaluation comment
+    confidence_claude: Optional[int] = None  # 0-100 confidence score
+
+    # Gemini AI evaluation
+    status_gemini: Optional[str] = None  # AI-assessed status
+    evaluation_gemini: Optional[str] = None  # Brief evaluation comment
+    confidence_gemini: Optional[int] = None  # 0-100 confidence score
+
 
 @strawberry.type
 class Project:
     """
     Project type representing a project/team.
-    
+
     Corresponds to 'projects' collection in MongoDB.
     """
+
     id: str
     key: str
     name: str
@@ -402,115 +432,200 @@ class Project:
     repositories: List[str] = strawberry.field(default_factory=list)
     is_active: bool = True
     member_ids: List[str] = strawberry.field(default_factory=list)  # Internal field
-    grant_reports_data: strawberry.Private[List[dict]] = None  # Internal field for raw grant report data
-    grant_reports_folder_id: Optional[str] = None  # Google Drive folder ID for auto-sync
-    milestones_data: strawberry.Private[List[dict]] = None  # Internal field for raw milestone data
-    
-    # Overall project summary (generated from all grant reports)
+    grant_reports_data: strawberry.Private[List[dict]] = (
+        None  # Internal field for raw grant report data
+    )
+    grant_reports_folder_id: Optional[str] = (
+        None  # Google Drive folder ID for auto-sync
+    )
+    milestones_data: strawberry.Private[List[dict]] = (
+        None  # Internal field for raw milestone data
+    )
+
+    # Overall project summary - Qwen (default)
     overall_summary: Optional[str] = None  # AI-generated overall project summary
     progress_trend: Optional[str] = None  # "improving", "stable", or "declining"
-    overall_summary_generated_at: Optional[datetime] = None  # When overall summary was generated
-    milestones_generated_at: Optional[datetime] = None  # When milestones were last extracted
-    milestone_progress: Optional[int] = None  # Progress based on milestone achievement (0-100)
-    
+    overall_summary_generated_at: Optional[datetime] = None
+    technical_stage: Optional[str] = (
+        None  # "research", "prototype", "implementation", "production"
+    )
+    roadmap_status: Optional[str] = (
+        None  # "ahead", "on_track", "slightly_behind", "significantly_behind"
+    )
+    velocity: Optional[str] = None  # "accelerating", "steady", "slowing"
+    top_risks: List[str] = strawberry.field(default_factory=list)
+    key_strengths: List[str] = strawberry.field(default_factory=list)
+
+    # Overall project summary - Claude
+    overall_summary_claude: Optional[str] = None
+    progress_trend_claude: Optional[str] = None
+    overall_summary_generated_at_claude: Optional[datetime] = None
+    technical_stage_claude: Optional[str] = None
+    roadmap_status_claude: Optional[str] = None
+    velocity_claude: Optional[str] = None
+    top_risks_claude: List[str] = strawberry.field(default_factory=list)
+    key_strengths_claude: List[str] = strawberry.field(default_factory=list)
+
+    # Overall project summary - Gemini
+    overall_summary_gemini: Optional[str] = None
+    progress_trend_gemini: Optional[str] = None
+    overall_summary_generated_at_gemini: Optional[datetime] = None
+    technical_stage_gemini: Optional[str] = None
+    roadmap_status_gemini: Optional[str] = None
+    velocity_gemini: Optional[str] = None
+    top_risks_gemini: List[str] = strawberry.field(default_factory=list)
+    key_strengths_gemini: List[str] = strawberry.field(default_factory=list)
+
+    # Other fields
+    milestones_generated_at: Optional[datetime] = (
+        None  # When milestones were last extracted
+    )
+    milestone_progress: Optional[int] = (
+        None  # Progress based on milestone achievement (0-100)
+    )
+
     @strawberry.field
     def slackChannelId(self) -> Optional[str]:
         """Get Slack channel ID for this project."""
         return self.slack_channel_id
-    
+
     @strawberry.field
     def memberIds(self) -> List[str]:
         """Get list of member IDs for this project."""
         return self.member_ids
-    
+
     @strawberry.field
     def grantReports(self) -> List[GrantReport]:
         """
         Get grant reports for this project.
-        
+
         Returns sorted list of grant reports (most recent first).
         """
         if not self.grant_reports_data:
             return []
-        
+
         reports = []
         for report_data in self.grant_reports_data:
-            reports.append(GrantReport(
-                id=report_data.get('id', ''),
-                title=report_data.get('title', ''),
-                year=report_data.get('year', 0),
-                quarter=report_data.get('quarter', 0),
-                drive_url=report_data.get('drive_url', ''),
-                file_name=report_data.get('file_name'),
-                created_at=report_data.get('created_at'),
-                # AI Summary fields
-                summary=report_data.get('summary'),
-                progress_percentage=report_data.get('progress_percentage'),
-                key_achievements=report_data.get('key_achievements', []),
-                challenges=report_data.get('challenges', []),
-                next_quarter_goals=report_data.get('next_quarter_goals', []),
-                summary_generated_at=report_data.get('summary_generated_at')
-            ))
-        
+            reports.append(
+                GrantReport(
+                    id=report_data.get("id", ""),
+                    title=report_data.get("title", ""),
+                    year=report_data.get("year", 0),
+                    quarter=report_data.get("quarter", 0),
+                    drive_url=report_data.get("drive_url", ""),
+                    file_name=report_data.get("file_name"),
+                    created_at=report_data.get("created_at"),
+                    # AI Summary fields - Qwen (default)
+                    summary=report_data.get("summary"),
+                    progress_percentage=report_data.get("progress_percentage"),
+                    key_achievements=report_data.get("key_achievements", []),
+                    challenges=report_data.get("challenges", []),
+                    next_quarter_goals=report_data.get("next_quarter_goals", []),
+                    summary_generated_at=report_data.get("summary_generated_at"),
+                    # AI Summary fields - Claude
+                    summary_claude=report_data.get("summary_claude"),
+                    progress_percentage_claude=report_data.get(
+                        "progress_percentage_claude"
+                    ),
+                    key_achievements_claude=report_data.get(
+                        "key_achievements_claude", []
+                    ),
+                    challenges_claude=report_data.get("challenges_claude", []),
+                    next_quarter_goals_claude=report_data.get(
+                        "next_quarter_goals_claude", []
+                    ),
+                    summary_generated_at_claude=report_data.get(
+                        "summary_generated_at_claude"
+                    ),
+                    # AI Summary fields - Gemini
+                    summary_gemini=report_data.get("summary_gemini"),
+                    progress_percentage_gemini=report_data.get(
+                        "progress_percentage_gemini"
+                    ),
+                    key_achievements_gemini=report_data.get(
+                        "key_achievements_gemini", []
+                    ),
+                    challenges_gemini=report_data.get("challenges_gemini", []),
+                    next_quarter_goals_gemini=report_data.get(
+                        "next_quarter_goals_gemini", []
+                    ),
+                    summary_generated_at_gemini=report_data.get(
+                        "summary_generated_at_gemini"
+                    ),
+                )
+            )
+
         # Sort by year (desc) and quarter (desc) to show most recent first
         reports.sort(key=lambda r: (r.year, r.quarter), reverse=True)
         return reports
-    
+
     @strawberry.field
     def grantReportsFolder(self) -> Optional[GrantReportFolder]:
         """
         Get grant reports folder configuration for auto-sync.
-        
+
         Returns folder info if configured, None otherwise.
         """
         if not self.grant_reports_folder_id:
             return None
-        
+
         return GrantReportFolder(
             folder_id=self.grant_reports_folder_id,
-            folder_url=f"https://drive.google.com/drive/folders/{self.grant_reports_folder_id}"
+            folder_url=f"https://drive.google.com/drive/folders/{self.grant_reports_folder_id}",
         )
-    
+
     @strawberry.field
     def milestones(self) -> List[Milestone]:
         """
         Get milestones for this project.
-        
+
         Returns list of milestones sorted by: major first within each quarter, then by planned quarter.
         """
         if not self.milestones_data:
             return []
-        
+
         milestones = []
         for m in self.milestones_data:
-            milestones.append(Milestone(
-                id=m.get('id', ''),
-                title=m.get('title', ''),
-                description=m.get('description'),
-                planned_quarter=m.get('planned_quarter', ''),
-                achieved_quarter=m.get('achieved_quarter'),
-                status=m.get('status', 'planned'),
-                is_major=m.get('is_major', False),
-                parent_milestone_id=m.get('parent_milestone_id'),
-                link=m.get('link'),
-                created_at=m.get('created_at')
-            ))
-        
+            milestones.append(
+                Milestone(
+                    id=m.get("id", ""),
+                    title=m.get("title", ""),
+                    description=m.get("description"),
+                    planned_quarter=m.get("planned_quarter", ""),
+                    achieved_quarter=m.get("achieved_quarter"),
+                    status=m.get("status", "planned"),
+                    is_major=m.get("is_major", False),
+                    parent_milestone_id=m.get("parent_milestone_id"),
+                    link=m.get("link"),
+                    created_at=m.get("created_at"),
+                    # Claude evaluation
+                    status_claude=m.get("status_claude"),
+                    evaluation_claude=m.get("evaluation_claude"),
+                    confidence_claude=m.get("confidence_claude"),
+                    # Gemini evaluation
+                    status_gemini=m.get("status_gemini"),
+                    evaluation_gemini=m.get("evaluation_gemini"),
+                    confidence_gemini=m.get("confidence_gemini"),
+                )
+            )
+
         # Sort by planned quarter, then major milestones first
         milestones.sort(key=lambda m: (m.planned_quarter, not m.is_major))
         return milestones
-    
+
     @strawberry.field
-    async def members(self, info) -> List['Member']:
+    async def members(self, info) -> List["Member"]:
         """Get list of members in this project."""
         if not self.member_ids:
             return []
-        
-        db = info.context['db']
+
+        db = info.context["db"]
         from bson import ObjectId
-        
-        logger.debug(f"[Project.members] Project {self.key}: Looking for {len(self.member_ids)} members")
-        
+
+        logger.debug(
+            f"[Project.members] Project {self.key}: Looking for {len(self.member_ids)} members"
+        )
+
         # Convert string IDs to ObjectIds for MongoDB query
         object_ids = []
         invalid_ids = []
@@ -523,40 +638,50 @@ class Project:
                     object_ids.append(ObjectId(str(member_id)))
             except Exception as e:
                 invalid_ids.append(str(member_id))
-                logger.warning(f"[Project.members] Project {self.key}: Invalid member_id format: {member_id}")
+                logger.warning(
+                    f"[Project.members] Project {self.key}: Invalid member_id format: {member_id}"
+                )
                 continue
-        
+
         if not object_ids:
             if invalid_ids:
-                logger.error(f"[Project.members] Project {self.key}: All {len(invalid_ids)} member_ids are invalid/malformed: {invalid_ids}")
+                logger.error(
+                    f"[Project.members] Project {self.key}: All {len(invalid_ids)} member_ids are invalid/malformed: {invalid_ids}"
+                )
             return []
-        
+
         if invalid_ids:
-            logger.warning(f"[Project.members] Project {self.key}: {len(invalid_ids)} invalid member_ids found: {invalid_ids}")
-        
+            logger.warning(
+                f"[Project.members] Project {self.key}: {len(invalid_ids)} invalid member_ids found: {invalid_ids}"
+            )
+
         # Fetch members from database
         members = []
         found_ids = set()
-        async for doc in db['members'].find({'_id': {'$in': object_ids}}):
-            found_ids.add(str(doc['_id']))
-            members.append(Member(
-                id=str(doc['_id']),
-                name=doc.get('name', 'Unknown'),
-                email=doc.get('email', ''),
-                role=doc.get('role'),
-                team=doc.get('team'),
-                github_username=doc.get('github_username'),
-                slack_id=doc.get('slack_id'),
-                notion_id=doc.get('notion_id'),
-                eoa_address=doc.get('eoa_address'),
-                recording_name=doc.get('recording_name'),
-                is_active=doc.get('is_active', True),
-                resigned_at=doc.get('resigned_at'),
-                resignation_reason=doc.get('resignation_reason')
-            ))
-        
-        logger.debug(f"[Project.members] Project {self.key}: Found {len(members)}/{len(object_ids)} members")
-        
+        async for doc in db["members"].find({"_id": {"$in": object_ids}}):
+            found_ids.add(str(doc["_id"]))
+            members.append(
+                Member(
+                    id=str(doc["_id"]),
+                    name=doc.get("name", "Unknown"),
+                    email=doc.get("email", ""),
+                    role=doc.get("role"),
+                    team=doc.get("team"),
+                    github_username=doc.get("github_username"),
+                    slack_id=doc.get("slack_id"),
+                    notion_id=doc.get("notion_id"),
+                    eoa_address=doc.get("eoa_address"),
+                    recording_name=doc.get("recording_name"),
+                    is_active=doc.get("is_active", True),
+                    resigned_at=doc.get("resigned_at"),
+                    resignation_reason=doc.get("resignation_reason"),
+                )
+            )
+
+        logger.debug(
+            f"[Project.members] Project {self.key}: Found {len(members)}/{len(object_ids)} members"
+        )
+
         # Detect and log orphaned member_ids (IDs that don't exist in members collection)
         if len(members) < len(object_ids):
             orphaned_ids = [str(oid) for oid in object_ids if str(oid) not in found_ids]
@@ -566,12 +691,11 @@ class Project:
                 f"Orphaned count: {len(orphaned_ids)}, "
                 f"Orphaned IDs: {orphaned_ids}. "
                 f"These member IDs no longer exist in the members collection. "
-                f"This may indicate that build_member_index_mongo.py was run after members were added to projects, "
-                f"or members were manually deleted from the database."
+                f"Members may have been deleted from the database."
             )
-        
+
         return members
-    
+
     @strawberry.field
     async def member_count(self, info) -> int:
         """
@@ -580,66 +704,63 @@ class Project:
         # Simply return length of member_ids if available
         if self.member_ids:
             return len(self.member_ids)
-        
+
         # If member_ids not loaded, query database
-        db = info.context['db']
+        db = info.context["db"]
         from bson import ObjectId
-        
-        project_doc = await db['projects'].find_one({'_id': ObjectId(self.id)})
+
+        project_doc = await db["projects"].find_one({"_id": ObjectId(self.id)})
         if not project_doc:
             return 0
-        
-        member_ids = project_doc.get('member_ids', [])
+
+        member_ids = project_doc.get("member_ids", [])
         return len(member_ids)
-    
+
     @strawberry.field
     async def activity_summary(
         self,
         info,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
     ) -> ActivitySummary:
         """Get activity statistics for this project"""
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         # Count GitHub activities for project repositories
-        github_query = {'repository': {'$in': self.repositories}}
+        github_query = {"repository": {"$in": self.repositories}}
         if start_date:
-            github_query['date'] = {'$gte': start_date}
+            github_query["date"] = {"$gte": start_date}
         if end_date:
-            github_query['date'] = github_query.get('date', {})
-            github_query['date']['$lte'] = end_date
-        
-        github_commits = await db['github_commits'].count_documents(github_query)
-        github_prs = await db['github_pull_requests'].count_documents(github_query)
-        
+            github_query["date"] = github_query.get("date", {})
+            github_query["date"]["$lte"] = end_date
+
+        github_commits = await db["github_commits"].count_documents(github_query)
+        github_prs = await db["github_pull_requests"].count_documents(github_query)
+
         # Count Slack activities (if slack_channel exists)
         slack_count = 0
-        if self.slack_channel and self.slack_channel != 'tokamak-partners':
-            slack_query = {'channel_name': self.slack_channel}
+        if self.slack_channel and self.slack_channel != "tokamak-partners":
+            slack_query = {"channel_name": self.slack_channel}
             if start_date:
-                slack_query['posted_at'] = {'$gte': start_date}
+                slack_query["posted_at"] = {"$gte": start_date}
             if end_date:
-                slack_query['posted_at'] = slack_query.get('posted_at', {})
-                slack_query['posted_at']['$lte'] = end_date
-            
-            slack_count = await db['slack_messages'].count_documents(slack_query)
-        
+                slack_query["posted_at"] = slack_query.get("posted_at", {})
+                slack_query["posted_at"]["$lte"] = end_date
+
+            slack_count = await db["slack_messages"].count_documents(slack_query)
+
         total = github_commits + github_prs + slack_count
-        
+
         return ActivitySummary(
             total=total,
-            by_source={
-                'github': github_commits + github_prs,
-                'slack': slack_count
-            },
+            by_source={"github": github_commits + github_prs, "slack": slack_count},
             by_type={
-                'commit': github_commits,
-                'pull_request': github_prs,
-                'message': slack_count
+                "commit": github_commits,
+                "pull_request": github_prs,
+                "message": slack_count,
             },
             date_range_start=start_date,
-            date_range_end=end_date
+            date_range_end=end_date,
         )
 
 
@@ -648,6 +769,7 @@ class Collaborator:
     """
     Represents a member's collaborator with activity metrics.
     """
+
     member_name: str
     collaboration_count: int
     collaboration_type: str  # "github", "slack", "both"
@@ -659,6 +781,7 @@ class RepositoryActivity:
     """
     Represents activity in a specific repository.
     """
+
     repository: str
     commit_count: int
     pr_count: int
@@ -673,6 +796,7 @@ class SourceStats:
     """
     Activity statistics by source.
     """
+
     source: str
     count: int
     percentage: float
@@ -683,6 +807,7 @@ class WeeklyStats:
     """
     Weekly activity statistics.
     """
+
     week_start: datetime
     count: int
 
@@ -692,6 +817,7 @@ class ActivityStats:
     """
     Comprehensive activity statistics for a member.
     """
+
     total_activities: int
     by_source: List[SourceStats]
     weekly_trend: List[WeeklyStats]
@@ -703,6 +829,7 @@ class CollaborationDetail:
     """
     Detailed breakdown of collaboration by source/type.
     """
+
     source: str  # "github_pr_review", "slack_thread", "meeting", etc.
     activity_count: int
     score: float
@@ -714,6 +841,7 @@ class Collaboration:
     """
     Represents collaboration relationship between two members.
     """
+
     collaborator_name: str
     collaborator_id: Optional[str] = None
     total_score: float
@@ -729,6 +857,7 @@ class CollaborationNetwork:
     """
     Complete collaboration network for a member.
     """
+
     member_name: str
     member_id: Optional[str] = None
     top_collaborators: List[Collaboration]

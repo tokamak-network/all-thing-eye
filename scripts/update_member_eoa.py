@@ -4,8 +4,10 @@ Script to update member EOA (Ethereum) addresses in the database.
 
 EOA addresses extracted from Slack conversation in #all-thing-eye channel.
 """
+
 import sys
-sys.path.insert(0, '/Users/son-yeongseong/Desktop/dev/all-thing-eye')
+
+sys.path.insert(0, "/Users/son-yeongseong/Desktop/dev/all-thing-eye")
 
 from datetime import datetime
 from src.core.config import Config
@@ -14,7 +16,7 @@ from src.core.mongo_manager import get_mongo_manager
 # EOA addresses extracted from Slack conversation
 # Format: (member_name_in_db, eoa_address)
 EOA_ADDRESSES = [
-    # Name matching with members.yaml
+    # Name matching with members collection in MongoDB
     ("Aamir", "0x7f88539538ae808e45e23ff6c2b897d062616c4e"),
     ("Jaden", "0x9f1474b5b01940af4f6641bdcbcf8af3ca5197ec"),
     ("Jason", "0x3d827286780dBc00ACE4ee416aD8a4C5dAAC972C"),
@@ -23,7 +25,10 @@ EOA_ADDRESSES = [
     ("Jake", "0xa4cb7fb1abb9d6f7750bddead7b11f7a3ec4ed10"),  # Jake Jang in Slack
     ("Theo", "0xf109a6faa0c8adae8ccb114f4ab55d47e8fd4be6"),
     ("Aryan", "0x97826f4bf96EFa51Ef92184D7555A9Ac4DD7db80"),  # Aryan Soni in Slack
-    ("Singh", "0xf90432b76A23bC7bB50b868dC4257C5F5B401742"),  # Shailendra/Shailu in Slack
+    (
+        "Singh",
+        "0xf90432b76A23bC7bB50b868dC4257C5F5B401742",
+    ),  # Shailendra/Shailu in Slack
     ("Jeff", "0x5c61cb743bfdca46e829e3e6f1d3b56efbb56e20"),
     ("Mehdi", "0x15759359e60a3b9e59ea7a96d10fa48829f83beb"),
     ("Zena", "0x796c1f28c777b8a5851d356ebbc9dec2ee51137f"),
@@ -46,27 +51,27 @@ EOA_ADDRESSES = [
 def update_member_eoa_addresses():
     """Update EOA addresses for members in the database."""
     config = Config()
-    
+
     # Connect to MongoDB using MongoDBManager
-    mongo_config = config.get('mongodb', {})
+    mongo_config = config.get("mongodb", {})
     mongo_manager = get_mongo_manager(mongo_config)
     mongo_manager.connect_sync()
     db = mongo_manager.db
-    members_col = db['members']
-    
+    members_col = db["members"]
+
     print("=" * 60)
     print("Updating Member EOA Addresses")
     print("=" * 60)
-    
+
     updated_count = 0
     not_found = []
-    
+
     for member_name, eoa_address in EOA_ADDRESSES:
         # Find member by name (case-insensitive)
-        member = members_col.find_one({
-            "name": {"$regex": f"^{member_name}$", "$options": "i"}
-        })
-        
+        member = members_col.find_one(
+            {"name": {"$regex": f"^{member_name}$", "$options": "i"}}
+        )
+
         if member:
             # Update EOA address
             result = members_col.update_one(
@@ -74,11 +79,11 @@ def update_member_eoa_addresses():
                 {
                     "$set": {
                         "eoa_address": eoa_address.lower(),  # Store in lowercase
-                        "updated_at": datetime.utcnow()
+                        "updated_at": datetime.utcnow(),
                     }
-                }
+                },
             )
-            
+
             if result.modified_count > 0:
                 print(f"✅ Updated {member_name}: {eoa_address}")
                 updated_count += 1
@@ -91,7 +96,7 @@ def update_member_eoa_addresses():
         else:
             not_found.append(member_name)
             print(f"❌ Member not found: {member_name}")
-    
+
     print()
     print("=" * 60)
     print(f"Summary:")
@@ -100,15 +105,16 @@ def update_member_eoa_addresses():
     if not_found:
         print(f"  - Missing members: {', '.join(not_found)}")
     print("=" * 60)
-    
+
     # Show current state
     print("\n📋 Current Members with EOA Addresses:")
-    for doc in members_col.find({"eoa_address": {"$exists": True, "$ne": None}}).sort("name", 1):
+    for doc in members_col.find({"eoa_address": {"$exists": True, "$ne": None}}).sort(
+        "name", 1
+    ):
         print(f"  {doc['name']}: {doc.get('eoa_address', 'N/A')}")
-    
+
     mongo_manager.close()
 
 
 if __name__ == "__main__":
     update_member_eoa_addresses()
-

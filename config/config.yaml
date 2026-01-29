@@ -107,21 +107,7 @@ plugins:
     # Target users to track (empty = all users in organization)
     target_users: [] # e.g., ['george@tokamak.network', 'kevin@tokamak.network']
     days_to_collect: 7 # Default collection period
-    # Member mapping
-    member_list:
-      - name: "Kevin"
-        githubId: "ggs134"
-        email: "kevin@company.com"
-      - name: "Jason"
-        githubId: "cd4761"
-        email: "jason@company.com"
-      - name: "Theo"
-        githubId: "theo-learner"
-        email: "theo@company.com"
-      - name: "Ale"
-        githubId: "SonYoungsung"
-        email: "ale@company.com"
-      # Add more members as needed
+    # Note: Member mapping is now managed in MongoDB (members collection)
 
   notion:
     enabled: ${NOTION_ENABLED:true}
@@ -133,32 +119,11 @@ plugins:
       pages: true
       databases: true
       comments: true
-    # Member mapping
-    member_list:
+    # Note: Member mapping is now managed in MongoDB (members collection)
 
 # Projects Configuration
-# Note: Only basic fields are kept here. Full project configuration is managed in MongoDB.
-# This serves as initial seed data. Use MongoDB API to update project details.
-projects:
-  project-ooo:
-    name: "Project OOO"
-    slack_channel: "project-ooo"
-    lead: "Jake"
-
-  project-eco:
-    name: "Project ECO"
-    slack_channel: "project-eco"
-    lead: "Jason"
-
-  project-syb:
-    name: "Project SYB"
-    slack_channel: "project-sybil"
-    lead: "Jamie"
-
-  project-trh:
-    name: "Project TRH"
-    slack_channel: "project_trh"
-    lead: "Praveen"
+# Note: All project data is now managed in MongoDB (projects collection)
+# Use Admin UI or API to manage projects
 
 # Member Index
 member_index:
