@@ -10,26 +10,32 @@ from datetime import datetime
 from bson import ObjectId
 
 from .types import (
-    Member, Activity, Project, SourceType, ActivitySummary,
-    Collaboration, CollaborationDetail, CollaborationNetwork
+    Member,
+    Activity,
+    Project,
+    SourceType,
+    ActivitySummary,
+    Collaboration,
+    CollaborationDetail,
+    CollaborationNetwork,
 )
 
 
 def ensure_datetime(value: Any) -> Optional[datetime]:
     """
     Ensure a value is converted to timezone-aware datetime object in UTC.
-    
+
     Args:
         value: Timestamp value (datetime, string, or None)
-        
+
     Returns:
         Timezone-aware datetime object in UTC or None if conversion fails
     """
     from datetime import timezone
-    
+
     if value is None:
         return None
-    
+
     if isinstance(value, datetime):
         # If already timezone-aware, convert to UTC
         if value.tzinfo is not None:
@@ -37,11 +43,11 @@ def ensure_datetime(value: Any) -> Optional[datetime]:
         # If naive, assume UTC
         else:
             return value.replace(tzinfo=timezone.utc)
-    
+
     if isinstance(value, str):
         try:
             # Try ISO format
-            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
             # Ensure timezone-aware
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
@@ -49,23 +55,23 @@ def ensure_datetime(value: Any) -> Optional[datetime]:
         except:
             try:
                 # Try other common formats (assume UTC)
-                dt = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
                 return dt.replace(tzinfo=timezone.utc)
             except:
                 return None
-    
+
     return None
 
 
 def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """
     Sanitize metadata for JSON serialization.
-    
+
     Converts datetime objects and ObjectIds to strings.
-    
+
     Args:
         metadata: Raw metadata dictionary from MongoDB
-        
+
     Returns:
         Sanitized metadata dictionary safe for JSON serialization
     """
@@ -79,10 +85,13 @@ def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
             sanitized[key] = sanitize_metadata(value)
         elif isinstance(value, list):
             sanitized[key] = [
-                sanitize_metadata(item) if isinstance(item, dict) else
-                item.isoformat() if isinstance(item, datetime) else
-                str(item) if isinstance(item, ObjectId) else
-                item
+                sanitize_metadata(item)
+                if isinstance(item, dict)
+                else item.isoformat()
+                if isinstance(item, datetime)
+                else str(item)
+                if isinstance(item, ObjectId)
+                else item
                 for item in value
             ]
         else:
@@ -91,567 +100,606 @@ def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def get_activities_for_member(
-    db,
-    member_name: str,
-    limit: int = 10,
-    source: Optional[SourceType] = None
+    db, member_name: str, limit: int = 10, source: Optional[SourceType] = None
 ) -> List[Activity]:
     """
     Helper function to get activities for a specific member.
-    
+
     Args:
         db: MongoDB async database instance
         member_name: Name of the member
         limit: Maximum number of activities to return
         source: Optional filter by data source
-        
+
     Returns:
         List of Activity objects
     """
     activities = []
-    
+
     # GitHub commits
     if not source or source == SourceType.GITHUB:
-        async for doc in db['github_commits'].find({'author_name': member_name}).sort('date', -1).limit(limit):
-            author_name = doc.get('author_name', member_name)
-            timestamp = doc.get('date') or doc.get('committed_date')
+        async for doc in (
+            db["github_commits"]
+            .find({"author_name": member_name})
+            .sort("date", -1)
+            .limit(limit)
+        ):
+            author_name = doc.get("author_name", member_name)
+            timestamp = doc.get("date") or doc.get("committed_date")
             if not timestamp:
                 continue
-            
-            activities.append(Activity(
-                id=str(doc['_id']),
-                member_name=author_name,
-                source_type='github',
-                activity_type='commit',
-                timestamp=timestamp,
-                metadata=sanitize_metadata({
-                    'sha': doc.get('sha'),
-                    'message': doc.get('message'),
-                    'repository': doc.get('repository'),
-                    'additions': doc.get('additions', 0),
-                    'deletions': doc.get('deletions', 0),
-                    'url': doc.get('url')
-                })
-            ))
-    
+
+            activities.append(
+                Activity(
+                    id=str(doc["_id"]),
+                    member_name=author_name,
+                    source_type="github",
+                    activity_type="commit",
+                    timestamp=timestamp,
+                    metadata=sanitize_metadata(
+                        {
+                            "sha": doc.get("sha"),
+                            "message": doc.get("message"),
+                            "repository": doc.get("repository"),
+                            "additions": doc.get("additions", 0),
+                            "deletions": doc.get("deletions", 0),
+                            "url": doc.get("url"),
+                        }
+                    ),
+                )
+            )
+
     # GitHub PRs
     if not source or source == SourceType.GITHUB:
-        async for doc in db['github_pull_requests'].find({'author': member_name}).sort('created_at', -1).limit(limit):
-            author = doc.get('author', member_name)
-            timestamp = doc.get('created_at')
+        async for doc in (
+            db["github_pull_requests"]
+            .find({"author": member_name})
+            .sort("created_at", -1)
+            .limit(limit)
+        ):
+            author = doc.get("author", member_name)
+            timestamp = doc.get("created_at")
             if not timestamp:
                 continue
-            
-            activities.append(Activity(
-                id=str(doc['_id']),
-                member_name=author,
-                source_type='github',
-                activity_type='pull_request',
-                timestamp=timestamp,
-                metadata=sanitize_metadata({
-                    'number': doc.get('number'),
-                    'title': doc.get('title'),
-                    'state': doc.get('state'),
-                    'repository': doc.get('repository'),
-                    'url': doc.get('url')
-                })
-            ))
-    
+
+            activities.append(
+                Activity(
+                    id=str(doc["_id"]),
+                    member_name=author,
+                    source_type="github",
+                    activity_type="pull_request",
+                    timestamp=timestamp,
+                    metadata=sanitize_metadata(
+                        {
+                            "number": doc.get("number"),
+                            "title": doc.get("title"),
+                            "state": doc.get("state"),
+                            "repository": doc.get("repository"),
+                            "url": doc.get("url"),
+                        }
+                    ),
+                )
+            )
+
     # Slack messages
     if not source or source == SourceType.SLACK:
-        async for doc in db['slack_messages'].find({'user_name': member_name}).sort('posted_at', -1).limit(limit):
-            user_name = doc.get('user_name', member_name)
-            timestamp = doc.get('posted_at')
+        async for doc in (
+            db["slack_messages"]
+            .find({"user_name": member_name})
+            .sort("posted_at", -1)
+            .limit(limit)
+        ):
+            user_name = doc.get("user_name", member_name)
+            timestamp = doc.get("posted_at")
             if not timestamp:
                 continue
-            
-            activities.append(Activity(
-                id=str(doc['_id']),
-                member_name=user_name,
-                source_type='slack',
-                activity_type='message',
-                timestamp=timestamp,
-                metadata={
-                    'text': doc.get('text'),
-                    'channel_name': doc.get('channel_name'),
-                    'thread_ts': doc.get('thread_ts')
-                }
-            ))
-    
+
+            activities.append(
+                Activity(
+                    id=str(doc["_id"]),
+                    member_name=user_name,
+                    source_type="slack",
+                    activity_type="message",
+                    timestamp=timestamp,
+                    metadata={
+                        "text": doc.get("text"),
+                        "channel_name": doc.get("channel_name"),
+                        "thread_ts": doc.get("thread_ts"),
+                    },
+                )
+            )
+
     # Sort by timestamp and return limited results
     activities.sort(key=lambda a: a.timestamp, reverse=True)
     return activities[:limit]
 
 
-async def get_top_collaborators(
-    db,
-    member_name: str,
-    limit: int = 10
-) -> List:
+async def get_top_collaborators(db, member_name: str, limit: int = 10) -> List:
     """
     Get top collaborators for a member using MongoDB aggregation.
-    
+
     Analyzes GitHub PR reviews, co-authored commits, and Slack interactions.
     """
     from .types import Collaborator
     from datetime import timezone as tz
-    
+
     collaborators = {}
-    
+
     # 1. GitHub PR Reviews (members who reviewed this member's PRs)
     pipeline_pr_reviews = [
-        {'$match': {'author': member_name}},
-        {'$unwind': '$reviewers'},
-        {'$group': {
-            '_id': '$reviewers',
-            'count': {'$sum': 1},
-            'last_date': {'$max': '$created_at'}
-        }},
-        {'$match': {'_id': {'$ne': member_name}}},  # Exclude self
-        {'$sort': {'count': -1}},
-        {'$limit': limit * 2}
+        {"$match": {"author": member_name}},
+        {"$unwind": "$reviewers"},
+        {
+            "$group": {
+                "_id": "$reviewers",
+                "count": {"$sum": 1},
+                "last_date": {"$max": "$created_at"},
+            }
+        },
+        {"$match": {"_id": {"$ne": member_name}}},  # Exclude self
+        {"$sort": {"count": -1}},
+        {"$limit": limit * 2},
     ]
-    
+
     try:
-        async for doc in db['github_pull_requests'].aggregate(pipeline_pr_reviews):
-            reviewer = doc['_id']
+        async for doc in db["github_pull_requests"].aggregate(pipeline_pr_reviews):
+            reviewer = doc["_id"]
             if reviewer and reviewer != member_name:
                 if reviewer not in collaborators:
                     collaborators[reviewer] = {
-                        'github': doc['count'],
-                        'slack': 0,
-                        'last_date': ensure_datetime(doc.get('last_date'))
+                        "github": doc["count"],
+                        "slack": 0,
+                        "last_date": ensure_datetime(doc.get("last_date")),
                     }
                 else:
-                    collaborators[reviewer]['github'] += doc['count']
-                    last_date = ensure_datetime(doc.get('last_date'))
-                    if last_date and (not collaborators[reviewer]['last_date'] or last_date > collaborators[reviewer]['last_date']):
-                        collaborators[reviewer]['last_date'] = last_date
+                    collaborators[reviewer]["github"] += doc["count"]
+                    last_date = ensure_datetime(doc.get("last_date"))
+                    if last_date and (
+                        not collaborators[reviewer]["last_date"]
+                        or last_date > collaborators[reviewer]["last_date"]
+                    ):
+                        collaborators[reviewer]["last_date"] = last_date
     except Exception as e:
         print(f"Error fetching PR reviews: {e}")
-    
+
     # 2. Slack Interactions (threads, mentions)
     pipeline_slack = [
-        {'$match': {'user_name': member_name}},
-        {'$group': {
-            '_id': '$channel_id',
-            'messages': {'$push': {'ts': '$ts', 'thread_ts': '$thread_ts'}}
-        }}
+        {"$match": {"user_name": member_name}},
+        {
+            "$group": {
+                "_id": "$channel_id",
+                "messages": {"$push": {"ts": "$ts", "thread_ts": "$thread_ts"}},
+            }
+        },
     ]
-    
+
     try:
         # Find who replied to this member's messages
-        async for doc in db['slack_messages'].aggregate([
-            {'$match': {'user_name': {'$ne': member_name}}},
-            {'$group': {
-                '_id': '$user_name',
-                'count': {'$sum': 1},
-                'last_date': {'$max': '$posted_at'}
-            }},
-            {'$sort': {'count': -1}},
-            {'$limit': limit * 2}
-        ]):
-            user = doc['_id']
+        async for doc in db["slack_messages"].aggregate(
+            [
+                {"$match": {"user_name": {"$ne": member_name}}},
+                {
+                    "$group": {
+                        "_id": "$user_name",
+                        "count": {"$sum": 1},
+                        "last_date": {"$max": "$posted_at"},
+                    }
+                },
+                {"$sort": {"count": -1}},
+                {"$limit": limit * 2},
+            ]
+        ):
+            user = doc["_id"]
             if user and user != member_name:
                 if user not in collaborators:
                     collaborators[user] = {
-                        'github': 0,
-                        'slack': doc['count'],
-                        'last_date': ensure_datetime(doc.get('last_date'))
+                        "github": 0,
+                        "slack": doc["count"],
+                        "last_date": ensure_datetime(doc.get("last_date")),
                     }
                 else:
-                    collaborators[user]['slack'] += doc['count']
-                    last_date = ensure_datetime(doc.get('last_date'))
-                    if last_date and (not collaborators[user]['last_date'] or last_date > collaborators[user]['last_date']):
-                        collaborators[user]['last_date'] = last_date
+                    collaborators[user]["slack"] += doc["count"]
+                    last_date = ensure_datetime(doc.get("last_date"))
+                    if last_date and (
+                        not collaborators[user]["last_date"]
+                        or last_date > collaborators[user]["last_date"]
+                    ):
+                        collaborators[user]["last_date"] = last_date
     except Exception as e:
         print(f"Error fetching Slack interactions: {e}")
-    
+
     # Build result list
     result = []
     for name, data in collaborators.items():
-        github_count = data['github']
-        slack_count = data['slack']
+        github_count = data["github"]
+        slack_count = data["slack"]
         total = github_count + slack_count
-        
+
         if total > 0:
-            collab_type = 'both' if github_count > 0 and slack_count > 0 else ('github' if github_count > 0 else 'slack')
-            result.append(Collaborator(
-                member_name=name,
-                collaboration_count=total,
-                collaboration_type=collab_type,
-                last_collaboration=data['last_date']
-            ))
-    
+            collab_type = (
+                "both"
+                if github_count > 0 and slack_count > 0
+                else ("github" if github_count > 0 else "slack")
+            )
+            result.append(
+                Collaborator(
+                    member_name=name,
+                    collaboration_count=total,
+                    collaboration_type=collab_type,
+                    last_collaboration=data["last_date"],
+                )
+            )
+
     # Sort by collaboration count and return top N
     result.sort(key=lambda x: x.collaboration_count, reverse=True)
     return result[:limit]
 
 
-async def get_active_repositories(
-    db,
-    member_name: str,
-    limit: int = 10
-) -> List:
+async def get_active_repositories(db, member_name: str, limit: int = 10) -> List:
     """
     Get repositories where member is active using MongoDB aggregation.
     """
     from .types import RepositoryActivity
-    
+
     repos = {}
-    
+
     # 1. Commits
     pipeline_commits = [
-        {'$match': {'author_name': member_name}},
-        {'$group': {
-            '_id': '$repository',
-            'commit_count': {'$sum': 1},
-            'additions': {'$sum': '$additions'},
-            'deletions': {'$sum': '$deletions'},
-            'last_date': {'$max': '$date'}
-        }},
-        {'$sort': {'commit_count': -1}},
-        {'$limit': limit * 2}
+        {"$match": {"author_name": member_name}},
+        {
+            "$group": {
+                "_id": "$repository",
+                "commit_count": {"$sum": 1},
+                "additions": {"$sum": "$additions"},
+                "deletions": {"$sum": "$deletions"},
+                "last_date": {"$max": "$date"},
+            }
+        },
+        {"$sort": {"commit_count": -1}},
+        {"$limit": limit * 2},
     ]
-    
+
     try:
-        async for doc in db['github_commits'].aggregate(pipeline_commits):
-            repo = doc['_id']
+        async for doc in db["github_commits"].aggregate(pipeline_commits):
+            repo = doc["_id"]
             if repo:
                 repos[repo] = {
-                    'commit_count': doc['commit_count'],
-                    'pr_count': 0,
-                    'issue_count': 0,
-                    'additions': doc.get('additions', 0),
-                    'deletions': doc.get('deletions', 0),
-                    'last_date': ensure_datetime(doc.get('last_date'))
+                    "commit_count": doc["commit_count"],
+                    "pr_count": 0,
+                    "issue_count": 0,
+                    "additions": doc.get("additions", 0),
+                    "deletions": doc.get("deletions", 0),
+                    "last_date": ensure_datetime(doc.get("last_date")),
                 }
     except Exception as e:
         print(f"Error fetching commit stats: {e}")
-    
+
     # 2. Pull Requests
     pipeline_prs = [
-        {'$match': {'author': member_name}},
-        {'$group': {
-            '_id': '$repository',
-            'pr_count': {'$sum': 1},
-            'last_date': {'$max': '$created_at'}
-        }},
-        {'$sort': {'pr_count': -1}},
-        {'$limit': limit * 2}
+        {"$match": {"author": member_name}},
+        {
+            "$group": {
+                "_id": "$repository",
+                "pr_count": {"$sum": 1},
+                "last_date": {"$max": "$created_at"},
+            }
+        },
+        {"$sort": {"pr_count": -1}},
+        {"$limit": limit * 2},
     ]
-    
+
     try:
-        async for doc in db['github_pull_requests'].aggregate(pipeline_prs):
-            repo = doc['_id']
+        async for doc in db["github_pull_requests"].aggregate(pipeline_prs):
+            repo = doc["_id"]
             if repo:
                 if repo not in repos:
                     repos[repo] = {
-                        'commit_count': 0,
-                        'pr_count': doc['pr_count'],
-                        'issue_count': 0,
-                        'additions': 0,
-                        'deletions': 0,
-                        'last_date': ensure_datetime(doc.get('last_date'))
+                        "commit_count": 0,
+                        "pr_count": doc["pr_count"],
+                        "issue_count": 0,
+                        "additions": 0,
+                        "deletions": 0,
+                        "last_date": ensure_datetime(doc.get("last_date")),
                     }
                 else:
-                    repos[repo]['pr_count'] = doc['pr_count']
-                    last_date = ensure_datetime(doc.get('last_date'))
-                    if last_date and (not repos[repo]['last_date'] or last_date > repos[repo]['last_date']):
-                        repos[repo]['last_date'] = last_date
+                    repos[repo]["pr_count"] = doc["pr_count"]
+                    last_date = ensure_datetime(doc.get("last_date"))
+                    if last_date and (
+                        not repos[repo]["last_date"]
+                        or last_date > repos[repo]["last_date"]
+                    ):
+                        repos[repo]["last_date"] = last_date
     except Exception as e:
         print(f"Error fetching PR stats: {e}")
-    
+
     # Build result list
     result = []
     for repo, data in repos.items():
-        result.append(RepositoryActivity(
-            repository=repo,
-            commit_count=data['commit_count'],
-            pr_count=data['pr_count'],
-            issue_count=data['issue_count'],
-            additions=data['additions'],
-            deletions=data['deletions'],
-            last_activity=data['last_date']
-        ))
-    
+        result.append(
+            RepositoryActivity(
+                repository=repo,
+                commit_count=data["commit_count"],
+                pr_count=data["pr_count"],
+                issue_count=data["issue_count"],
+                additions=data["additions"],
+                deletions=data["deletions"],
+                last_activity=data["last_date"],
+            )
+        )
+
     # Sort by total activity (commits + PRs)
     result.sort(key=lambda x: x.commit_count + x.pr_count, reverse=True)
     return result[:limit]
 
 
-async def get_activity_stats(
-    db,
-    member_name: str
-) -> 'ActivityStats':
+async def get_activity_stats(db, member_name: str) -> "ActivityStats":
     """
     Get comprehensive activity statistics for a member.
     """
     from .types import ActivityStats, SourceStats, WeeklyStats
     from datetime import datetime, timedelta, timezone as tz
-    
+
     # Calculate date ranges
     now = datetime.now(tz.utc)
     thirty_days_ago = now - timedelta(days=30)
     four_weeks_ago = now - timedelta(weeks=4)
-    
+
     # Count by source
     source_counts = {}
-    
+
     # GitHub
-    github_commits = await db['github_commits'].count_documents({'author_name': member_name})
-    github_prs = await db['github_pull_requests'].count_documents({'author': member_name})
-    source_counts['github'] = github_commits + github_prs
-    
+    github_commits = await db["github_commits"].count_documents(
+        {"author_name": member_name}
+    )
+    github_prs = await db["github_pull_requests"].count_documents(
+        {"author": member_name}
+    )
+    source_counts["github"] = github_commits + github_prs
+
     # Slack
-    source_counts['slack'] = await db['slack_messages'].count_documents({'user_name': member_name})
-    
+    source_counts["slack"] = await db["slack_messages"].count_documents(
+        {"user_name": member_name}
+    )
+
     # Notion
-    source_counts['notion'] = await db['notion_pages'].count_documents({
-        '$or': [
-            {'created_by.name': member_name},
-            {'last_edited_by.name': member_name}
-        ]
-    })
-    
+    source_counts["notion"] = await db["notion_pages"].count_documents(
+        {
+            "$or": [
+                {"created_by.name": member_name},
+                {"last_edited_by.name": member_name},
+            ]
+        }
+    )
+
     # Drive
-    source_counts['drive'] = await db['drive_activities'].count_documents({'actor_name': member_name})
-    
+    source_counts["drive"] = await db["drive_activities"].count_documents(
+        {"actor_name": member_name}
+    )
+
     total = sum(source_counts.values())
-    
+
     # Build source stats with percentages
     by_source = []
     for source, count in source_counts.items():
         percentage = (count / total * 100) if total > 0 else 0
-        by_source.append(SourceStats(
-            source=source,
-            count=count,
-            percentage=round(percentage, 2)
-        ))
-    
+        by_source.append(
+            SourceStats(source=source, count=count, percentage=round(percentage, 2))
+        )
+
     # Sort by count descending
     by_source.sort(key=lambda x: x.count, reverse=True)
-    
+
     # Weekly trend (last 4 weeks)
     weekly_trend = []
     for i in range(4):
         week_start = four_weeks_ago + timedelta(weeks=i)
         week_end = week_start + timedelta(weeks=1)
-        
+
         # Count activities in this week
         week_count = 0
-        week_count += await db['github_commits'].count_documents({
-            'author_name': member_name,
-            'date': {'$gte': week_start, '$lt': week_end}
-        })
-        week_count += await db['github_pull_requests'].count_documents({
-            'author': member_name,
-            'created_at': {'$gte': week_start, '$lt': week_end}
-        })
-        week_count += await db['slack_messages'].count_documents({
-            'user_name': member_name,
-            'posted_at': {'$gte': week_start, '$lt': week_end}
-        })
-        
-        weekly_trend.append(WeeklyStats(
-            week_start=week_start,
-            count=week_count
-        ))
-    
+        week_count += await db["github_commits"].count_documents(
+            {"author_name": member_name, "date": {"$gte": week_start, "$lt": week_end}}
+        )
+        week_count += await db["github_pull_requests"].count_documents(
+            {"author": member_name, "created_at": {"$gte": week_start, "$lt": week_end}}
+        )
+        week_count += await db["slack_messages"].count_documents(
+            {
+                "user_name": member_name,
+                "posted_at": {"$gte": week_start, "$lt": week_end},
+            }
+        )
+
+        weekly_trend.append(WeeklyStats(week_start=week_start, count=week_count))
+
     # Last 30 days count
     last_30_days = 0
-    last_30_days += await db['github_commits'].count_documents({
-        'author_name': member_name,
-        'date': {'$gte': thirty_days_ago}
-    })
-    last_30_days += await db['github_pull_requests'].count_documents({
-        'author': member_name,
-        'created_at': {'$gte': thirty_days_ago}
-    })
-    last_30_days += await db['slack_messages'].count_documents({
-        'user_name': member_name,
-        'posted_at': {'$gte': thirty_days_ago}
-    })
-    
+    last_30_days += await db["github_commits"].count_documents(
+        {"author_name": member_name, "date": {"$gte": thirty_days_ago}}
+    )
+    last_30_days += await db["github_pull_requests"].count_documents(
+        {"author": member_name, "created_at": {"$gte": thirty_days_ago}}
+    )
+    last_30_days += await db["slack_messages"].count_documents(
+        {"user_name": member_name, "posted_at": {"$gte": thirty_days_ago}}
+    )
+
     return ActivityStats(
         total_activities=total,
         by_source=by_source,
         weekly_trend=weekly_trend,
-        last_30_days=last_30_days
+        last_30_days=last_30_days,
     )
 
 
 @strawberry.type
 class Query:
     """Root Query type for GraphQL API"""
-    
+
     @strawberry.field
     async def members(
-        self,
-        info,
-        limit: int = 100,
-        offset: int = 0,
-        include_inactive: bool = False
+        self, info, limit: int = 100, offset: int = 0, include_inactive: bool = False
     ) -> List[Member]:
         """
         Get all members with pagination.
-        
+
         Args:
             limit: Maximum number of members to return (default: 100)
             offset: Number of members to skip (default: 0)
             include_inactive: If True, include resigned/inactive members (default: False)
-            
+
         Returns:
             List of Member objects
         """
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         # Build query filter
         query_filter = {}
         if not include_inactive:
             # Only show active members by default
-            query_filter['$or'] = [
-                {'is_active': True},
-                {'is_active': {'$exists': False}}  # Backwards compatibility
+            query_filter["$or"] = [
+                {"is_active": True},
+                {"is_active": {"$exists": False}},  # Backwards compatibility
             ]
-        
+
         members = []
         # Sort by name alphabetically (case-insensitive)
-        async for doc in db['members'].find(query_filter).sort('name', 1).skip(offset).limit(limit):
-            member_name = doc['name']
-            member_id = str(doc['_id'])
-            
+        async for doc in (
+            db["members"].find(query_filter).sort("name", 1).skip(offset).limit(limit)
+        ):
+            member_name = doc["name"]
+            member_id = str(doc["_id"])
+
             # Get github_username: first from member doc, then from member_identifiers
-            github_username = doc.get('github_username')
+            github_username = doc.get("github_username")
             if not github_username:
-                github_id_doc = await db['member_identifiers'].find_one({
-                    'member_name': member_name,
-                    'source': 'github',
-                    'identifier_type': 'username'
-                })
+                github_id_doc = await db["member_identifiers"].find_one(
+                    {
+                        "member_name": member_name,
+                        "source": "github",
+                        "identifier_type": "username",
+                    }
+                )
                 if github_id_doc:
-                    github_username = github_id_doc.get('identifier_value')
-            
+                    github_username = github_id_doc.get("identifier_value")
+
             # Get slack_id: first from member doc, then from member_identifiers
-            slack_id = doc.get('slack_id')
+            slack_id = doc.get("slack_id")
             if not slack_id:
-                slack_id_doc = await db['member_identifiers'].find_one({
-                    'member_name': member_name,
-                    'source': 'slack'
-                })
+                slack_id_doc = await db["member_identifiers"].find_one(
+                    {"member_name": member_name, "source": "slack"}
+                )
                 if slack_id_doc:
-                    slack_id = slack_id_doc.get('identifier_value')
-            
+                    slack_id = slack_id_doc.get("identifier_value")
+
             # Get notion_id: first from member doc, then from member_identifiers
-            notion_id = doc.get('notion_id')
+            notion_id = doc.get("notion_id")
             if not notion_id:
-                notion_id_doc = await db['member_identifiers'].find_one({
-                    'member_name': member_name,
-                    'source': 'notion'
-                })
+                notion_id_doc = await db["member_identifiers"].find_one(
+                    {"member_name": member_name, "source": "notion"}
+                )
                 if notion_id_doc:
-                    notion_id = notion_id_doc.get('identifier_value')
-            
-            members.append(Member(
-                id=member_id,
-                name=member_name,
-                email=doc['email'],
-                role=doc.get('role'),
-                team=doc.get('team'),
-                github_username=github_username,
-                slack_id=slack_id,
-                notion_id=notion_id,
-                eoa_address=doc.get('eoa_address'),
-                recording_name=doc.get('recording_name'),
-                projects=doc.get('projects', []),
-                is_active=doc.get('is_active', True),
-                resigned_at=doc.get('resigned_at'),
-                resignation_reason=doc.get('resignation_reason')
-            ))
-        
+                    notion_id = notion_id_doc.get("identifier_value")
+
+            members.append(
+                Member(
+                    id=member_id,
+                    name=member_name,
+                    email=doc["email"],
+                    role=doc.get("role"),
+                    team=doc.get("team"),
+                    github_username=github_username,
+                    slack_id=slack_id,
+                    notion_id=notion_id,
+                    eoa_address=doc.get("eoa_address"),
+                    recording_name=doc.get("recording_name"),
+                    projects=doc.get("projects", []),
+                    is_active=doc.get("is_active", True),
+                    resigned_at=doc.get("resigned_at"),
+                    resignation_reason=doc.get("resignation_reason"),
+                )
+            )
+
         return members
-    
+
     @strawberry.field
     async def member(
-        self,
-        info,
-        name: Optional[str] = None,
-        id: Optional[str] = None
+        self, info, name: Optional[str] = None, id: Optional[str] = None
     ) -> Optional[Member]:
         """
         Get a specific member by name or ID.
-        
+
         Args:
             name: Member name (case-sensitive)
             id: Member ID (MongoDB ObjectId as string)
-            
+
         Returns:
             Member object or None if not found
         """
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         query = {}
         if id:
-            query['_id'] = ObjectId(id)
+            query["_id"] = ObjectId(id)
         elif name:
-            query['name'] = name
+            query["name"] = name
         else:
             return None
-        
-        doc = await db['members'].find_one(query)
+
+        doc = await db["members"].find_one(query)
         if not doc:
             return None
-        
-        member_name = doc['name']
-        
+
+        member_name = doc["name"]
+
         # Get github_username: first from member doc, then from member_identifiers
-        github_username = doc.get('github_username')
+        github_username = doc.get("github_username")
         if not github_username:
-            github_id_doc = await db['member_identifiers'].find_one({
-                'member_name': member_name,
-                'source': 'github',
-                'identifier_type': 'username'
-            })
+            github_id_doc = await db["member_identifiers"].find_one(
+                {
+                    "member_name": member_name,
+                    "source": "github",
+                    "identifier_type": "username",
+                }
+            )
             if github_id_doc:
-                github_username = github_id_doc.get('identifier_value')
-        
+                github_username = github_id_doc.get("identifier_value")
+
         # Get slack_id: first from member doc, then from member_identifiers
-        slack_id = doc.get('slack_id')
+        slack_id = doc.get("slack_id")
         if not slack_id:
-            slack_id_doc = await db['member_identifiers'].find_one({
-                'member_name': member_name,
-                'source': 'slack'
-            })
+            slack_id_doc = await db["member_identifiers"].find_one(
+                {"member_name": member_name, "source": "slack"}
+            )
             if slack_id_doc:
-                slack_id = slack_id_doc.get('identifier_value')
-        
+                slack_id = slack_id_doc.get("identifier_value")
+
         # Get notion_id: first from member doc, then from member_identifiers
-        notion_id = doc.get('notion_id')
+        notion_id = doc.get("notion_id")
         if not notion_id:
-            notion_id_doc = await db['member_identifiers'].find_one({
-                'member_name': member_name,
-                'source': 'notion'
-            })
+            notion_id_doc = await db["member_identifiers"].find_one(
+                {"member_name": member_name, "source": "notion"}
+            )
             if notion_id_doc:
-                notion_id = notion_id_doc.get('identifier_value')
-        
+                notion_id = notion_id_doc.get("identifier_value")
+
         return Member(
-            id=str(doc['_id']),
+            id=str(doc["_id"]),
             name=member_name,
-            email=doc['email'],
-            role=doc.get('role'),
-            team=doc.get('team'),
+            email=doc["email"],
+            role=doc.get("role"),
+            team=doc.get("team"),
             github_username=github_username,
             slack_id=slack_id,
             notion_id=notion_id,
-            eoa_address=doc.get('eoa_address'),
-            recording_name=doc.get('recording_name'),
-            projects=doc.get('projects', []),
-            is_active=doc.get('is_active', True),
-            resigned_at=doc.get('resigned_at'),
-            resignation_reason=doc.get('resignation_reason')
+            eoa_address=doc.get("eoa_address"),
+            recording_name=doc.get("recording_name"),
+            projects=doc.get("projects", []),
+            is_active=doc.get("is_active", True),
+            resigned_at=doc.get("resigned_at"),
+            resignation_reason=doc.get("resignation_reason"),
         )
-    
+
     @strawberry.field
     async def activities(
         self,
@@ -663,14 +711,18 @@ class Query:
         keyword: Optional[str] = None,
         project_key: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        notion_aggregation_minutes: Optional[int] = None,
     ) -> List[Activity]:
         """
         Query activities with flexible filtering.
-        
+
         This is the main query for fetching team activities across all sources.
         Supports filtering by source, member, date range, keyword search, and project.
-        
+
+        For Notion activities, you can optionally aggregate multiple edits to the same
+        document within a time window using notion_aggregation_minutes parameter.
+
         Args:
             source: Filter by data source (github, slack, notion, drive)
             member_name: Filter by member name
@@ -680,14 +732,16 @@ class Query:
             project_key: Filter by project key (filters GitHub by repositories)
             limit: Maximum number of activities to return (default: 100)
             offset: Number of activities to skip (default: 0)
-            
+            notion_aggregation_minutes: Aggregate Notion activities within this time window (e.g., 10, 30, 60 minutes)
+
         Returns:
             List of Activity objects sorted by timestamp (newest first)
         """
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         # Debug: Log actual variables received by Strawberry
         import time
+
         request_id = int(time.time() * 1000) % 100000
         print(f"🔍 [{request_id}] ===== GraphQL Activities Query Start =====")
         print(f"🔍 [{request_id}] Strawberry variable_values: {info.variable_values}")
@@ -700,7 +754,10 @@ class Query:
         print(f"🔍 [{request_id}]   - end_date: {end_date}")
         print(f"🔍 [{request_id}]   - limit: {limit}")
         print(f"🔍 [{request_id}]   - offset: {offset}")
-        
+        print(
+            f"🔍 [{request_id}]   - notion_aggregation_minutes: {notion_aggregation_minutes}"
+        )
+
         # Get project configuration if project_key is specified
         project_repositories = []
         project_slack_channel_id = None
@@ -708,582 +765,915 @@ class Query:
         project_notion_page_ids = []
         project_name = None
         if project_key:
-            project_doc = await db['projects'].find_one({'key': project_key})
+            project_doc = await db["projects"].find_one({"key": project_key})
             if project_doc:
-                project_repositories = project_doc.get('repositories', [])
-                project_slack_channel_id = project_doc.get('slack_channel_id')
-                project_drive_folders = project_doc.get('drive_folders', [])
-                project_notion_page_ids = project_doc.get('notion_page_ids', [])
-                project_name = project_doc.get('name')  # Get project name for title filtering
+                project_repositories = project_doc.get("repositories", [])
+                project_slack_channel_id = project_doc.get("slack_channel_id")
+                project_drive_folders = project_doc.get("drive_folders", [])
+                project_notion_page_ids = project_doc.get("notion_page_ids", [])
+                project_name = project_doc.get(
+                    "name"
+                )  # Get project name for title filtering
                 print(f"🔍 [{request_id}] 📁 Project '{project_key}' config:")
                 print(f"🔍 [{request_id}]   - name: {project_name}")
-                print(f"🔍 [{request_id}]   - repositories: {len(project_repositories)} repos")
-                print(f"🔍 [{request_id}]   - slack_channel_id: {project_slack_channel_id}")
+                print(
+                    f"🔍 [{request_id}]   - repositories: {len(project_repositories)} repos"
+                )
+                print(
+                    f"🔍 [{request_id}]   - slack_channel_id: {project_slack_channel_id}"
+                )
                 print(f"🔍 [{request_id}]   - drive_folders: {project_drive_folders}")
-                print(f"🔍 [{request_id}]   - notion_page_ids: {project_notion_page_ids}")
-        
+                print(
+                    f"🔍 [{request_id}]   - notion_page_ids: {project_notion_page_ids}"
+                )
+
         # Build mapping: identifier -> display name for ALL members (to resolve "Unknown")
         # Uses the same structure as REST API's load_member_mappings
         identifier_to_member = {}
         member_to_identifiers = {}  # For filtering: member_name -> {source: [identifiers]}
-        
-        print(f"🔍 [{request_id}] 📍 BEFORE member_identifiers loop: source={source}, type={type(source).__name__}")
-        
-        async for id_doc in db['member_identifiers'].find():
-            id_source = id_doc.get('source')  # Renamed to avoid conflict with function parameter
-            identifier_value = id_doc.get('identifier_value')
-            display_name = id_doc.get('member_name')  # Direct member_name field!
-            
+
+        print(
+            f"🔍 [{request_id}] 📍 BEFORE member_identifiers loop: source={source}, type={type(source).__name__}"
+        )
+
+        async for id_doc in db["member_identifiers"].find():
+            id_source = id_doc.get(
+                "source"
+            )  # Renamed to avoid conflict with function parameter
+            identifier_value = id_doc.get("identifier_value")
+            display_name = id_doc.get("member_name")  # Direct member_name field!
+
             if id_source and identifier_value and display_name:
                 # Case-insensitive key for GitHub and email (like REST API)
-                if id_source in ['github', 'drive', 'email']:
+                if id_source in ["github", "drive", "email"]:
                     key = (id_source, identifier_value.lower())
                 else:
                     key = (id_source, identifier_value)
-                
+
                 # Store mapping for display conversion
                 identifier_to_member[key] = display_name
-                
+
                 # Build reverse mapping for filtering
                 if display_name not in member_to_identifiers:
                     member_to_identifiers[display_name] = {}
                 if id_source not in member_to_identifiers[display_name]:
                     member_to_identifiers[display_name][id_source] = []
                 member_to_identifiers[display_name][id_source].append(identifier_value)
-        
+
         # Get identifiers for the specified member (for filtering)
         member_identifiers = {}
         if member_name and member_name in member_to_identifiers:
             member_identifiers = member_to_identifiers[member_name]
-            print(f"🔍 [{request_id}] 👤 Member '{member_name}' identifiers: {member_identifiers}")
+            print(
+                f"🔍 [{request_id}] 👤 Member '{member_name}' identifiers: {member_identifiers}"
+            )
         elif member_name:
-            print(f"🔍 [{request_id}] ⚠️  Member '{member_name}' NOT FOUND in member_to_identifiers!")
-            print(f"🔍 [{request_id}] Available members: {list(member_to_identifiers.keys())[:10]}")
-        
+            print(
+                f"🔍 [{request_id}] ⚠️  Member '{member_name}' NOT FOUND in member_to_identifiers!"
+            )
+            print(
+                f"🔍 [{request_id}] Available members: {list(member_to_identifiers.keys())[:10]}"
+            )
+
         # Checkpoint: Verify source variable hasn't been corrupted
-        print(f"🔍 [{request_id}] 📍 CHECKPOINT before sources logic: source={source}, type={type(source).__name__}")
-        
+        print(
+            f"🔍 [{request_id}] 📍 CHECKPOINT before sources logic: source={source}, type={type(source).__name__}"
+        )
+
         # Determine which sources to query
         # Handle both SourceType enum and string values
         if source:
-            source_value = source.value if hasattr(source, 'value') else source
-            sources = [source_value]  # No .lower() - keep original case
+            source_value = source.value if hasattr(source, "value") else str(source)
+            sources = [
+                source_value.lower()
+            ]  # Normalize to lowercase for consistent matching
         else:
-            sources = ['github', 'slack', 'notion', 'drive', 'recordings', 'recordings_daily']
-        
-        print(f"🔍 [{request_id}] ⚡ sources = {sources} (from source={source}, type={type(source).__name__})")
-        
+            sources = [
+                "github",
+                "slack",
+                "notion",
+                "drive",
+                "recordings",
+                "recordings_daily",
+            ]
+
+        print(
+            f"🔍 [{request_id}] ⚡ sources = {sources} (from source={source}, type={type(source).__name__})"
+        )
+
         activities = []
-        
+
         # GitHub commits
-        if 'github' in sources:
+        if "github" in sources:
             query = {}
             # When project filter is active, ignore member filter (filter by repositories only)
             if project_key:
                 # Project filter is active - only filter by repositories, ignore member
                 if project_repositories:
-                    query['repository'] = {'$in': project_repositories}
-                    print(f"🔍 [{request_id}] 🐙 Filtering GitHub by project repositories: {len(project_repositories)} repos")
+                    query["repository"] = {"$in": project_repositories}
+                    print(
+                        f"🔍 [{request_id}] 🐙 Filtering GitHub by project repositories: {len(project_repositories)} repos"
+                    )
                 else:
                     # Project has no repositories configured - return empty results
-                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no repositories configured - returning empty results")
-                    query['repository'] = {'$in': []}  # Return no results
+                    print(
+                        f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no repositories configured - returning empty results"
+                    )
+                    query["repository"] = {"$in": []}  # Return no results
             elif member_name:
                 # Use GitHub usernames from identifiers if available (REST API pattern)
-                github_usernames = member_identifiers.get('github', [])
+                github_usernames = member_identifiers.get("github", [])
                 if github_usernames:
-                    query['author_name'] = {'$in': github_usernames}
+                    query["author_name"] = {"$in": github_usernames}
                 else:
                     # Fallback to display name
-                    query['author_name'] = member_name
+                    query["author_name"] = member_name
             if start_date:
-                query['date'] = {'$gte': start_date}
+                query["date"] = {"$gte": start_date}
             if end_date:
-                query['date'] = query.get('date', {})
-                query['date']['$lte'] = end_date
+                query["date"] = query.get("date", {})
+                query["date"]["$lte"] = end_date
             if keyword:
-                query['message'] = {'$regex': keyword, '$options': 'i'}
+                query["message"] = {"$regex": keyword, "$options": "i"}
             # project_repositories filter is already applied above
-            
-            async for doc in db['github_commits'].find(query).sort('date', -1).limit(limit * 2):
+
+            async for doc in (
+                db["github_commits"].find(query).sort("date", -1).limit(limit * 2)
+            ):
                 # Safely get required fields
-                author_name = doc.get('author_name') or doc.get('author', 'Unknown')
-                timestamp = ensure_datetime(doc.get('date') or doc.get('committed_date'))
+                author_name = doc.get("author_name") or doc.get("author", "Unknown")
+                timestamp = ensure_datetime(
+                    doc.get("date") or doc.get("committed_date")
+                )
                 if not timestamp:
                     continue
-                
+
                 # Convert GitHub username to display name (case-insensitive like REST API)
-                display_name = identifier_to_member.get(('github', author_name.lower()), author_name)
+                display_name = identifier_to_member.get(
+                    ("github", author_name.lower()), author_name
+                )
                 # Capitalize first letter (REST API pattern)
-                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                if (
+                    display_name
+                    and isinstance(display_name, str)
+                    and len(display_name) > 0
+                ):
                     display_name = display_name[0].upper() + display_name[1:]
-                
-                activities.append(Activity(
-                    id=str(doc['_id']),
-                    member_name=display_name,
-                    source_type='github',
-                    activity_type='commit',
-                    timestamp=timestamp,
-                    metadata=sanitize_metadata({
-                        'sha': doc.get('sha'),
-                        'message': doc.get('message'),
-                        'repository': doc.get('repository'),
-                        'additions': doc.get('additions', 0),
-                        'deletions': doc.get('deletions', 0),
-                        'url': doc.get('url'),
-                        'author': doc.get('author'),
-                        'date': doc.get('date'),
-                        'committed_date': doc.get('committed_date')
-                    })
-                ))
-        
+
+                activities.append(
+                    Activity(
+                        id=str(doc["_id"]),
+                        member_name=display_name,
+                        source_type="github",
+                        activity_type="commit",
+                        timestamp=timestamp,
+                        metadata=sanitize_metadata(
+                            {
+                                "sha": doc.get("sha"),
+                                "message": doc.get("message"),
+                                "repository": doc.get("repository"),
+                                "additions": doc.get("additions", 0),
+                                "deletions": doc.get("deletions", 0),
+                                "url": doc.get("url"),
+                                "author": doc.get("author"),
+                                "date": doc.get("date"),
+                                "committed_date": doc.get("committed_date"),
+                            }
+                        ),
+                    )
+                )
+
         # GitHub PRs
-        if 'github' in sources:
+        if "github" in sources:
             query = {}
             # When project filter is active, ignore member filter (filter by repositories only)
             if project_key:
                 # Project filter is active - only filter by repositories, ignore member
                 if project_repositories:
-                    query['repository'] = {'$in': project_repositories}
-                    print(f"🔍 [{request_id}] 🐙 Filtering GitHub PRs by project repositories: {len(project_repositories)} repos")
+                    query["repository"] = {"$in": project_repositories}
+                    print(
+                        f"🔍 [{request_id}] 🐙 Filtering GitHub PRs by project repositories: {len(project_repositories)} repos"
+                    )
                 else:
                     # Project has no repositories configured - return empty results
-                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no repositories configured - returning empty results")
-                    query['repository'] = {'$in': []}  # Return no results
+                    print(
+                        f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no repositories configured - returning empty results"
+                    )
+                    query["repository"] = {"$in": []}  # Return no results
             elif member_name:
                 # Use GitHub usernames from identifiers if available
-                github_usernames = member_identifiers.get('github', [])
+                github_usernames = member_identifiers.get("github", [])
                 if github_usernames:
-                    query['author'] = {'$in': github_usernames}
+                    query["author"] = {"$in": github_usernames}
                 else:
                     # Fallback to display name
-                    query['author'] = member_name
+                    query["author"] = member_name
             if start_date:
-                query['created_at'] = {'$gte': start_date}
+                query["created_at"] = {"$gte": start_date}
             if end_date:
-                query['created_at'] = query.get('created_at', {})
-                query['created_at']['$lte'] = end_date
+                query["created_at"] = query.get("created_at", {})
+                query["created_at"]["$lte"] = end_date
             if keyword:
-                query['title'] = {'$regex': keyword, '$options': 'i'}
+                query["title"] = {"$regex": keyword, "$options": "i"}
             # project_repositories filter is already applied above
-            
-            async for doc in db['github_pull_requests'].find(query).sort('created_at', -1).limit(limit * 2):
+
+            async for doc in (
+                db["github_pull_requests"]
+                .find(query)
+                .sort("created_at", -1)
+                .limit(limit * 2)
+            ):
                 # Safely get required fields
-                author = doc.get('author', 'Unknown')
-                timestamp = ensure_datetime(doc.get('created_at'))
+                author = doc.get("author", "Unknown")
+                timestamp = ensure_datetime(doc.get("created_at"))
                 if not timestamp:
                     continue
-                
+
                 # Convert GitHub username to display name (case-insensitive)
-                display_name = identifier_to_member.get(('github', author.lower()), author)
+                display_name = identifier_to_member.get(
+                    ("github", author.lower()), author
+                )
                 # Capitalize first letter
-                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                if (
+                    display_name
+                    and isinstance(display_name, str)
+                    and len(display_name) > 0
+                ):
                     display_name = display_name[0].upper() + display_name[1:]
-                
-                activities.append(Activity(
-                    id=str(doc['_id']),
-                    member_name=display_name,
-                    source_type='github',
-                    activity_type='pull_request',
-                    timestamp=timestamp,
-                    metadata=sanitize_metadata({
-                        'number': doc.get('number'),
-                        'title': doc.get('title'),
-                        'state': doc.get('state'),
-                        'repository': doc.get('repository'),
-                        'additions': doc.get('additions', 0),
-                        'deletions': doc.get('deletions', 0),
-                        'url': doc.get('url'),
-                        'created_at': doc.get('created_at'),
-                        'updated_at': doc.get('updated_at'),
-                        'merged_at': doc.get('merged_at'),
-                        'closed_at': doc.get('closed_at')
-                    })
-                ))
-        
+
+                activities.append(
+                    Activity(
+                        id=str(doc["_id"]),
+                        member_name=display_name,
+                        source_type="github",
+                        activity_type="pull_request",
+                        timestamp=timestamp,
+                        metadata=sanitize_metadata(
+                            {
+                                "number": doc.get("number"),
+                                "title": doc.get("title"),
+                                "state": doc.get("state"),
+                                "repository": doc.get("repository"),
+                                "additions": doc.get("additions", 0),
+                                "deletions": doc.get("deletions", 0),
+                                "url": doc.get("url"),
+                                "created_at": doc.get("created_at"),
+                                "updated_at": doc.get("updated_at"),
+                                "merged_at": doc.get("merged_at"),
+                                "closed_at": doc.get("closed_at"),
+                            }
+                        ),
+                    )
+                )
+
         # Slack messages
-        if 'slack' in sources:
+        if "slack" in sources:
             query = {}
-            
+
             # Exclude tokamak-partners channel (private channel data)
-            query['channel_name'] = {'$ne': 'tokamak-partners'}
-            
+            query["channel_name"] = {"$ne": "tokamak-partners"}
+
             # Filter by project's Slack channel if project_key is specified
             # When project filter is active, ignore member filter (filter by channel only)
             if project_key:
                 # Project filter is active - only filter by channel, ignore member
                 if project_slack_channel_id:
-                    query['channel_id'] = project_slack_channel_id
-                    print(f"🔍 [{request_id}] 💬 Filtering Slack by project channel: {project_slack_channel_id}")
+                    query["channel_id"] = project_slack_channel_id
+                    print(
+                        f"🔍 [{request_id}] 💬 Filtering Slack by project channel: {project_slack_channel_id}"
+                    )
                 else:
                     # Project has no slack_channel_id configured - return empty results
-                    print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no slack_channel_id configured - returning empty results")
-                    query['channel_id'] = {'$in': []}  # Return no results
+                    print(
+                        f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no slack_channel_id configured - returning empty results"
+                    )
+                    query["channel_id"] = {"$in": []}  # Return no results
             elif member_name:
                 # Use Slack identifiers (REST API pattern: user_id, user_email, user_name)
-                slack_identifiers = member_identifiers.get('slack', [])
-                print(f"🔍 [{request_id}] 💬 Slack identifiers for '{member_name}': {slack_identifiers}")
-                
+                slack_identifiers = member_identifiers.get("slack", [])
+                print(
+                    f"🔍 [{request_id}] 💬 Slack identifiers for '{member_name}': {slack_identifiers}"
+                )
+
                 if slack_identifiers:
                     # Build $or conditions for multiple search fields (like REST API)
                     or_conditions = []
-                    or_conditions.append({'user_id': {'$in': slack_identifiers}})
-                    or_conditions.append({'user_email': {'$in': slack_identifiers}})
-                    or_conditions.append({'user_name': {'$in': slack_identifiers}})
-                    query['$or'] = or_conditions
+                    or_conditions.append({"user_id": {"$in": slack_identifiers}})
+                    or_conditions.append({"user_email": {"$in": slack_identifiers}})
+                    or_conditions.append({"user_name": {"$in": slack_identifiers}})
+                    query["$or"] = or_conditions
                 else:
                     # Fallback to display name (case-insensitive)
-                    query['user_name'] = {'$regex': f'^{member_name}$', '$options': 'i'}
+                    query["user_name"] = {"$regex": f"^{member_name}$", "$options": "i"}
             if start_date:
-                query['posted_at'] = {'$gte': start_date}
+                query["posted_at"] = {"$gte": start_date}
             if end_date:
-                query['posted_at'] = query.get('posted_at', {})
-                query['posted_at']['$lte'] = end_date
+                query["posted_at"] = query.get("posted_at", {})
+                query["posted_at"]["$lte"] = end_date
             if keyword:
-                query['text'] = {'$regex': keyword, '$options': 'i'}
-            
+                query["text"] = {"$regex": keyword, "$options": "i"}
+
             print(f"🔍 [{request_id}] 💬 Slack query: {query}")
-            
+
             # Debug: Check actual user_name values in DB
             if member_name:
                 sample_users = []
-                async for sample_doc in db['slack_messages'].find().limit(10):
-                    if 'user_name' in sample_doc:
-                        sample_users.append(sample_doc['user_name'])
-                print(f"🔍 [{request_id}] 💬 Sample user_name values in DB: {list(set(sample_users))[:5]}")
-                
+                async for sample_doc in db["slack_messages"].find().limit(10):
+                    if "user_name" in sample_doc:
+                        sample_users.append(sample_doc["user_name"])
+                print(
+                    f"🔍 [{request_id}] 💬 Sample user_name values in DB: {list(set(sample_users))[:5]}"
+                )
+
                 # Check if query matches any documents
-                count = await db['slack_messages'].count_documents(query)
+                count = await db["slack_messages"].count_documents(query)
                 print(f"🔍 [{request_id}] 💬 Slack messages found for query: {count}")
-            
+
             slack_before = len(activities)
-            async for doc in db['slack_messages'].find(query).sort('posted_at', -1).limit(limit * 2):
+            async for doc in (
+                db["slack_messages"].find(query).sort("posted_at", -1).limit(limit * 2)
+            ):
                 # Safely get required fields
-                user_name = doc.get('user_name', 'Unknown')
-                timestamp = ensure_datetime(doc.get('posted_at'))
+                user_name = doc.get("user_name", "Unknown")
+                timestamp = ensure_datetime(doc.get("posted_at"))
                 if not timestamp:
                     continue
-                
+
                 # Convert Slack username to display name
-                display_name = identifier_to_member.get(('slack', user_name), user_name)
+                display_name = identifier_to_member.get(("slack", user_name), user_name)
                 # Capitalize first letter
-                if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                if (
+                    display_name
+                    and isinstance(display_name, str)
+                    and len(display_name) > 0
+                ):
                     display_name = display_name[0].upper() + display_name[1:]
-                
+
                 # Build Slack message URL (same logic as REST API)
-                channel_id = doc.get('channel_id', '')
-                ts = doc.get('ts', '')
+                channel_id = doc.get("channel_id", "")
+                ts = doc.get("ts", "")
                 slack_url = None
                 if channel_id and ts:
                     # Convert ts (1763525860.094349) to Slack URL format (p1763525860094349)
-                    ts_formatted = ts.replace('.', '')
+                    ts_formatted = ts.replace(".", "")
                     slack_url = f"https://tokamak-network.slack.com/archives/{channel_id}/p{ts_formatted}"
-                
-                activities.append(Activity(
-                    id=str(doc['_id']),
-                    member_name=display_name,
-                    source_type='slack',
-                    activity_type='message',
-                    timestamp=timestamp,
-                    metadata=sanitize_metadata({
-                        'text': doc.get('text'),
-                        'channel_name': doc.get('channel_name'),
-                        'channel_id': doc.get('channel_id'),
-                        'thread_ts': doc.get('thread_ts'),
-                        'posted_at': doc.get('posted_at'),
-                        'reactions': doc.get('reactions', []),
-                        'url': slack_url
-                    })
-                ))
-            
+
+                activities.append(
+                    Activity(
+                        id=str(doc["_id"]),
+                        member_name=display_name,
+                        source_type="slack",
+                        activity_type="message",
+                        timestamp=timestamp,
+                        metadata=sanitize_metadata(
+                            {
+                                "text": doc.get("text"),
+                                "channel_name": doc.get("channel_name"),
+                                "channel_id": doc.get("channel_id"),
+                                "thread_ts": doc.get("thread_ts"),
+                                "posted_at": doc.get("posted_at"),
+                                "reactions": doc.get("reactions", []),
+                                "url": slack_url,
+                            }
+                        ),
+                    )
+                )
+
             slack_after = len(activities)
-            print(f"🔍 [{request_id}] 💬 Slack activities added: {slack_after - slack_before}")
-        
+            print(
+                f"🔍 [{request_id}] 💬 Slack activities added: {slack_after - slack_before}"
+            )
+
         # Notion content diffs (1-minute granular change tracking)
         # Uses notion_content_diffs collection for real-time change tracking
-        if 'notion' in sources:
+        if "notion" in sources:
             query = {}
-            
+
             # Filter by member name (editor_name field)
             if member_name:
-                query['editor_name'] = {'$regex': f'^{member_name}', '$options': 'i'}
-                print(f"🔍 [{request_id}] 📝 Notion diff filter by editor: {member_name}")
-            
+                query["editor_name"] = {"$regex": f"^{member_name}", "$options": "i"}
+                print(
+                    f"🔍 [{request_id}] 📝 Notion diff filter by editor: {member_name}"
+                )
+
             # Date filters - timestamp is stored as ISO string
             if start_date:
                 from datetime import timezone as tz
+
                 start_str = start_date.astimezone(tz.utc).isoformat()
-                query['timestamp'] = {'$gte': start_str}
+                query["timestamp"] = {"$gte": start_str}
             if end_date:
                 from datetime import timezone as tz
+
                 end_str = end_date.astimezone(tz.utc).isoformat()
-                query['timestamp'] = query.get('timestamp', {})
-                query['timestamp']['$lte'] = end_str
-            
+                query["timestamp"] = query.get("timestamp", {})
+                query["timestamp"]["$lte"] = end_str
+
             # Keyword search in document title
             if keyword:
-                query['document_title'] = {'$regex': keyword, '$options': 'i'}
-            
+                query["document_title"] = {"$regex": keyword, "$options": "i"}
+
             # Project filter by title
             if project_name:
-                if 'document_title' in query:
+                if "document_title" in query:
                     query = {
-                        '$and': [
+                        "$and": [
                             query,
-                            {'document_title': {'$regex': project_name, '$options': 'i'}}
+                            {
+                                "document_title": {
+                                    "$regex": project_name,
+                                    "$options": "i",
+                                }
+                            },
                         ]
                     }
                 else:
-                    query['document_title'] = {'$regex': project_name, '$options': 'i'}
-                print(f"🔍 [{request_id}] 📝 Filtering Notion diffs by project: {project_name}")
-            
+                    query["document_title"] = {"$regex": project_name, "$options": "i"}
+                print(
+                    f"🔍 [{request_id}] 📝 Filtering Notion diffs by project: {project_name}"
+                )
+
             print(f"🔍 [{request_id}] 📝 Notion query: {query}")
-            
+            print(
+                f"🔍 [{request_id}] 📝 Notion aggregation_minutes: {notion_aggregation_minutes}"
+            )
+
             notion_before = len(activities)
-            async for doc in db['notion_content_diffs'].find(query).sort('timestamp', -1).limit(limit * 2):
-                # Get editor name directly from diff record
-                doc_member_name = doc.get('editor_name', 'Unknown')
-                if not doc_member_name or doc_member_name == 'Unknown':
-                    editor_id = doc.get('editor_id', '')
-                    doc_member_name = f"Notion-{editor_id[:8]}" if editor_id else "Unknown"
-                
-                # Capitalize first letter
-                if doc_member_name and isinstance(doc_member_name, str) and len(doc_member_name) > 0:
-                    doc_member_name = doc_member_name[0].upper() + doc_member_name[1:]
-                
-                # Parse timestamp from ISO string
-                timestamp_str = doc.get('timestamp', '')
-                try:
-                    if timestamp_str:
-                        from datetime import datetime
-                        # Handle various ISO formats
-                        if timestamp_str.endswith('Z'):
-                            timestamp_str = timestamp_str[:-1] + '+00:00'
-                        timestamp = datetime.fromisoformat(timestamp_str)
-                    else:
+
+            # If aggregation is enabled, fetch more data and group by document+time window
+            if notion_aggregation_minutes and notion_aggregation_minutes > 0:
+                from datetime import timedelta
+                from collections import defaultdict
+
+                # Fetch more data for aggregation (up to 10x limit)
+                fetch_limit = limit * 10
+                notion_docs = []
+                async for doc in (
+                    db["notion_content_diffs"]
+                    .find(query)
+                    .sort("timestamp", -1)
+                    .limit(fetch_limit)
+                ):
+                    notion_docs.append(doc)
+
+                print(
+                    f"🔍 [{request_id}] 📝 Fetched {len(notion_docs)} Notion docs for aggregation"
+                )
+
+                # Group by document_id and time window
+                # Key: (document_id, time_window_start)
+                aggregated_groups = defaultdict(list)
+
+                for doc in notion_docs:
+                    timestamp_str = doc.get("timestamp", "")
+                    try:
+                        if timestamp_str:
+                            if timestamp_str.endswith("Z"):
+                                timestamp_str = timestamp_str[:-1] + "+00:00"
+                            timestamp = datetime.fromisoformat(timestamp_str)
+                        else:
+                            continue
+                    except:
                         continue
-                except:
-                    continue
-                
-                # Get changes for metadata
-                changes = doc.get('changes', {})
-                added_items = changes.get('added', [])
-                deleted_items = changes.get('deleted', [])
-                modified_items = changes.get('modified', [])
-                
-                # Calculate additions/deletions like GitHub
-                additions = len(added_items)
-                deletions = len(deleted_items)
-                
-                # Add line-level changes from modified blocks
-                for mod in modified_items:
-                    if isinstance(mod, dict):
-                        additions += len(mod.get('added_lines', []))
-                        deletions += len(mod.get('deleted_lines', []))
-                
-                # Determine activity type
-                diff_type = doc.get('diff_type', 'block')
-                activity_type = f'notion_{diff_type}'
-                
-                activities.append(Activity(
-                    id=str(doc['_id']),
-                    member_name=doc_member_name,
-                    source_type='notion',
-                    activity_type=activity_type,
-                    timestamp=timestamp,
-                    metadata=sanitize_metadata({
-                        'page_id': doc.get('document_id'),
-                        'page_title': doc.get('document_title'),
-                        'title': doc.get('document_title'),
-                        'page_url': doc.get('document_url'),
-                        'url': doc.get('document_url'),
-                        'diff_type': diff_type,
-                        'additions': additions,
-                        'deletions': deletions,
-                        'blocks_added': len(added_items),
-                        'blocks_deleted': len(deleted_items),
-                        'blocks_modified': len(modified_items),
-                        'changes': changes
-                    })
-                ))
-            
+
+                    document_id = doc.get("document_id", "")
+                    if not document_id:
+                        continue
+
+                    # Calculate time window (floor to aggregation interval)
+                    minutes_since_midnight = timestamp.hour * 60 + timestamp.minute
+                    window_start_minutes = (
+                        minutes_since_midnight // notion_aggregation_minutes
+                    ) * notion_aggregation_minutes
+                    window_start = timestamp.replace(
+                        hour=window_start_minutes // 60,
+                        minute=window_start_minutes % 60,
+                        second=0,
+                        microsecond=0,
+                    )
+
+                    key = (document_id, window_start.isoformat())
+                    aggregated_groups[key].append((doc, timestamp))
+
+                print(
+                    f"🔍 [{request_id}] 📝 Aggregated into {len(aggregated_groups)} groups"
+                )
+
+                # Create aggregated activities
+                for (
+                    document_id,
+                    window_key,
+                ), docs_with_timestamps in aggregated_groups.items():
+                    # Sort by timestamp within the group (newest first)
+                    docs_with_timestamps.sort(key=lambda x: x[1], reverse=True)
+
+                    # Use the most recent doc for member name and metadata
+                    first_doc, first_timestamp = docs_with_timestamps[0]
+                    last_doc, last_timestamp = docs_with_timestamps[-1]
+
+                    # Get editor name from the most recent edit
+                    doc_member_name = first_doc.get("editor_name", "Unknown")
+                    if not doc_member_name or doc_member_name == "Unknown":
+                        editor_id = first_doc.get("editor_id", "")
+                        doc_member_name = (
+                            f"Notion-{editor_id[:8]}" if editor_id else "Unknown"
+                        )
+
+                    if (
+                        doc_member_name
+                        and isinstance(doc_member_name, str)
+                        and len(doc_member_name) > 0
+                    ):
+                        doc_member_name = (
+                            doc_member_name[0].upper() + doc_member_name[1:]
+                        )
+
+                    # Aggregate all changes
+                    total_additions = 0
+                    total_deletions = 0
+                    total_blocks_added = 0
+                    total_blocks_deleted = 0
+                    total_blocks_modified = 0
+                    edit_count = len(docs_with_timestamps)
+
+                    for doc, _ in docs_with_timestamps:
+                        changes = doc.get("changes", {})
+                        added_items = changes.get("added", [])
+                        deleted_items = changes.get("deleted", [])
+                        modified_items = changes.get("modified", [])
+
+                        total_blocks_added += len(added_items)
+                        total_blocks_deleted += len(deleted_items)
+                        total_blocks_modified += len(modified_items)
+                        total_additions += len(added_items)
+                        total_deletions += len(deleted_items)
+
+                        for mod in modified_items:
+                            if isinstance(mod, dict):
+                                total_additions += len(mod.get("added_lines", []))
+                                total_deletions += len(mod.get("deleted_lines", []))
+
+                    # Create aggregated activity
+                    activities.append(
+                        Activity(
+                            id=f"agg_{document_id}_{window_key}",
+                            member_name=doc_member_name,
+                            source_type="notion",
+                            activity_type="notion_aggregated",
+                            timestamp=first_timestamp,
+                            metadata=sanitize_metadata(
+                                {
+                                    "page_id": document_id,
+                                    "page_title": first_doc.get("document_title"),
+                                    "title": first_doc.get("document_title"),
+                                    "page_url": first_doc.get("document_url"),
+                                    "url": first_doc.get("document_url"),
+                                    "diff_type": "aggregated",
+                                    "additions": total_additions,
+                                    "deletions": total_deletions,
+                                    "blocks_added": total_blocks_added,
+                                    "blocks_deleted": total_blocks_deleted,
+                                    "blocks_modified": total_blocks_modified,
+                                    "edit_count": edit_count,
+                                    "aggregation_minutes": notion_aggregation_minutes,
+                                    "time_range_start": last_timestamp.isoformat(),
+                                    "time_range_end": first_timestamp.isoformat(),
+                                }
+                            ),
+                        )
+                    )
+            else:
+                # No aggregation - fetch individual activities
+                async for doc in (
+                    db["notion_content_diffs"]
+                    .find(query)
+                    .sort("timestamp", -1)
+                    .limit(limit * 2)
+                ):
+                    # Get editor name directly from diff record
+                    doc_member_name = doc.get("editor_name", "Unknown")
+                    if not doc_member_name or doc_member_name == "Unknown":
+                        editor_id = doc.get("editor_id", "")
+                        doc_member_name = (
+                            f"Notion-{editor_id[:8]}" if editor_id else "Unknown"
+                        )
+
+                    # Capitalize first letter
+                    if (
+                        doc_member_name
+                        and isinstance(doc_member_name, str)
+                        and len(doc_member_name) > 0
+                    ):
+                        doc_member_name = (
+                            doc_member_name[0].upper() + doc_member_name[1:]
+                        )
+
+                    # Parse timestamp from ISO string
+                    timestamp_str = doc.get("timestamp", "")
+                    try:
+                        if timestamp_str:
+                            # Handle various ISO formats
+                            if timestamp_str.endswith("Z"):
+                                timestamp_str = timestamp_str[:-1] + "+00:00"
+                            timestamp = datetime.fromisoformat(timestamp_str)
+                        else:
+                            continue
+                    except:
+                        continue
+
+                    # Get changes for metadata
+                    changes = doc.get("changes", {})
+                    added_items = changes.get("added", [])
+                    deleted_items = changes.get("deleted", [])
+                    modified_items = changes.get("modified", [])
+
+                    # Calculate additions/deletions like GitHub
+                    additions = len(added_items)
+                    deletions = len(deleted_items)
+
+                    # Add line-level changes from modified blocks
+                    for mod in modified_items:
+                        if isinstance(mod, dict):
+                            additions += len(mod.get("added_lines", []))
+                            deletions += len(mod.get("deleted_lines", []))
+
+                    # Determine activity type
+                    diff_type = doc.get("diff_type", "block")
+                    activity_type = f"notion_{diff_type}"
+
+                    activities.append(
+                        Activity(
+                            id=str(doc["_id"]),
+                            member_name=doc_member_name,
+                            source_type="notion",
+                            activity_type=activity_type,
+                            timestamp=timestamp,
+                            metadata=sanitize_metadata(
+                                {
+                                    "page_id": doc.get("document_id"),
+                                    "page_title": doc.get("document_title"),
+                                    "title": doc.get("document_title"),
+                                    "page_url": doc.get("document_url"),
+                                    "url": doc.get("document_url"),
+                                    "diff_type": diff_type,
+                                    "additions": additions,
+                                    "deletions": deletions,
+                                    "blocks_added": len(added_items),
+                                    "blocks_deleted": len(deleted_items),
+                                    "blocks_modified": len(modified_items),
+                                    "changes": changes,
+                                }
+                            ),
+                        )
+                    )
+
             notion_after = len(activities)
-            print(f"🔍 [{request_id}] 📝 Notion diff activities added: {notion_after - notion_before}")
-        
+            print(
+                f"🔍 [{request_id}] 📝 Notion diff activities added: {notion_after - notion_before}"
+            )
+
         # Drive content diffs (revision-based change tracking)
         # Uses drive_content_diffs collection for actual content changes
-        if 'drive' in sources:
+        if "drive" in sources:
             query = {}
-            
+
             # Filter by member name (editor_name or editor_id/email)
             if member_name:
-                emails = member_identifiers.get('email', []) or member_identifiers.get('drive', [])
-                print(f"🔍 [{request_id}] 📁 Drive emails for '{member_name}': {emails}")
-                
+                emails = member_identifiers.get("email", []) or member_identifiers.get(
+                    "drive", []
+                )
+                print(
+                    f"🔍 [{request_id}] 📁 Drive emails for '{member_name}': {emails}"
+                )
+
                 or_conditions = []
-                or_conditions.append({'editor_name': {'$regex': f'^{member_name}', '$options': 'i'}})
+                or_conditions.append(
+                    {"editor_name": {"$regex": f"^{member_name}", "$options": "i"}}
+                )
                 if emails:
-                    or_conditions.append({'editor_id': {'$in': emails}})
-                query['$or'] = or_conditions
-            
+                    or_conditions.append({"editor_id": {"$in": emails}})
+                query["$or"] = or_conditions
+
             # Date filters - timestamp is stored as ISO string
             if start_date:
                 from datetime import timezone as tz
+
                 start_str = start_date.astimezone(tz.utc).isoformat()
-                query['timestamp'] = {'$gte': start_str}
+                query["timestamp"] = {"$gte": start_str}
             if end_date:
                 from datetime import timezone as tz
+
                 end_str = end_date.astimezone(tz.utc).isoformat()
-                query['timestamp'] = query.get('timestamp', {})
-                query['timestamp']['$lte'] = end_str
-            
+                query["timestamp"] = query.get("timestamp", {})
+                query["timestamp"]["$lte"] = end_str
+
             # Keyword search in document title
             if keyword:
-                query['document_title'] = {'$regex': keyword, '$options': 'i'}
-            
+                query["document_title"] = {"$regex": keyword, "$options": "i"}
+
             # Project filter by title
             if project_name:
-                if 'document_title' in query:
+                if "document_title" in query:
                     query = {
-                        '$and': [
+                        "$and": [
                             query,
-                            {'document_title': {'$regex': project_name, '$options': 'i'}}
+                            {
+                                "document_title": {
+                                    "$regex": project_name,
+                                    "$options": "i",
+                                }
+                            },
                         ]
                     }
                 else:
-                    query['document_title'] = {'$regex': project_name, '$options': 'i'}
-                print(f"🔍 [{request_id}] 📁 Filtering Drive diffs by project: {project_name}")
-            
+                    query["document_title"] = {"$regex": project_name, "$options": "i"}
+                print(
+                    f"🔍 [{request_id}] 📁 Filtering Drive diffs by project: {project_name}"
+                )
+
             print(f"🔍 [{request_id}] 📁 Drive query: {query}")
-            
+
             drive_before = len(activities)
-            async for doc in db['drive_content_diffs'].find(query).sort('timestamp', -1).limit(limit * 2):
+            async for doc in (
+                db["drive_content_diffs"]
+                .find(query)
+                .sort("timestamp", -1)
+                .limit(limit * 2)
+            ):
                 # Get editor name
-                doc_member_name = doc.get('editor_name', 'Unknown')
-                if not doc_member_name or doc_member_name == 'Unknown':
-                    editor_id = doc.get('editor_id', '')
-                    if editor_id and '@' in editor_id:
-                        doc_member_name = editor_id.split('@')[0].capitalize()
+                doc_member_name = doc.get("editor_name", "Unknown")
+                if not doc_member_name or doc_member_name == "Unknown":
+                    editor_id = doc.get("editor_id", "")
+                    if editor_id and "@" in editor_id:
+                        doc_member_name = editor_id.split("@")[0].capitalize()
                     else:
                         doc_member_name = "Unknown"
-                
+
                 # Capitalize first letter
-                if doc_member_name and isinstance(doc_member_name, str) and len(doc_member_name) > 0:
+                if (
+                    doc_member_name
+                    and isinstance(doc_member_name, str)
+                    and len(doc_member_name) > 0
+                ):
                     doc_member_name = doc_member_name[0].upper() + doc_member_name[1:]
-                
+
                 # Parse timestamp from ISO string
-                timestamp_str = doc.get('timestamp', '')
+                timestamp_str = doc.get("timestamp", "")
                 try:
                     if timestamp_str:
                         from datetime import datetime
-                        if timestamp_str.endswith('Z'):
-                            timestamp_str = timestamp_str[:-1] + '+00:00'
+
+                        if timestamp_str.endswith("Z"):
+                            timestamp_str = timestamp_str[:-1] + "+00:00"
                         timestamp = datetime.fromisoformat(timestamp_str)
                     else:
                         continue
                 except:
                     continue
-                
+
                 # Get changes for metadata
-                changes = doc.get('changes', {})
-                added_items = changes.get('added', [])
-                deleted_items = changes.get('deleted', [])
-                
+                changes = doc.get("changes", {})
+                added_items = changes.get("added", [])
+                deleted_items = changes.get("deleted", [])
+
                 # Calculate additions/deletions
                 additions = len(added_items)
                 deletions = len(deleted_items)
-                
-                activities.append(Activity(
-                    id=str(doc['_id']),
-                    member_name=doc_member_name,
-                    source_type='drive',
-                    activity_type='drive_revision',
-                    timestamp=timestamp,
-                    metadata=sanitize_metadata({
-                        'document_id': doc.get('document_id'),
-                        'title': doc.get('document_title'),
-                        'doc_title': doc.get('document_title'),
-                        'url': doc.get('document_url'),
-                        'diff_type': doc.get('diff_type', 'revision'),
-                        'additions': additions,
-                        'deletions': deletions,
-                        'revision_id': doc.get('revision_id'),
-                        'previous_revision_id': doc.get('previous_revision_id'),
-                        'changes': changes
-                    })
-                ))
-            
+
+                activities.append(
+                    Activity(
+                        id=str(doc["_id"]),
+                        member_name=doc_member_name,
+                        source_type="drive",
+                        activity_type="drive_revision",
+                        timestamp=timestamp,
+                        metadata=sanitize_metadata(
+                            {
+                                "document_id": doc.get("document_id"),
+                                "title": doc.get("document_title"),
+                                "doc_title": doc.get("document_title"),
+                                "url": doc.get("document_url"),
+                                "diff_type": doc.get("diff_type", "revision"),
+                                "additions": additions,
+                                "deletions": deletions,
+                                "revision_id": doc.get("revision_id"),
+                                "previous_revision_id": doc.get("previous_revision_id"),
+                                "changes": changes,
+                            }
+                        ),
+                    )
+                )
+
             drive_after = len(activities)
-            print(f"🔍 [{request_id}] 📁 Drive diff activities added: {drive_after - drive_before}")
-        
+            print(
+                f"🔍 [{request_id}] 📁 Drive diff activities added: {drive_after - drive_before}"
+            )
+
         # Recordings (Google Drive recordings via shared_async_db)
-        if 'recordings' in sources:
+        if "recordings" in sources:
             try:
                 from backend.main import mongo_manager
+
                 shared_db = mongo_manager.shared_async_db
                 recordings_col = shared_db["recordings"]
-                
+
                 query = {}
-                
+
                 # Debug: Sample one recording to see actual field structure
                 sample_doc = await recordings_col.find_one()
                 if sample_doc:
-                    print(f"🔍 [{request_id}] 🎥 Sample recording doc fields: {list(sample_doc.keys())}")
+                    print(
+                        f"🔍 [{request_id}] 🎥 Sample recording doc fields: {list(sample_doc.keys())}"
+                    )
                     print(f"🔍 [{request_id}] 🎥 Sample recording creator fields:")
-                    print(f"🔍 [{request_id}] 🎥   - createdBy (camelCase): {sample_doc.get('createdBy')}")
-                    print(f"🔍 [{request_id}] 🎥   - created_by (snake_case): {sample_doc.get('created_by')}")
+                    print(
+                        f"🔍 [{request_id}] 🎥   - createdBy (camelCase): {sample_doc.get('createdBy')}"
+                    )
+                    print(
+                        f"🔍 [{request_id}] 🎥   - created_by (snake_case): {sample_doc.get('created_by')}"
+                    )
                     print(f"🔍 [{request_id}] 🎥   - owner: {sample_doc.get('owner')}")
-                    print(f"🔍 [{request_id}] 🎥   - lastModifyingUser: {sample_doc.get('lastModifyingUser')}")
-                
+                    print(
+                        f"🔍 [{request_id}] 🎥   - lastModifyingUser: {sample_doc.get('lastModifyingUser')}"
+                    )
+
                 # When project filter is active, ignore member filter (filter by title only)
                 if project_key:
                     # Project filter is active - only filter by project name in title, ignore member
                     if not project_name:
                         # Project has no name configured - return empty results
-                        print(f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no name configured - returning empty results")
-                        query['name'] = {'$regex': '^$'}  # Match nothing
+                        print(
+                            f"🔍 [{request_id}] ⚠️  Project '{project_key}' has no name configured - returning empty results"
+                        )
+                        query["name"] = {"$regex": "^$"}  # Match nothing
                 elif member_name:
-                    print(f"🔍 [{request_id}] 🎥 Filtering by member name: {member_name}")
-                    
+                    print(
+                        f"🔍 [{request_id}] 🎥 Filtering by member name: {member_name}"
+                    )
+
                     # Get recording_name for this member (if exists)
-                    recording_names = member_identifiers.get('recordings', [])
-                    print(f"🔍 [{request_id}] 🎥 Recording names for '{member_name}': {recording_names}")
-                    
+                    recording_names = member_identifiers.get("recordings", [])
+                    print(
+                        f"🔍 [{request_id}] 🎥 Recording names for '{member_name}': {recording_names}"
+                    )
+
                     # NEW APPROACH: Get meeting_ids from gemini.recordings where member is a participant
                     try:
                         from backend.api.v1.ai_processed import get_gemini_db
+
                         gemini_db = get_gemini_db()
                         gemini_recordings_col = gemini_db["recordings"]
-                        
+
                         # Build participant query (participants is a string array)
                         participant_query = {
-                            'participants': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}
+                            "participants": {
+                                "$regex": f"\\b{member_name}\\b",
+                                "$options": "i",
+                            }
                         }
-                        
+
                         # Add recording_name patterns
                         if recording_names:
                             or_conditions = [
-                                {'participants': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
+                                {
+                                    "participants": {
+                                        "$regex": f"\\b{member_name}\\b",
+                                        "$options": "i",
+                                    }
+                                }
                             ]
                             for rec_name in recording_names:
                                 if rec_name:
                                     or_conditions.append(
-                                        {'participants': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}}
+                                        {
+                                            "participants": {
+                                                "$regex": f"\\b{rec_name}\\b",
+                                                "$options": "i",
+                                            }
+                                        }
                                     )
-                            participant_query = {'$or': or_conditions}
-                        
+                            participant_query = {"$or": or_conditions}
+
                         # Get meeting_ids where member is a participant
-                        gemini_docs = list(gemini_recordings_col.find(
-                            participant_query,
-                            {'meeting_id': 1}
-                        ))
-                        
-                        meeting_ids = [doc.get('meeting_id') for doc in gemini_docs if doc.get('meeting_id')]
-                        print(f"🔍 [{request_id}] 🎥 Found {len(meeting_ids)} meetings where '{member_name}' is a participant")
-                        
+                        gemini_docs = list(
+                            gemini_recordings_col.find(
+                                participant_query, {"meeting_id": 1}
+                            )
+                        )
+
+                        meeting_ids = [
+                            doc.get("meeting_id")
+                            for doc in gemini_docs
+                            if doc.get("meeting_id")
+                        ]
+                        print(
+                            f"🔍 [{request_id}] 🎥 Found {len(meeting_ids)} meetings where '{member_name}' is a participant"
+                        )
+
                         if meeting_ids:
                             # Filter shared.recordings by _id matching meeting_ids
                             from bson import ObjectId
+
                             # Convert meeting_id strings to ObjectId
                             object_ids = []
                             for mid in meeting_ids:
@@ -1294,246 +1684,340 @@ class Query:
                                         object_ids.append(mid)
                                 except:
                                     pass
-                            
+
                             if object_ids:
-                                query['_id'] = {'$in': object_ids}
+                                query["_id"] = {"$in": object_ids}
                             else:
                                 # No valid ObjectIds, return empty results
-                                query['_id'] = {'$in': []}
+                                query["_id"] = {"$in": []}
                         else:
                             # No meetings found for this member, return empty results
-                            query['_id'] = {'$in': []}
-                    
+                            query["_id"] = {"$in": []}
+
                     except Exception as e:
-                        print(f"🔍 [{request_id}] ⚠️  Error querying gemini.recordings: {e}")
+                        print(
+                            f"🔍 [{request_id}] ⚠️  Error querying gemini.recordings: {e}"
+                        )
                         # Fallback to old method (created_by and name)
                     or_conditions = [
-                        {'created_by': {'$regex': f'^{member_name}$', '$options': 'i'}},
-                            {'created_by': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}},
-                            {'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
+                        {"created_by": {"$regex": f"^{member_name}$", "$options": "i"}},
+                        {
+                            "created_by": {
+                                "$regex": f"\\b{member_name}\\b",
+                                "$options": "i",
+                            }
+                        },
+                        {"name": {"$regex": f"\\b{member_name}\\b", "$options": "i"}},
                     ]
-                    
+
                     for rec_name in recording_names:
                         if rec_name:
-                                or_conditions.extend([
-                                    {'created_by': {'$regex': f'^{rec_name}$', '$options': 'i'}},
-                                    {'created_by': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}},
-                                    {'name': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}}
-                                ])
-                    
-                    query['$or'] = or_conditions
+                            or_conditions.extend(
+                                [
+                                    {
+                                        "created_by": {
+                                            "$regex": f"^{rec_name}$",
+                                            "$options": "i",
+                                        }
+                                    },
+                                    {
+                                        "created_by": {
+                                            "$regex": f"\\b{rec_name}\\b",
+                                            "$options": "i",
+                                        }
+                                    },
+                                    {
+                                        "name": {
+                                            "$regex": f"\\b{rec_name}\\b",
+                                            "$options": "i",
+                                        }
+                                    },
+                                ]
+                            )
+
+                    query["$or"] = or_conditions
                 if start_date:
                     # modifiedTime is stored as ISO string, convert datetime to ISO string for comparison
-                    query['modifiedTime'] = {'$gte': start_date.isoformat()}
+                    query["modifiedTime"] = {"$gte": start_date.isoformat()}
                 if end_date:
                     # modifiedTime is stored as ISO string, convert datetime to ISO string for comparison
-                    query['modifiedTime'] = query.get('modifiedTime', {})
-                    query['modifiedTime']['$lte'] = end_date.isoformat()
+                    query["modifiedTime"] = query.get("modifiedTime", {})
+                    query["modifiedTime"]["$lte"] = end_date.isoformat()
                 if keyword:
-                    query['name'] = {'$regex': keyword, '$options': 'i'}
-                
+                    query["name"] = {"$regex": keyword, "$options": "i"}
+
                 # Filter by project name in title if project_key is specified
                 if project_name:
                     # Add project name to title filter (case-insensitive)
-                    if 'name' in query:
+                    if "name" in query:
                         # If keyword already exists, combine with $and
-                        existing_conditions = {k: v for k, v in query.items() if k != 'name'}
+                        existing_conditions = {
+                            k: v for k, v in query.items() if k != "name"
+                        }
                         query = {
-                            '$and': [
+                            "$and": [
                                 existing_conditions,
-                                {'name': {'$regex': project_name, '$options': 'i'}}
+                                {"name": {"$regex": project_name, "$options": "i"}},
                             ]
                         }
                     else:
-                        query['name'] = {'$regex': project_name, '$options': 'i'}
-                    print(f"🔍 [{request_id}] 🎥 Filtering Recordings by project name in title: {project_name}")
-                
+                        query["name"] = {"$regex": project_name, "$options": "i"}
+                    print(
+                        f"🔍 [{request_id}] 🎥 Filtering Recordings by project name in title: {project_name}"
+                    )
+
                 print(f"🔍 [{request_id}] 🎥 Recordings query: {query}")
-                
+
                 # Debug: Check if query matches any documents
                 if member_name:
                     count = await recordings_col.count_documents(query)
                     print(f"🔍 [{request_id}] 🎥 Documents matching query: {count}")
-                
+
                 # Async MongoDB query
                 recordings_before = len(activities)
-                async for doc in recordings_col.find(query).sort('modifiedTime', -1).limit(limit * 2):
-                    timestamp = ensure_datetime(doc.get('modifiedTime'))
+                async for doc in (
+                    recordings_col.find(query).sort("modifiedTime", -1).limit(limit * 2)
+                ):
+                    timestamp = ensure_datetime(doc.get("modifiedTime"))
                     if not timestamp:
                         continue
-                    
+
                     # Get creator (created_by field is email)
-                    created_by = doc.get('created_by', 'Unknown')
-                    
+                    created_by = doc.get("created_by", "Unknown")
+
                     # Convert email to display name
-                    if created_by and '@' in str(created_by):
-                        display_name = identifier_to_member.get(('email', created_by.lower()), 
-                                                               identifier_to_member.get(('drive', created_by.lower()), created_by))
+                    if created_by and "@" in str(created_by):
+                        display_name = identifier_to_member.get(
+                            ("email", created_by.lower()),
+                            identifier_to_member.get(
+                                ("drive", created_by.lower()), created_by
+                            ),
+                        )
                     else:
                         display_name = created_by
-                    
+
                     # Capitalize first letter
-                    if display_name and isinstance(display_name, str) and len(display_name) > 0:
+                    if (
+                        display_name
+                        and isinstance(display_name, str)
+                        and len(display_name) > 0
+                    ):
                         display_name = display_name[0].upper() + display_name[1:]
-                    
-                    activities.append(Activity(
-                        id=str(doc['_id']),
-                        member_name=display_name,
-                        source_type='recordings',
-                        activity_type='meeting_recording',
-                        timestamp=timestamp,
-                        metadata=sanitize_metadata({
-                            'name': doc.get('name'),
-                            'size': doc.get('size', 0),
-                            'recording_id': doc.get('id'),
-                            'created_by': doc.get('created_by'),  # Use snake_case from DB
-                            'modified_time': doc.get('modifiedTime'),
-                            'mime_type': doc.get('mimeType')
-                        })
-                    ))
-                
+
+                    activities.append(
+                        Activity(
+                            id=str(doc["_id"]),
+                            member_name=display_name,
+                            source_type="recordings",
+                            activity_type="meeting_recording",
+                            timestamp=timestamp,
+                            metadata=sanitize_metadata(
+                                {
+                                    "name": doc.get("name"),
+                                    "size": doc.get("size", 0),
+                                    "recording_id": doc.get("id"),
+                                    "created_by": doc.get(
+                                        "created_by"
+                                    ),  # Use snake_case from DB
+                                    "modified_time": doc.get("modifiedTime"),
+                                    "mime_type": doc.get("mimeType"),
+                                }
+                            ),
+                        )
+                    )
+
                 recordings_after = len(activities)
-                print(f"🔍 [{request_id}] 🎥 Recordings activities added: {recordings_after - recordings_before}")
+                print(
+                    f"🔍 [{request_id}] 🎥 Recordings activities added: {recordings_after - recordings_before}"
+                )
             except Exception as e:
                 print(f"Error fetching recordings: {e}")
                 import traceback
+
                 print(traceback.format_exc())
-        
+
         # Recordings Daily (Daily analysis)
-        if 'recordings_daily' in sources:
+        if "recordings_daily" in sources:
             try:
                 from backend.api.v1.ai_processed import get_gemini_db
+
                 gemini_db = get_gemini_db()
                 recordings_daily_col = gemini_db["recordings_daily"]
-                
+
                 # Debug: Sample one daily doc to see structure
                 sample_daily = recordings_daily_col.find_one()
                 if sample_daily:
-                    print(f"🔍 [{request_id}] 📅 Sample recordings_daily fields: {list(sample_daily.keys())}")
-                    
+                    print(
+                        f"🔍 [{request_id}] 📅 Sample recordings_daily fields: {list(sample_daily.keys())}"
+                    )
+
                     # Check analysis.participants structure
-                    analysis = sample_daily.get('analysis', {})
-                    if analysis and 'participants' in analysis:
-                        participants = analysis['participants']
-                        print(f"🔍 [{request_id}] 📅 analysis.participants type: {type(participants)}")
+                    analysis = sample_daily.get("analysis", {})
+                    if analysis and "participants" in analysis:
+                        participants = analysis["participants"]
+                        print(
+                            f"🔍 [{request_id}] 📅 analysis.participants type: {type(participants)}"
+                        )
                         if isinstance(participants, list) and len(participants) > 0:
                             sample_participant = participants[0]
-                            print(f"🔍 [{request_id}] 📅 Sample participant: {sample_participant}")
+                            print(
+                                f"🔍 [{request_id}] 📅 Sample participant: {sample_participant}"
+                            )
                         elif isinstance(participants, dict):
-                            print(f"🔍 [{request_id}] 📅 Participants dict keys: {list(participants.keys())[:5]}")
+                            print(
+                                f"🔍 [{request_id}] 📅 Participants dict keys: {list(participants.keys())[:5]}"
+                            )
                         else:
-                            print(f"🔍 [{request_id}] 📅 Participants value: {str(participants)[:200]}")
-                
+                            print(
+                                f"🔍 [{request_id}] 📅 Participants value: {str(participants)[:200]}"
+                            )
+
                 query = {}
                 # recordings_daily uses target_date (date string) instead of timestamp
                 if start_date:
-                    query['target_date'] = {'$gte': start_date.strftime('%Y-%m-%d')}
+                    query["target_date"] = {"$gte": start_date.strftime("%Y-%m-%d")}
                 if end_date:
-                    query['target_date'] = query.get('target_date', {})
-                    query['target_date']['$lte'] = end_date.strftime('%Y-%m-%d')
+                    query["target_date"] = query.get("target_date", {})
+                    query["target_date"]["$lte"] = end_date.strftime("%Y-%m-%d")
                 if keyword:
                     # Search in analysis.summary.overview field
-                    query['analysis.summary.overview'] = {'$regex': keyword, '$options': 'i'}
-                
+                    query["analysis.summary.overview"] = {
+                        "$regex": keyword,
+                        "$options": "i",
+                    }
+
                 # If member filter is specified, filter by analysis.participants
                 # participants is array of dicts: [{'name': 'Ale Son', ...}, {'name': 'Jake Jang', ...}]
                 if member_name:
-                    print(f"🔍 [{request_id}] 📅 Filtering recordings_daily by analysis.participants.name containing: {member_name}")
-                    
+                    print(
+                        f"🔍 [{request_id}] 📅 Filtering recordings_daily by analysis.participants.name containing: {member_name}"
+                    )
+
                     # Get recording_name for this member (if exists)
-                    recording_names = member_identifiers.get('recordings', [])
-                    print(f"🔍 [{request_id}] 📅 Recording names for '{member_name}': {recording_names}")
-                    
+                    recording_names = member_identifiers.get("recordings", [])
+                    print(
+                        f"🔍 [{request_id}] 📅 Recording names for '{member_name}': {recording_names}"
+                    )
+
                     # Build search patterns: search for both member_name and recording_name
                     name_patterns = [
-                        {'name': {'$regex': f'\\b{member_name}\\b', '$options': 'i'}}
+                        {"name": {"$regex": f"\\b{member_name}\\b", "$options": "i"}}
                     ]
-                    
+
                     # Add recording_name patterns
                     for rec_name in recording_names:
                         if rec_name:
                             # Exact match for recording name (e.g., "YEONGJU BAK")
-                            name_patterns.append({'name': {'$regex': f'^{rec_name}$', '$options': 'i'}})
+                            name_patterns.append(
+                                {"name": {"$regex": f"^{rec_name}$", "$options": "i"}}
+                            )
                             # Also try word boundary match
-                            name_patterns.append({'name': {'$regex': f'\\b{rec_name}\\b', '$options': 'i'}})
-                    
+                            name_patterns.append(
+                                {
+                                    "name": {
+                                        "$regex": f"\\b{rec_name}\\b",
+                                        "$options": "i",
+                                    }
+                                }
+                            )
+
                     # Search for member name OR recording name in participants
-                    query['analysis.participants'] = {
-                        '$elemMatch': {
-                            '$or': name_patterns
-                        }
+                    query["analysis.participants"] = {
+                        "$elemMatch": {"$or": name_patterns}
                     }
-                
+
                 print(f"🔍 [{request_id}] 📅 recordings_daily query: {query}")
-                
+
                 # Debug: Check if query matches any documents
                 if member_name:
                     count = recordings_daily_col.count_documents(query)
                     print(f"🔍 [{request_id}] 📅 Documents matching query: {count}")
-                    
+
                     # Check total documents without filter
                     total_count = recordings_daily_col.count_documents({})
-                    print(f"🔍 [{request_id}] 📅 Total documents (no filter): {total_count}")
-                    
+                    print(
+                        f"🔍 [{request_id}] 📅 Total documents (no filter): {total_count}"
+                    )
+
                     # Check recent documents (last 10) to see if member is in participants
-                    recent_docs = list(recordings_daily_col.find({}).sort('target_date', -1).limit(10))
+                    recent_docs = list(
+                        recordings_daily_col.find({}).sort("target_date", -1).limit(10)
+                    )
                     print(f"🔍 [{request_id}] 📅 Recent 10 documents analysis:")
                     for doc in recent_docs:
-                        target_date = doc.get('target_date')
-                        analysis = doc.get('analysis', {})
-                        participants = analysis.get('participants', []) if analysis else []
-                        
+                        target_date = doc.get("target_date")
+                        analysis = doc.get("analysis", {})
+                        participants = (
+                            analysis.get("participants", []) if analysis else []
+                        )
+
                         # Check if member is in participants
                         member_found = False
                         participant_names = []
                         if isinstance(participants, list):
                             for p in participants:
-                                if isinstance(p, dict) and 'name' in p:
-                                    name = p['name']
+                                if isinstance(p, dict) and "name" in p:
+                                    name = p["name"]
                                     participant_names.append(name)
                                     # Check if member_name matches (word boundary)
                                     import re
-                                    if re.search(rf'\b{member_name}\b', name, re.IGNORECASE):
+
+                                    if re.search(
+                                        rf"\b{member_name}\b", name, re.IGNORECASE
+                                    ):
                                         member_found = True
-                        
+
                         status = "✅ MATCH" if member_found else "❌ NO MATCH"
-                        print(f"🔍 [{request_id}] 📅   {target_date}: {status} | Names: {participant_names[:3]}")
-                
+                        print(
+                            f"🔍 [{request_id}] 📅   {target_date}: {status} | Names: {participant_names[:3]}"
+                        )
+
                 # Sync MongoDB query (recordings_daily uses sync client)
-                daily_docs = list(recordings_daily_col.find(query).sort('target_date', -1).limit(limit * 2))
-                
+                daily_docs = list(
+                    recordings_daily_col.find(query)
+                    .sort("target_date", -1)
+                    .limit(limit * 2)
+                )
+
                 # Debug: Show matched dates
                 if member_name and daily_docs:
-                    matched_dates = [doc.get('target_date') for doc in daily_docs[:15]]
-                    print(f"🔍 [{request_id}] 📅 Matched dates (first 15): {matched_dates}")
+                    matched_dates = [doc.get("target_date") for doc in daily_docs[:15]]
+                    print(
+                        f"🔍 [{request_id}] 📅 Matched dates (first 15): {matched_dates}"
+                    )
                     if len(daily_docs) > 15:
-                        print(f"🔍 [{request_id}] 📅 ... and {len(daily_docs) - 15} more documents")
-                    
+                        print(
+                            f"🔍 [{request_id}] 📅 ... and {len(daily_docs) - 15} more documents"
+                        )
+
                     # Show date range
                     if daily_docs:
-                        oldest = daily_docs[-1].get('target_date')
-                        newest = daily_docs[0].get('target_date')
+                        oldest = daily_docs[-1].get("target_date")
+                        newest = daily_docs[0].get("target_date")
                         print(f"🔍 [{request_id}] 📅 Date range: {newest} to {oldest}")
-                
+
                 daily_before = len(activities)
                 for doc in daily_docs:
-                    target_date = doc.get('target_date')
+                    target_date = doc.get("target_date")
                     if not target_date:
                         continue
-                    
+
                     # Parse target_date to datetime
                     try:
                         from datetime import datetime as dt
-                        timestamp = ensure_datetime(dt.strptime(target_date, '%Y-%m-%d'))
+
+                        timestamp = ensure_datetime(
+                            dt.strptime(target_date, "%Y-%m-%d")
+                        )
                     except:
                         continue
-                    
+
                     if not timestamp:
                         continue
-                    
-                    analysis = doc.get('analysis', {})
-                    summary = analysis.get('summary', {}) if analysis else {}
-                    
+
+                    analysis = doc.get("analysis", {})
+                    summary = analysis.get("summary", {}) if analysis else {}
+
                     # Helper function to convert recording name to display name
                     def recording_name_to_display(recording_name: str) -> str:
                         """
@@ -1542,80 +2026,117 @@ class Query:
                         """
                         if not recording_name:
                             return recording_name
-                        
+
                         # 1. Try exact match in recordings source (from member_identifiers)
-                        display = identifier_to_member.get(('recordings', recording_name))
+                        display = identifier_to_member.get(
+                            ("recordings", recording_name)
+                        )
                         if display:
-                            return display[0].upper() + display[1:] if display else display
-                        
+                            return (
+                                display[0].upper() + display[1:] if display else display
+                            )
+
                         # 2. Try case-insensitive match across all sources
-                        for (source, identifier), display in identifier_to_member.items():
+                        for (
+                            source,
+                            identifier,
+                        ), display in identifier_to_member.items():
                             if identifier.lower() == recording_name.lower():
-                                return display[0].upper() + display[1:] if display else display
-                        
+                                return (
+                                    display[0].upper() + display[1:]
+                                    if display
+                                    else display
+                                )
+
                         # 3. Try first word match (e.g., "Ale Son" -> "Ale", "Jason Hwang" -> "Jason")
                         first_word = recording_name.split()[0] if recording_name else ""
                         if first_word:
                             # Check if any member's display name starts with or matches first word
                             for display in set(identifier_to_member.values()):
                                 if display and display.lower() == first_word.lower():
-                                    return display[0].upper() + display[1:] if display else display
-                        
+                                    return (
+                                        display[0].upper() + display[1:]
+                                        if display
+                                        else display
+                                    )
+
                         # Fallback: capitalize first letter of original name
-                        return recording_name[0].upper() + recording_name[1:] if recording_name else recording_name
-                    
+                        return (
+                            recording_name[0].upper() + recording_name[1:]
+                            if recording_name
+                            else recording_name
+                        )
+
                     # Extract participant names
-                    display_name = 'System'
-                    participants = analysis.get('participants', []) if analysis else []
+                    display_name = "System"
+                    participants = analysis.get("participants", []) if analysis else []
                     if isinstance(participants, list) and participants:
                         # If member filter is active, show only the filtered member
                         if member_name:
                             for p in participants:
-                                if isinstance(p, dict) and 'name' in p:
-                                    name = p['name']
+                                if isinstance(p, dict) and "name" in p:
+                                    name = p["name"]
                                     import re
-                                    if re.search(rf'\b{member_name}\b', name, re.IGNORECASE):
+
+                                    if re.search(
+                                        rf"\b{member_name}\b", name, re.IGNORECASE
+                                    ):
                                         # Convert to display name
                                         display_name = recording_name_to_display(name)
                                         break
                         else:
                             # No filter: show all participants (up to 3), convert each to display name
-                            recording_names = [p.get('name') for p in participants if isinstance(p, dict) and 'name' in p]
+                            recording_names = [
+                                p.get("name")
+                                for p in participants
+                                if isinstance(p, dict) and "name" in p
+                            ]
                             if recording_names:
-                                display_names = [recording_name_to_display(rn) for rn in recording_names[:3]]
-                                display_name = ', '.join(display_names)
+                                display_names = [
+                                    recording_name_to_display(rn)
+                                    for rn in recording_names[:3]
+                                ]
+                                display_name = ", ".join(display_names)
                                 if len(participants) > 3:
-                                    display_name += f' +{len(participants) - 3} more'
-                    
-                    activities.append(Activity(
-                        id=str(doc['_id']),
-                        member_name=display_name,
-                        source_type='recordings_daily',
-                        activity_type='daily_analysis',
-                        timestamp=timestamp,
-                        metadata=sanitize_metadata({
-                            'target_date': target_date,
-                            'meeting_count': doc.get('meeting_count', 0),
-                            'total_duration': doc.get('total_duration', 0),
-                            'total_participants': doc.get('total_participants', 0),
-                            'summary': summary.get('overview', ''),
-                            'key_topics': summary.get('key_topics', []),
-                            'decisions': summary.get('decisions', [])
-                        })
-                    ))
-                
+                                    display_name += f" +{len(participants) - 3} more"
+
+                    activities.append(
+                        Activity(
+                            id=str(doc["_id"]),
+                            member_name=display_name,
+                            source_type="recordings_daily",
+                            activity_type="daily_analysis",
+                            timestamp=timestamp,
+                            metadata=sanitize_metadata(
+                                {
+                                    "target_date": target_date,
+                                    "meeting_count": doc.get("meeting_count", 0),
+                                    "total_duration": doc.get("total_duration", 0),
+                                    "total_participants": doc.get(
+                                        "total_participants", 0
+                                    ),
+                                    "summary": summary.get("overview", ""),
+                                    "key_topics": summary.get("key_topics", []),
+                                    "decisions": summary.get("decisions", []),
+                                }
+                            ),
+                        )
+                    )
+
                 daily_after = len(activities)
-                print(f"🔍 [{request_id}] 📅 recordings_daily activities added: {daily_after - daily_before}")
+                print(
+                    f"🔍 [{request_id}] 📅 recordings_daily activities added: {daily_after - daily_before}"
+                )
             except Exception as e:
                 if "Skip recordings_daily" in str(e):
                     print(f"🔍 [{request_id}] 📅 {str(e)}")
                 else:
                     print(f"Error fetching recordings_daily: {e}")
-        
+
         # Sort by timestamp (newest first) and apply pagination
         # Handle mixed datetime/string timestamps
         from datetime import datetime as dt_class, timezone as tz
-        
+
         def get_sort_key(activity):
             ts = activity.timestamp
             if isinstance(ts, dt_class):
@@ -1626,7 +2147,7 @@ class Query:
             elif isinstance(ts, str):
                 try:
                     # Try parsing ISO format
-                    parsed_dt = dt_class.fromisoformat(ts.replace('Z', '+00:00'))
+                    parsed_dt = dt_class.fromisoformat(ts.replace("Z", "+00:00"))
                     if parsed_dt.tzinfo is None:
                         parsed_dt = parsed_dt.replace(tzinfo=tz.utc)
                     return parsed_dt.astimezone(tz.utc)
@@ -1635,117 +2156,189 @@ class Query:
                     return dt_class.min.replace(tzinfo=tz.utc)
             else:
                 return dt_class.min.replace(tzinfo=tz.utc)
-        
+
         activities.sort(key=get_sort_key, reverse=True)
-        
-        print(f"🔍 [{request_id}] 📊 Total activities before pagination: {len(activities)}")
-        print(f"🔍 [{request_id}] 📊 Returning activities[{offset}:{offset + limit}] = {len(activities[offset:offset + limit])} items")
-        
-        return activities[offset:offset + limit]
-    
+
+        print(
+            f"🔍 [{request_id}] 📊 Total activities before pagination: {len(activities)}"
+        )
+        print(
+            f"🔍 [{request_id}] 📊 Returning activities[{offset}:{offset + limit}] = {len(activities[offset : offset + limit])} items"
+        )
+
+        return activities[offset : offset + limit]
+
     @strawberry.field
     async def projects(
-        self,
-        info,
-        is_active: Optional[bool] = None,
-        limit: int = 100
+        self, info, is_active: Optional[bool] = None, limit: int = 100
     ) -> List[Project]:
         """
         Get all projects.
-        
+
         Args:
             is_active: Filter by active status (None = all projects)
             limit: Maximum number of projects to return
-            
+
         Returns:
             List of Project objects
         """
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         query = {}
         if is_active is not None:
-            query['is_active'] = is_active
-        
+            query["is_active"] = is_active
+
         projects = []
         from bson import ObjectId
-        async for doc in db['projects'].find(query).limit(limit):
+
+        async for doc in db["projects"].find(query).limit(limit):
             # Convert member_ids to strings (handle ObjectId if present)
-            member_ids = doc.get('member_ids', [])
+            member_ids = doc.get("member_ids", [])
             member_ids_str = [
                 str(mid) if isinstance(mid, ObjectId) else str(mid)
                 for mid in member_ids
             ]
-            
-            projects.append(Project(
-                id=str(doc['_id']),
-                key=doc['key'],
-                name=doc['name'],
-                description=doc.get('description'),
-                slack_channel=doc.get('slack_channel'),
-                slack_channel_id=doc.get('slack_channel_id'),
-                lead=doc.get('lead'),
-                repositories=doc.get('repositories', []),
-                is_active=doc.get('is_active', True),
-                member_ids=member_ids_str,
-                grant_reports_data=doc.get('grant_reports', []),
-                grant_reports_folder_id=doc.get('grant_reports_folder_id')
-            ))
-        
+
+            projects.append(
+                Project(
+                    id=str(doc["_id"]),
+                    key=doc["key"],
+                    name=doc["name"],
+                    description=doc.get("description"),
+                    slack_channel=doc.get("slack_channel"),
+                    slack_channel_id=doc.get("slack_channel_id"),
+                    lead=doc.get("lead"),
+                    repositories=doc.get("repositories", []),
+                    is_active=doc.get("is_active", True),
+                    member_ids=member_ids_str,
+                    grant_reports_data=doc.get("grant_reports", []),
+                    grant_reports_folder_id=doc.get("grant_reports_folder_id"),
+                    milestones_data=doc.get("milestones", []),
+                    # Qwen (default) summary fields
+                    overall_summary=doc.get("overall_summary"),
+                    progress_trend=doc.get("progress_trend"),
+                    overall_summary_generated_at=doc.get(
+                        "overall_summary_generated_at"
+                    ),
+                    technical_stage=doc.get("technical_stage"),
+                    roadmap_status=doc.get("roadmap_status"),
+                    velocity=doc.get("velocity"),
+                    top_risks=doc.get("top_risks", []),
+                    key_strengths=doc.get("key_strengths", []),
+                    # Claude summary fields
+                    overall_summary_claude=doc.get("overall_summary_claude"),
+                    progress_trend_claude=doc.get("progress_trend_claude"),
+                    overall_summary_generated_at_claude=doc.get(
+                        "overall_summary_generated_at_claude"
+                    ),
+                    technical_stage_claude=doc.get("technical_stage_claude"),
+                    roadmap_status_claude=doc.get("roadmap_status_claude"),
+                    velocity_claude=doc.get("velocity_claude"),
+                    top_risks_claude=doc.get("top_risks_claude", []),
+                    key_strengths_claude=doc.get("key_strengths_claude", []),
+                    # Gemini summary fields
+                    overall_summary_gemini=doc.get("overall_summary_gemini"),
+                    progress_trend_gemini=doc.get("progress_trend_gemini"),
+                    overall_summary_generated_at_gemini=doc.get(
+                        "overall_summary_generated_at_gemini"
+                    ),
+                    technical_stage_gemini=doc.get("technical_stage_gemini"),
+                    roadmap_status_gemini=doc.get("roadmap_status_gemini"),
+                    velocity_gemini=doc.get("velocity_gemini"),
+                    top_risks_gemini=doc.get("top_risks_gemini", []),
+                    key_strengths_gemini=doc.get("key_strengths_gemini", []),
+                    # Other fields
+                    milestones_generated_at=doc.get("milestones_generated_at"),
+                    milestone_progress=doc.get("milestone_progress"),
+                )
+            )
+
         return projects
-    
+
     @strawberry.field
     async def project(
-        self,
-        info,
-        key: Optional[str] = None,
-        id: Optional[str] = None
+        self, info, key: Optional[str] = None, id: Optional[str] = None
     ) -> Optional[Project]:
         """
         Get a specific project by key or ID.
-        
+
         Args:
             key: Project key (e.g., "project-ooo")
             id: Project ID (MongoDB ObjectId as string)
-            
+
         Returns:
             Project object or None if not found
         """
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         query = {}
         if id:
-            query['_id'] = ObjectId(id)
+            query["_id"] = ObjectId(id)
         elif key:
-            query['key'] = key
+            query["key"] = key
         else:
             return None
-        
-        doc = await db['projects'].find_one(query)
+
+        doc = await db["projects"].find_one(query)
         if not doc:
             return None
-        
+
         # Convert member_ids to strings (handle ObjectId if present)
-        member_ids = doc.get('member_ids', [])
+        member_ids = doc.get("member_ids", [])
         member_ids_str = [
-            str(mid) if isinstance(mid, ObjectId) else str(mid)
-            for mid in member_ids
+            str(mid) if isinstance(mid, ObjectId) else str(mid) for mid in member_ids
         ]
-        
+
         return Project(
-            id=str(doc['_id']),
-            key=doc['key'],
-            name=doc['name'],
-            description=doc.get('description'),
-            slack_channel=doc.get('slack_channel'),
-            slack_channel_id=doc.get('slack_channel_id'),
-            lead=doc.get('lead'),
-            repositories=doc.get('repositories', []),
-            is_active=doc.get('is_active', True),
+            id=str(doc["_id"]),
+            key=doc["key"],
+            name=doc["name"],
+            description=doc.get("description"),
+            slack_channel=doc.get("slack_channel"),
+            slack_channel_id=doc.get("slack_channel_id"),
+            lead=doc.get("lead"),
+            repositories=doc.get("repositories", []),
+            is_active=doc.get("is_active", True),
             member_ids=member_ids_str,
-            grant_reports_data=doc.get('grant_reports', []),
-            grant_reports_folder_id=doc.get('grant_reports_folder_id')
+            grant_reports_data=doc.get("grant_reports", []),
+            grant_reports_folder_id=doc.get("grant_reports_folder_id"),
+            milestones_data=doc.get("milestones", []),
+            # Qwen (default) summary fields
+            overall_summary=doc.get("overall_summary"),
+            progress_trend=doc.get("progress_trend"),
+            overall_summary_generated_at=doc.get("overall_summary_generated_at"),
+            technical_stage=doc.get("technical_stage"),
+            roadmap_status=doc.get("roadmap_status"),
+            velocity=doc.get("velocity"),
+            top_risks=doc.get("top_risks", []),
+            key_strengths=doc.get("key_strengths", []),
+            # Claude summary fields
+            overall_summary_claude=doc.get("overall_summary_claude"),
+            progress_trend_claude=doc.get("progress_trend_claude"),
+            overall_summary_generated_at_claude=doc.get(
+                "overall_summary_generated_at_claude"
+            ),
+            technical_stage_claude=doc.get("technical_stage_claude"),
+            roadmap_status_claude=doc.get("roadmap_status_claude"),
+            velocity_claude=doc.get("velocity_claude"),
+            top_risks_claude=doc.get("top_risks_claude", []),
+            key_strengths_claude=doc.get("key_strengths_claude", []),
+            # Gemini summary fields
+            overall_summary_gemini=doc.get("overall_summary_gemini"),
+            progress_trend_gemini=doc.get("progress_trend_gemini"),
+            overall_summary_generated_at_gemini=doc.get(
+                "overall_summary_generated_at_gemini"
+            ),
+            technical_stage_gemini=doc.get("technical_stage_gemini"),
+            roadmap_status_gemini=doc.get("roadmap_status_gemini"),
+            velocity_gemini=doc.get("velocity_gemini"),
+            top_risks_gemini=doc.get("top_risks_gemini", []),
+            key_strengths_gemini=doc.get("key_strengths_gemini", []),
+            # Other fields
+            milestones_generated_at=doc.get("milestones_generated_at"),
+            milestone_progress=doc.get("milestone_progress"),
         )
-    
+
     @strawberry.field
     async def activity_summary(
         self,
@@ -1753,110 +2346,114 @@ class Query:
         source: Optional[SourceType] = None,
         member_name: Optional[str] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
     ) -> ActivitySummary:
         """
         Get summary statistics for activities.
-        
+
         Args:
             source: Filter by data source
             member_name: Filter by member name
             start_date: Filter activities after this date
             end_date: Filter activities before this date
-            
+
         Returns:
             ActivitySummary with counts and breakdowns
         """
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         # Handle both SourceType enum and string values
         if source:
-            source_value = source.value if hasattr(source, 'value') else source
+            source_value = source.value if hasattr(source, "value") else source
             sources = [source_value]
         else:
-            sources = ['github', 'slack', 'notion', 'drive']
-        
+            sources = ["github", "slack", "notion", "drive"]
+
         by_source = {}
         by_type = {}
         total = 0
-        
+
         # Get member mapping if member_name is provided
         member_github_id = None
         member_email = None
         if member_name:
-            member_doc = await db['members'].find_one({'name': member_name})
+            member_doc = await db["members"].find_one({"name": member_name})
             if member_doc:
-                member_github_id = member_doc.get('github_id') or member_doc.get('github_username')
-                member_email = member_doc.get('email')
-        
+                member_github_id = member_doc.get("github_id") or member_doc.get(
+                    "github_username"
+                )
+                member_email = member_doc.get("email")
+
         # GitHub
-        if 'github' in sources:
+        if "github" in sources:
             github_query = {}
             if member_github_id:
-                github_query['author_name'] = member_github_id
+                github_query["author_name"] = member_github_id
             if start_date:
-                github_query['date'] = {'$gte': start_date}
+                github_query["date"] = {"$gte": start_date}
             if end_date:
-                github_query['date'] = github_query.get('date', {})
-                github_query['date']['$lte'] = end_date
-            
-            commits_count = await db['github_commits'].count_documents(github_query)
-            
+                github_query["date"] = github_query.get("date", {})
+                github_query["date"]["$lte"] = end_date
+
+            commits_count = await db["github_commits"].count_documents(github_query)
+
             pr_query = {}
             if member_github_id:
-                pr_query['author'] = member_github_id
+                pr_query["author"] = member_github_id
             if start_date:
-                pr_query['created_at'] = {'$gte': start_date}
+                pr_query["created_at"] = {"$gte": start_date}
             if end_date:
-                pr_query['created_at'] = pr_query.get('created_at', {})
-                pr_query['created_at']['$lte'] = end_date
-            
-            prs_count = await db['github_pull_requests'].count_documents(pr_query)
-            
-            by_source['github'] = commits_count + prs_count
-            by_type['commit'] = commits_count
-            by_type['pull_request'] = prs_count
+                pr_query["created_at"] = pr_query.get("created_at", {})
+                pr_query["created_at"]["$lte"] = end_date
+
+            prs_count = await db["github_pull_requests"].count_documents(pr_query)
+
+            by_source["github"] = commits_count + prs_count
+            by_type["commit"] = commits_count
+            by_type["pull_request"] = prs_count
             total += commits_count + prs_count
-        
+
         # Slack
-        if 'slack' in sources:
+        if "slack" in sources:
             slack_query = {}
             if member_name:
-                slack_query['user_name'] = member_name.lower()
+                slack_query["user_name"] = member_name.lower()
             if start_date:
-                slack_query['posted_at'] = {'$gte': start_date}
+                slack_query["posted_at"] = {"$gte": start_date}
             if end_date:
-                slack_query['posted_at'] = slack_query.get('posted_at', {})
-                slack_query['posted_at']['$lte'] = end_date
-            
-            slack_count = await db['slack_messages'].count_documents(slack_query)
-            by_source['slack'] = slack_count
-            by_type['message'] = slack_count
+                slack_query["posted_at"] = slack_query.get("posted_at", {})
+                slack_query["posted_at"]["$lte"] = end_date
+
+            slack_count = await db["slack_messages"].count_documents(slack_query)
+            by_source["slack"] = slack_count
+            by_type["message"] = slack_count
             total += slack_count
-        
+
         # Notion
-        if 'notion' in sources:
+        if "notion" in sources:
             notion_query = {}
             if member_name:
                 notion_query = {
-                    '$or': [
-                        {'created_by.name': member_name},
-                        {'last_edited_by.name': member_name}
+                    "$or": [
+                        {"created_by.name": member_name},
+                        {"last_edited_by.name": member_name},
                     ]
                 }
             if start_date:
-                notion_query['last_edited_time'] = {'$gte': start_date}
+                notion_query["last_edited_time"] = {"$gte": start_date}
             if end_date:
-                notion_query['last_edited_time'] = notion_query.get('last_edited_time', {})
-                notion_query['last_edited_time']['$lte'] = end_date
-            
-            notion_count = await db['notion_pages'].count_documents(notion_query)
-            by_source['notion'] = notion_count
-            by_type['page_edit'] = notion_count
+                notion_query["last_edited_time"] = notion_query.get(
+                    "last_edited_time", {}
+                )
+                notion_query["last_edited_time"]["$lte"] = end_date
+
+            notion_count = await db["notion_pages"].count_documents(notion_query)
+            by_source["notion"] = notion_count
+            by_type["page_edit"] = notion_count
             total += notion_count
-        
+
         # Drive
-        if 'drive' in sources:
+        if "drive" in sources:
             drive_query = {}
             if member_name or member_email:
                 # Try both member name and email
@@ -1865,97 +2462,91 @@ class Query:
                     identifiers.append(member_name)
                 if member_email:
                     identifiers.append(member_email)
-                drive_query['actor_name'] = {'$in': identifiers}
+                drive_query["actor_name"] = {"$in": identifiers}
             if start_date:
-                drive_query['time'] = {'$gte': start_date}
+                drive_query["time"] = {"$gte": start_date}
             if end_date:
-                drive_query['time'] = drive_query.get('time', {})
-                drive_query['time']['$lte'] = end_date
-            
-            drive_count = await db['drive_activities'].count_documents(drive_query)
-            by_source['drive'] = drive_count
+                drive_query["time"] = drive_query.get("time", {})
+                drive_query["time"]["$lte"] = end_date
+
+            drive_count = await db["drive_activities"].count_documents(drive_query)
+            by_source["drive"] = drive_count
             total += drive_count
-        
+
         return ActivitySummary(
             total=total,
             by_source=by_source,
             by_type=by_type,
             date_range_start=start_date,
-            date_range_end=end_date
+            date_range_end=end_date,
         )
-    
+
     @strawberry.field
     async def member_collaborations(
-        self,
-        info,
-        name: str,
-        days: int = 90,
-        limit: int = 10,
-        min_score: float = 5.0
+        self, info, name: str, days: int = 90, limit: int = 10, min_score: float = 5.0
     ) -> CollaborationNetwork:
         """
         Get collaboration network for a member.
-        
+
         Calculates collaboration scores based on:
         - GitHub PR reviews (3.0x weight)
         - Slack thread participation (2.0x weight)
         - Meeting attendance (2.2x weight)
         - GitHub issue discussions (1.5x weight)
-        
+
         Args:
             name: Member name
             days: Time range in days (default: 90)
             limit: Max number of top collaborators to return
             min_score: Minimum collaboration score threshold
-            
+
         Returns:
             CollaborationNetwork with top collaborators
         """
-        db = info.context['db']
-        
+        db = info.context["db"]
+
         from datetime import timedelta
+
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
-        
+
         collaborations = await calculate_member_collaborations(
             db, name, start_date, end_date, min_score
         )
-        
+
         # Sort by total score descending
         sorted_collaborations = sorted(
-            collaborations.values(),
-            key=lambda x: x['total_score'],
-            reverse=True
+            collaborations.values(), key=lambda x: x["total_score"], reverse=True
         )[:limit]
-        
+
         # Convert to Collaboration objects
         collab_objects = []
         for collab in sorted_collaborations:
             details = [
                 CollaborationDetail(
-                    source=d['source'],
-                    activity_count=d['count'],
-                    score=d['score'],
-                    recent_activity=d.get('recent_activity')
+                    source=d["source"],
+                    activity_count=d["count"],
+                    score=d["score"],
+                    recent_activity=d.get("recent_activity"),
                 )
-                for d in collab['details']
+                for d in collab["details"]
             ]
-            
+
             collab_objects.append(
                 Collaboration(
-                    collaborator_name=collab['name'],
-                    collaborator_id=collab.get('id'),
-                    total_score=collab['total_score'],
+                    collaborator_name=collab["name"],
+                    collaborator_id=collab.get("id"),
+                    total_score=collab["total_score"],
                     collaboration_details=details,
-                    common_projects=collab.get('common_projects', []),
-                    interaction_count=collab['interaction_count'],
-                    first_interaction=collab.get('first_interaction'),
-                    last_interaction=collab.get('last_interaction')
+                    common_projects=collab.get("common_projects", []),
+                    interaction_count=collab["interaction_count"],
+                    first_interaction=collab.get("first_interaction"),
+                    last_interaction=collab.get("last_interaction"),
                 )
             )
-        
-        total_score = sum(c['total_score'] for c in collaborations.values())
-        
+
+        total_score = sum(c["total_score"] for c in collaborations.values())
+
         return CollaborationNetwork(
             member_name=name,
             member_id=None,
@@ -1963,7 +2554,7 @@ class Query:
             total_collaborators=len(collaborations),
             time_range_days=days,
             total_score=total_score,
-            generated_at=datetime.utcnow()
+            generated_at=datetime.utcnow(),
         )
 
 
@@ -1972,53 +2563,55 @@ async def calculate_member_collaborations(
     member_name: str,
     start_date: datetime,
     end_date: datetime,
-    min_score: float = 5.0
+    min_score: float = 5.0,
 ) -> Dict[str, Dict]:
     """
     Calculate collaboration scores for a member with all other members.
-    
+
     Returns:
         Dict mapping collaborator names to their collaboration data
     """
     from collections import defaultdict
-    
-    collaborations = defaultdict(lambda: {
-        'name': '',
-        'total_score': 0.0,
-        'interaction_count': 0,
-        'details': [],
-        'common_projects': set(),
-        'first_interaction': None,
-        'last_interaction': None
-    })
-    
+
+    collaborations = defaultdict(
+        lambda: {
+            "name": "",
+            "total_score": 0.0,
+            "interaction_count": 0,
+            "details": [],
+            "common_projects": set(),
+            "first_interaction": None,
+            "last_interaction": None,
+        }
+    )
+
     # 1. GitHub PR Reviews (weight: 3.0)
     await calculate_github_pr_collaborations(
         db, member_name, start_date, end_date, collaborations
     )
-    
+
     # 2. Slack Thread Participation (weight: 2.0)
     await calculate_slack_thread_collaborations(
         db, member_name, start_date, end_date, collaborations
     )
-    
+
     # 3. Meeting Attendance (weight: 2.2) - DISABLED: No recordings_daily collection
     # await calculate_meeting_collaborations(
     #     db, member_name, start_date, end_date, collaborations
     # )
-    
+
     # 4. GitHub Issue Discussions (weight: 1.5)
     await calculate_github_issue_collaborations(
         db, member_name, start_date, end_date, collaborations
     )
-    
+
     # Filter by minimum score and convert sets to lists
     filtered = {}
     for collab_name, data in collaborations.items():
-        if data['total_score'] >= min_score:
-            data['common_projects'] = list(data['common_projects'])
+        if data["total_score"] >= min_score:
+            data["common_projects"] = list(data["common_projects"])
             filtered[collab_name] = data
-    
+
     return filtered
 
 
@@ -2027,55 +2620,62 @@ async def calculate_github_pr_collaborations(
 ):
     """Calculate collaborations from GitHub PR reviews."""
     # Get member's GitHub username
-    member_id_doc = await db['member_identifiers'].find_one({
-        'member_name': member_name,
-        'source': 'github',
-        'identifier_type': 'username'
-    })
-    
+    member_id_doc = await db["member_identifiers"].find_one(
+        {"member_name": member_name, "source": "github", "identifier_type": "username"}
+    )
+
     if not member_id_doc:
         return
-    
-    github_username = member_id_doc.get('identifier_value')
+
+    github_username = member_id_doc.get("identifier_value")
     if not github_username:
         return
-    
+
     # Find PRs where member is author or reviewer
-    prs = db['github_pull_requests'].find({
-        'created_at': {'$gte': start_date, '$lte': end_date},
-        '$or': [
-            {'author': github_username},
-            {'reviews.reviewer': github_username}
-        ]
-    })
-    
+    prs = db["github_pull_requests"].find(
+        {
+            "created_at": {"$gte": start_date, "$lte": end_date},
+            "$or": [{"author": github_username}, {"reviews.reviewer": github_username}],
+        }
+    )
+
     async for pr in prs:
-        author = pr.get('author', '')
+        author = pr.get("author", "")
         reviewers = set()
-        
-        for review in pr.get('reviews', []):
-            reviewer = review.get('reviewer')
+
+        for review in pr.get("reviews", []):
+            reviewer = review.get("reviewer")
             if reviewer:
                 reviewers.add(reviewer)
-        
+
         # Get project from repository
-        repo = pr.get('repository', '')
+        repo = pr.get("repository", "")
         project_key = await get_project_from_repo(db, repo)
-        
+
         # If member is author, collaborators are reviewers
         if author == github_username:
             for reviewer in reviewers:
                 if reviewer != github_username:
                     await add_collaboration(
-                        db, collaborations, reviewer, 'github_pr_review',
-                        3.0, pr.get('created_at'), project_key
+                        db,
+                        collaborations,
+                        reviewer,
+                        "github_pr_review",
+                        3.0,
+                        pr.get("created_at"),
+                        project_key,
                     )
-        
+
         # If member is reviewer, collaborator is author
         if github_username in reviewers and author != github_username:
             await add_collaboration(
-                db, collaborations, author, 'github_pr_review',
-                3.0, pr.get('created_at'), project_key
+                db,
+                collaborations,
+                author,
+                "github_pr_review",
+                3.0,
+                pr.get("created_at"),
+                project_key,
             )
 
 
@@ -2085,44 +2685,53 @@ async def calculate_slack_thread_collaborations(
     """Calculate collaborations from Slack thread participation."""
     # Find threads where member participated
     member_threads = set()
-    async for msg in db['slack_messages'].find({
-        'user_name': member_name.lower(),
-        'posted_at': {'$gte': start_date, '$lte': end_date},
-        'thread_ts': {'$exists': True, '$ne': None}
-    }):
-        member_threads.add(msg['thread_ts'])
-    
+    async for msg in db["slack_messages"].find(
+        {
+            "user_name": member_name.lower(),
+            "posted_at": {"$gte": start_date, "$lte": end_date},
+            "thread_ts": {"$exists": True, "$ne": None},
+        }
+    ):
+        member_threads.add(msg["thread_ts"])
+
     # For each thread, find co-participants
     for thread_ts in member_threads:
-        messages = db['slack_messages'].find({
-            'thread_ts': thread_ts,
-            'posted_at': {'$gte': start_date, '$lte': end_date}
-        })
-        
+        messages = db["slack_messages"].find(
+            {
+                "thread_ts": thread_ts,
+                "posted_at": {"$gte": start_date, "$lte": end_date},
+            }
+        )
+
         co_participants = set()
         latest_time = None
         channel_id = None
-        
+
         async for msg in messages:
-            user = msg.get('user_name', '')
+            user = msg.get("user_name", "")
             if user and user != member_name.lower():
                 co_participants.add(user)
-            
-            msg_time = msg.get('posted_at')
+
+            msg_time = msg.get("posted_at")
             if msg_time and (not latest_time or msg_time > latest_time):
                 latest_time = msg_time
-            
+
             if not channel_id:
-                channel_id = msg.get('channel_id')
-        
+                channel_id = msg.get("channel_id")
+
         # Get project from channel
         project_key = await get_project_from_channel(db, channel_id)
-        
+
         # Add collaboration for each co-participant
         for co_participant in co_participants:
             await add_collaboration(
-                db, collaborations, co_participant, 'slack_thread',
-                2.0, latest_time, project_key
+                db,
+                collaborations,
+                co_participant,
+                "slack_thread",
+                2.0,
+                latest_time,
+                project_key,
             )
 
 
@@ -2131,30 +2740,39 @@ async def calculate_meeting_collaborations(
 ):
     """Calculate collaborations from meeting attendance."""
     # Find recordings where member participated
-    recordings = db['recordings_daily'].find({
-        'target_date': {
-            '$gte': start_date.strftime('%Y-%m-%d'),
-            '$lte': end_date.strftime('%Y-%m-%d')
-        },
-        'analysis.participants.name': member_name
-    })
-    
+    recordings = db["recordings_daily"].find(
+        {
+            "target_date": {
+                "$gte": start_date.strftime("%Y-%m-%d"),
+                "$lte": end_date.strftime("%Y-%m-%d"),
+            },
+            "analysis.participants.name": member_name,
+        }
+    )
+
     async for recording in recordings:
-        participants = recording.get('analysis', {}).get('participants', [])
-        meeting_date_str = recording.get('target_date')
-        meeting_date = datetime.fromisoformat(meeting_date_str) if meeting_date_str else None
-        
+        participants = recording.get("analysis", {}).get("participants", [])
+        meeting_date_str = recording.get("target_date")
+        meeting_date = (
+            datetime.fromisoformat(meeting_date_str) if meeting_date_str else None
+        )
+
         # Extract project from title or metadata
-        title = recording.get('title', '')
+        title = recording.get("title", "")
         project_key = extract_project_from_title(title)
-        
+
         # Add collaboration with each co-participant
         for participant in participants:
-            participant_name = participant.get('name', '')
+            participant_name = participant.get("name", "")
             if participant_name and participant_name != member_name:
                 await add_collaboration(
-                    db, collaborations, participant_name, 'meeting',
-                    2.2, meeting_date, project_key
+                    db,
+                    collaborations,
+                    participant_name,
+                    "meeting",
+                    2.2,
+                    meeting_date,
+                    project_key,
                 )
 
 
@@ -2163,146 +2781,162 @@ async def calculate_github_issue_collaborations(
 ):
     """Calculate collaborations from GitHub issue discussions."""
     # Get member's GitHub username
-    member_id_doc = await db['member_identifiers'].find_one({
-        'member_name': member_name,
-        'source': 'github',
-        'identifier_type': 'username'
-    })
-    
+    member_id_doc = await db["member_identifiers"].find_one(
+        {"member_name": member_name, "source": "github", "identifier_type": "username"}
+    )
+
     if not member_id_doc:
         return
-    
-    github_username = member_id_doc.get('identifier_value')
+
+    github_username = member_id_doc.get("identifier_value")
     if not github_username:
         return
-    
+
     # Find issues where member commented
-    issues = db['github_issues'].find({
-        'created_at': {'$gte': start_date, '$lte': end_date},
-        '$or': [
-            {'user.login': github_username},
-            {'assignees.login': github_username}
-        ]
-    })
-    
+    issues = db["github_issues"].find(
+        {
+            "created_at": {"$gte": start_date, "$lte": end_date},
+            "$or": [
+                {"user.login": github_username},
+                {"assignees.login": github_username},
+            ],
+        }
+    )
+
     async for issue in issues:
-        author = issue.get('user', {}).get('login', '')
-        assignees = {a.get('login') for a in issue.get('assignees', [])}
-        
-        repo = issue.get('repository_name', '')
+        author = issue.get("user", {}).get("login", "")
+        assignees = {a.get("login") for a in issue.get("assignees", [])}
+
+        repo = issue.get("repository_name", "")
         project_key = await get_project_from_repo(db, repo)
-        
+
         # Collaborators are author + assignees (excluding self)
         collaborators = {author} | assignees
         collaborators.discard(github_username)
-        collaborators.discard('')
-        
+        collaborators.discard("")
+
         for collaborator in collaborators:
             await add_collaboration(
-                db, collaborations, collaborator, 'github_issue',
-                1.5, issue.get('created_at'), project_key
+                db,
+                collaborations,
+                collaborator,
+                "github_issue",
+                1.5,
+                issue.get("created_at"),
+                project_key,
             )
 
 
 async def add_collaboration(
-    db, collaborations: Dict, identifier: str, source: str,
-    weight: float, timestamp: Optional[datetime], project_key: Optional[str]
+    db,
+    collaborations: Dict,
+    identifier: str,
+    source: str,
+    weight: float,
+    timestamp: Optional[datetime],
+    project_key: Optional[str],
 ):
     """Add a collaboration interaction to the collaborations dict."""
     # Convert GitHub username to member name if needed
-    if source.startswith('github'):
+    if source.startswith("github"):
         member_name = await get_member_name_from_github(db, identifier)
-    elif source.startswith('slack'):
+    elif source.startswith("slack"):
         member_name = await get_member_name_from_slack_username(db, identifier)
     else:
         member_name = identifier.title()
-    
+
     if not member_name or member_name == identifier:
         # Try to capitalize properly
         member_name = identifier.title()
-    
+
     # Calculate recency multiplier (recent = higher score)
     recency_multiplier = 1.0
     if timestamp:
         days_ago = (datetime.utcnow() - timestamp).days
         recency_multiplier = max(0.3, 1.0 - (days_ago / 90))
-    
+
     score = weight * recency_multiplier
-    
+
     # Update collaboration data
     collab = collaborations[member_name]
-    if not collab['name']:
-        collab['name'] = member_name
-    
-    collab['total_score'] += score
-    collab['interaction_count'] += 1
-    
+    if not collab["name"]:
+        collab["name"] = member_name
+
+    collab["total_score"] += score
+    collab["interaction_count"] += 1
+
     # Update timestamps
     if timestamp:
-        if not collab['first_interaction'] or timestamp < collab['first_interaction']:
-            collab['first_interaction'] = timestamp
-        if not collab['last_interaction'] or timestamp > collab['last_interaction']:
-            collab['last_interaction'] = timestamp
-    
+        if not collab["first_interaction"] or timestamp < collab["first_interaction"]:
+            collab["first_interaction"] = timestamp
+        if not collab["last_interaction"] or timestamp > collab["last_interaction"]:
+            collab["last_interaction"] = timestamp
+
     # Add project
     if project_key:
-        collab['common_projects'].add(project_key)
-    
+        collab["common_projects"].add(project_key)
+
     # Add to details
-    existing_detail = next((d for d in collab['details'] if d['source'] == source), None)
+    existing_detail = next(
+        (d for d in collab["details"] if d["source"] == source), None
+    )
     if existing_detail:
-        existing_detail['count'] += 1
-        existing_detail['score'] += score
-        if timestamp and (not existing_detail.get('recent_activity') or timestamp > existing_detail['recent_activity']):
-            existing_detail['recent_activity'] = timestamp
+        existing_detail["count"] += 1
+        existing_detail["score"] += score
+        if timestamp and (
+            not existing_detail.get("recent_activity")
+            or timestamp > existing_detail["recent_activity"]
+        ):
+            existing_detail["recent_activity"] = timestamp
     else:
-        collab['details'].append({
-            'source': source,
-            'count': 1,
-            'score': score,
-            'recent_activity': timestamp
-        })
+        collab["details"].append(
+            {"source": source, "count": 1, "score": score, "recent_activity": timestamp}
+        )
 
 
 async def get_member_name_from_github(db, github_username: str) -> Optional[str]:
     """Get member name from GitHub username."""
-    doc = await db['member_identifiers'].find_one({
-        'source': 'github',
-        'identifier_type': 'username',
-        'identifier_value': github_username
-    })
-    return doc.get('member_name') if doc else None
+    doc = await db["member_identifiers"].find_one(
+        {
+            "source": "github",
+            "identifier_type": "username",
+            "identifier_value": github_username,
+        }
+    )
+    return doc.get("member_name") if doc else None
 
 
 async def get_member_name_from_slack_username(db, slack_username: str) -> Optional[str]:
     """Get member name from Slack username."""
     # Slack stores lowercase usernames
-    doc = await db['member_identifiers'].find_one({
-        'source': 'slack',
-        'identifier_value': {'$regex': f'^{slack_username}$', '$options': 'i'}
-    })
-    return doc.get('member_name') if doc else None
+    doc = await db["member_identifiers"].find_one(
+        {
+            "source": "slack",
+            "identifier_value": {"$regex": f"^{slack_username}$", "$options": "i"},
+        }
+    )
+    return doc.get("member_name") if doc else None
 
 
 async def get_project_from_repo(db, repo_name: str) -> Optional[str]:
     """Get project key from repository name."""
     if not repo_name:
         return None
-    
+
     # Projects collection is empty, so infer from repo name
     repo_lower = repo_name.lower()
-    
-    if 'zk' in repo_lower or 'ooo' in repo_lower or 'zkp' in repo_lower:
-        return 'ooo'
-    elif 'rollup' in repo_lower or 'trh' in repo_lower:
-        return 'trh'
-    elif 'drb' in repo_lower:
-        return 'drb'
-    elif 'eco' in repo_lower or 'grants' in repo_lower:
-        return 'eco'
-    elif 'syb' in repo_lower or 'sybil' in repo_lower:
-        return 'syb'
-    
+
+    if "zk" in repo_lower or "ooo" in repo_lower or "zkp" in repo_lower:
+        return "ooo"
+    elif "rollup" in repo_lower or "trh" in repo_lower:
+        return "trh"
+    elif "drb" in repo_lower:
+        return "drb"
+    elif "eco" in repo_lower or "grants" in repo_lower:
+        return "eco"
+    elif "syb" in repo_lower or "sybil" in repo_lower:
+        return "syb"
+
     return None
 
 
@@ -2310,41 +2944,41 @@ async def get_project_from_channel(db, channel_id: str) -> Optional[str]:
     """Get project key from Slack channel ID."""
     if not channel_id:
         return None
-    
+
     # Get channel name from channels collection
-    channel = await db['slack_channels'].find_one({'channel_id': channel_id})
+    channel = await db["slack_channels"].find_one({"channel_id": channel_id})
     if not channel:
         return None
-    
-    channel_name = channel.get('name', '').lower()
-    
-    if 'ooo' in channel_name or 'zkp' in channel_name:
-        return 'ooo'
-    elif 'trh' in channel_name or 'rollup' in channel_name:
-        return 'trh'
-    elif 'drb' in channel_name:
-        return 'drb'
-    elif 'eco' in channel_name:
-        return 'eco'
-    elif 'syb' in channel_name or 'sybil' in channel_name:
-        return 'syb'
-    
+
+    channel_name = channel.get("name", "").lower()
+
+    if "ooo" in channel_name or "zkp" in channel_name:
+        return "ooo"
+    elif "trh" in channel_name or "rollup" in channel_name:
+        return "trh"
+    elif "drb" in channel_name:
+        return "drb"
+    elif "eco" in channel_name:
+        return "eco"
+    elif "syb" in channel_name or "sybil" in channel_name:
+        return "syb"
+
     return None
 
 
 def extract_project_from_title(title: str) -> Optional[str]:
     """Extract project key from meeting title."""
     title_lower = title.lower()
-    
-    if 'ooo' in title_lower or 'zk' in title_lower:
-        return 'ooo'
-    elif 'trh' in title_lower or 'rollup' in title_lower:
-        return 'trh'
-    elif 'drb' in title_lower:
-        return 'drb'
-    elif 'eco' in title_lower or 'ecosystem' in title_lower:
-        return 'eco'
-    elif 'syb' in title_lower or 'sybil' in title_lower:
-        return 'syb'
-    
+
+    if "ooo" in title_lower or "zk" in title_lower:
+        return "ooo"
+    elif "trh" in title_lower or "rollup" in title_lower:
+        return "trh"
+    elif "drb" in title_lower:
+        return "drb"
+    elif "eco" in title_lower or "ecosystem" in title_lower:
+        return "eco"
+    elif "syb" in title_lower or "sybil" in title_lower:
+        return "syb"
+
     return None
