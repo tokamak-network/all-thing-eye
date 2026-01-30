@@ -886,7 +886,9 @@ async def fetch_gemini_data(
                                 ),
                                 "timestamp": timestamp_str,
                                 "target_date": daily.get("target_date"),
-                                "meeting_count": daily.get("meeting_count", 0),
+                                "total_meetings_that_day": daily.get(
+                                    "meeting_count", 0
+                                ),
                                 "meeting_titles": daily.get("meeting_titles", []),
                                 "speak_count": participant.get("speak_count", 0),
                                 "word_count": participant.get("word_count", 0),
