@@ -440,7 +440,7 @@ export default function CustomExportPage() {
                     </div>
                   </button>
                 ) : (
-                  <div className="space-y-6 relative">
+                  <div className="relative">
                     <button
                       onClick={() => setCollapsedPanel("filter")}
                       className="absolute -right-3 top-4 z-10 w-6 h-6 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
@@ -461,16 +461,18 @@ export default function CustomExportPage() {
                     />
 
                     {error && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm whitespace-pre-line">
+                      <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm whitespace-pre-line">
                         ❌ {error}
                       </div>
                     )}
 
                     {exportMode === "fields" && (
-                      <PreviewTable
-                        selectedFields={selectedFields}
-                        filters={filters}
-                      />
+                      <div className="mt-6">
+                        <PreviewTable
+                          selectedFields={selectedFields}
+                          filters={filters}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
