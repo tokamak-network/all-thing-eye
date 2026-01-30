@@ -152,7 +152,6 @@ export default function DataAIChatPanel({
     setIsLoading(true);
 
     try {
-      // Use chatWithMCPContext (correct function name)
       const response = await api.chatWithMCPContext(
         [
           ...messages.filter(m => m.role !== 'system').map(m => ({
@@ -161,7 +160,7 @@ export default function DataAIChatPanel({
           })),
           { role: "user", content: inputValue },
         ],
-        "qwen3-coder:30b",
+        "qwen3-235b",
         {
           raw_data: cachedData,
           data_stats: dataStats,
