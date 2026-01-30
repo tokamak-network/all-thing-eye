@@ -978,10 +978,11 @@ async def get_activities(
                                     else daily.get("target_date", "")
                                 )
 
+                            analysis = daily.get("analysis", {})
                             activities.append(
                                 ActivityResponse(
                                     id=str(daily.get("_id", "")),
-                                    member_name="System",  # Daily analysis is system-generated
+                                    member_name="System",
                                     source_type="recordings_daily",
                                     activity_type="daily_analysis",
                                     timestamp=timestamp_str,
@@ -991,10 +992,17 @@ async def get_activities(
                                         "total_meeting_time": daily.get(
                                             "total_meeting_time"
                                         ),
+                                        "total_meeting_time_seconds": daily.get(
+                                            "total_meeting_time_seconds", 0
+                                        ),
                                         "status": daily.get("status"),
                                         "model_used": daily.get("model_used"),
                                         "meeting_titles": daily.get(
                                             "meeting_titles", []
+                                        ),
+                                        "summary": analysis.get("summary", {}),
+                                        "participants": analysis.get(
+                                            "participants", []
                                         ),
                                     },
                                 )

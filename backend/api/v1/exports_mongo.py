@@ -1115,8 +1115,14 @@ async def export_activities(
                             "target_date": daily.get("target_date"),
                             "meeting_count": meeting_count,
                             "total_meeting_time": daily.get("total_meeting_time"),
+                            "total_meeting_time_seconds": daily.get(
+                                "total_meeting_time_seconds", 0
+                            ),
                             "meeting_titles": daily.get("meeting_titles", []),
                             "status": daily.get("status"),
+                            "model_used": daily.get("model_used"),
+                            "summary": analysis.get("summary", {}),
+                            "participants": analysis.get("participants", []),
                         }
 
                         activities.append(
