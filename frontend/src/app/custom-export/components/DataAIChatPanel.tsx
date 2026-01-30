@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ArrowsPointingOutIcon } from "@heroicons/react/24/outline";
 
 interface DataAIChatPanelProps {
   selectedFields: string[];
@@ -21,10 +23,15 @@ interface ChatMessage {
   timestamp?: Date;
 }
 
+const AI_CHAT_SESSIONS_KEY = "ai-chat-sessions";
+const AI_CHAT_CURRENT_SESSION_KEY = "ai-chat-current-session";
+const AI_CHAT_MODEL_KEY = "ai-chat-model";
+
 export default function DataAIChatPanel({
   selectedFields,
   filters,
 }: DataAIChatPanelProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -57,7 +64,7 @@ export default function DataAIChatPanel({
     if (selectedFields.length === 0) {
       setMessages([{
         role: "assistant",
-        content: "⚠️ 먼저 왼쪽에서 분석할 필드를 선택해주세요.",
+        content: "⚠️ Please select fields to analyze from the left panel first.",
         timestamp: new Date(),
       }]);
       return;
@@ -105,10 +112,9 @@ export default function DataAIChatPanel({
 
       setDataStats({ total, sources: stats });
 
-      // Add success message
       setMessages([{
         role: "assistant",
-        content: `✅ **데이터 로드 완료!** 총 ${total}건\n\n이제 질문해주세요!`,
+        content: `✅ **Data loaded!** Total ${total} records\n\nAsk me anything about the data!`,
         timestamp: new Date(),
       }]);
 
@@ -116,7 +122,7 @@ export default function DataAIChatPanel({
       console.error("Data load error:", error);
       setMessages([{
         role: "assistant",
-        content: `⚠️ 데이터 로드 실패: ${error.message || "Unknown error"}`,
+        content: `⚠️ Data load failed: ${error.message || "Unknown error"}`,
         timestamp: new Date(),
       }]);
     } finally {
@@ -134,7 +140,7 @@ export default function DataAIChatPanel({
         timestamp: new Date(),
       }, {
         role: "assistant",
-        content: "⚠️ 먼저 **\"데이터 불러오기\"** 버튼을 눌러주세요.",
+        content: "⚠️ Please click **\"Load\"** button first to load data.",
         timestamp: new Date(),
       }]);
       setInputValue("");
@@ -195,7 +201,7 @@ export default function DataAIChatPanel({
       console.error("AI Chat error:", error);
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: `⚠️ 오류: ${error.message || "Unknown error"}`,
+        content: `⚠️ Error: ${error.message || "Unknown error"}`,
         timestamp: new Date(),
       }]);
     } finally {
@@ -211,10 +217,33 @@ export default function DataAIChatPanel({
   };
 
   const quickQuestions = [
-    "가장 활발한 멤버?",
-    "활동 요약",
-    "트렌드 분석",
+    "Most active member?",
+    "Activity summary",
+    "Trend analysis",
   ];
+
+  const openFullscreen = () => {
+    if (messages.length > 0) {
+      const sessionId = `session-${Date.now()}`;
+      const sessionsJson = localStorage.getItem(AI_CHAT_SESSIONS_KEY);
+      const sessions = sessionsJson ? JSON.parse(sessionsJson) : [];
+
+      const newSession = {
+        id: sessionId,
+        title: messages.find((m) => m.role === "user")?.content?.substring(0, 30) + "..." || "Data Analysis",
+        messages: messages,
+        lastTimestamp: new Date().toISOString(),
+        model: "qwen3-235b",
+      };
+
+      sessions.unshift(newSession);
+      localStorage.setItem(AI_CHAT_SESSIONS_KEY, JSON.stringify(sessions));
+      localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
+    }
+
+    localStorage.setItem(AI_CHAT_MODEL_KEY, "qwen3-235b");
+    router.push("/ai-chat");
+  };
 
   // Format selected fields for display
   const fieldsBySource = selectedFields.reduce((acc, field) => {
@@ -231,15 +260,24 @@ export default function DataAIChatPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xl">🤖</span>
-            <h3 className="font-semibold text-white text-sm">AI 데이터 분석</h3>
+            <h3 className="font-semibold text-white text-sm">AI Data Analysis</h3>
           </div>
-          <button
-            onClick={loadData}
-            disabled={isLoading || selectedFields.length === 0}
-            className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-xs rounded transition-colors disabled:opacity-50"
-          >
-            {isLoading ? "⏳" : "🔄"} 불러오기
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={loadData}
+              disabled={isLoading || selectedFields.length === 0}
+              className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-xs rounded transition-colors disabled:opacity-50"
+            >
+              {isLoading ? "⏳" : "🔄"} Load
+            </button>
+            <button
+              onClick={openFullscreen}
+              className="p-1 bg-white/20 hover:bg-white/30 text-white rounded transition-colors"
+              title="Open in fullscreen"
+            >
+              <ArrowsPointingOutIcon className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -275,7 +313,7 @@ export default function DataAIChatPanel({
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 && !cachedData && (
           <div className="text-center text-gray-400 text-sm py-8">
-            <p>👆 &quot;불러오기&quot; 버튼을 눌러 시작하세요</p>
+            <p>👆 Click &quot;Load&quot; to start</p>
           </div>
         )}
         
@@ -310,7 +348,7 @@ export default function DataAIChatPanel({
               <div className="flex items-center gap-2">
                 <div className="animate-spin h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full"></div>
                 <span className="text-xs text-gray-600">
-                  {cachedData ? "분석 중..." : "로딩..."}
+                  {cachedData ? "Analyzing..." : "Loading..."}
                 </span>
               </div>
             </div>
@@ -343,7 +381,7 @@ export default function DataAIChatPanel({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder={cachedData ? "질문하세요..." : "먼저 데이터를 불러와주세요"}
+            placeholder={cachedData ? "Ask a question..." : "Load data first"}
             className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
             disabled={isLoading || !cachedData}
           />
@@ -352,7 +390,7 @@ export default function DataAIChatPanel({
             disabled={isLoading || !inputValue.trim() || !cachedData}
             className="px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
           >
-            전송
+            Send
           </button>
         </div>
       </div>
