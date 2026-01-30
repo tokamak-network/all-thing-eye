@@ -337,7 +337,11 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
             elif source == "notion":
                 results.extend(
                     await fetch_notion_data(
-                        db, members_to_filter, date_filter, member_info_map
+                        db,
+                        members_to_filter,
+                        date_filter,
+                        member_info_map,
+                        body.selected_fields,
                     )
                 )
             elif source == "drive":
@@ -549,59 +553,145 @@ async def fetch_slack_data(
 
 
 async def fetch_notion_data(
-    db, members: List[str], date_filter: dict, member_info_map: dict
+    db,
+    members: List[str],
+    date_filter: dict,
+    member_info_map: dict,
+    selected_fields: Optional[List[str]] = None,
 ) -> List[dict]:
-    """Fetch Notion pages for selected members"""
+    """Fetch Notion data for selected members from various collections"""
     results = []
+
+    notion_fields = [f for f in (selected_fields or []) if f.startswith("notion.")]
+    fetch_pages = not notion_fields or "notion.pages" in notion_fields
+    fetch_content_diffs = "notion.content_diffs" in notion_fields
+    fetch_block_snapshots = "notion.block_snapshots" in notion_fields
+    fetch_comment_snapshots = "notion.comment_snapshots" in notion_fields
 
     for member_name in members:
         identifiers = get_identifiers_for_member(member_name, db)
         member_info = member_info_map.get(member_name, {})
         member_email = (member_info.get("email") or "").strip().lower()
 
-        # Build query
-        query = {}
         or_conditions = []
         if identifiers["notion"]:
             or_conditions.append({"created_by.id": {"$in": identifiers["notion"]}})
             or_conditions.append({"created_by.email": {"$in": identifiers["notion"]}})
-
         if member_email:
             or_conditions.append({"created_by.email": member_email})
-
         or_conditions.append(
             {"created_by.name": {"$regex": f"^{member_name}", "$options": "i"}}
         )
 
-        query["$or"] = or_conditions
+        if fetch_pages:
+            query = {"$or": or_conditions}
+            if date_filter:
+                query["created_time"] = date_filter
+            pages = list(db["notion_pages"].find(query).sort("created_time", -1))
+            for page in pages:
+                title = ""
+                props = page.get("properties", {})
+                for prop_name, prop_value in props.items():
+                    if prop_value.get("type") == "title":
+                        title_arr = prop_value.get("title", [])
+                        if title_arr:
+                            title = title_arr[0].get("plain_text", "")
+                        break
+                results.append(
+                    {
+                        "source": "notion",
+                        "type": "page",
+                        "member_name": member_name,
+                        "member_email": member_info.get("email"),
+                        "timestamp": page.get("created_time"),
+                        "title": title or page.get("id", "Untitled"),
+                        "last_edited": page.get("last_edited_time"),
+                        "parent_type": page.get("parent", {}).get("type"),
+                    }
+                )
 
-        if date_filter:
-            query["created_time"] = date_filter
-
-        pages = list(db["notion_pages"].find(query).sort("created_time", -1))
-        for page in pages:
-            # Get title from properties
-            title = ""
-            props = page.get("properties", {})
-            for prop_name, prop_value in props.items():
-                if prop_value.get("type") == "title":
-                    title_arr = prop_value.get("title", [])
-                    if title_arr:
-                        title = title_arr[0].get("plain_text", "")
-                    break
-
-            results.append(
-                {
-                    "source": "notion",
-                    "type": "page",
-                    "member_name": member_name,
-                    "member_email": member_info.get("email"),
-                    "timestamp": page.get("created_time"),
-                    "title": title or page.get("id", "Untitled"),
-                    "last_edited": page.get("last_edited_time"),
-                    "parent_type": page.get("parent", {}).get("type"),
-                }
+        if fetch_content_diffs:
+            diff_or_conditions = []
+            if identifiers["notion"]:
+                diff_or_conditions.append({"editor_id": {"$in": identifiers["notion"]}})
+            if member_email:
+                diff_or_conditions.append({"editor_email": member_email})
+            diff_or_conditions.append(
+                {"editor_name": {"$regex": f"^{member_name}", "$options": "i"}}
             )
+            diff_query = {"$or": diff_or_conditions} if diff_or_conditions else {}
+            if date_filter:
+                diff_query["timestamp"] = date_filter
+            diffs = list(
+                db["notion_content_diffs"]
+                .find(diff_query)
+                .sort("timestamp", -1)
+                .limit(1000)
+            )
+            for diff in diffs:
+                results.append(
+                    {
+                        "source": "notion",
+                        "type": "content_diff",
+                        "member_name": member_name,
+                        "member_email": member_info.get("email"),
+                        "timestamp": diff.get("timestamp"),
+                        "page_id": diff.get("document_id"),
+                        "page_title": diff.get("document_title"),
+                        "diff_type": diff.get("diff_type"),
+                        "editor_name": diff.get("editor_name"),
+                    }
+                )
+
+        if fetch_block_snapshots:
+            snap_query = {}
+            if date_filter:
+                snap_query["snapshot_time"] = date_filter
+            snapshots = list(
+                db["notion_block_snapshots"]
+                .find(snap_query)
+                .sort("snapshot_time", -1)
+                .limit(1000)
+            )
+            for snap in snapshots:
+                results.append(
+                    {
+                        "source": "notion",
+                        "type": "block_snapshot",
+                        "member_name": member_name,
+                        "member_email": member_info.get("email"),
+                        "timestamp": snap.get("snapshot_time"),
+                        "page_id": snap.get("page_id"),
+                        "block_id": snap.get("block_id"),
+                        "block_type": snap.get("block_type"),
+                        "is_current": snap.get("is_current"),
+                    }
+                )
+
+        if fetch_comment_snapshots:
+            comment_query = {}
+            if date_filter:
+                comment_query["snapshot_time"] = date_filter
+            comments = list(
+                db["notion_comment_snapshots"]
+                .find(comment_query)
+                .sort("snapshot_time", -1)
+                .limit(1000)
+            )
+            for comment in comments:
+                results.append(
+                    {
+                        "source": "notion",
+                        "type": "comment_snapshot",
+                        "member_name": member_name,
+                        "member_email": member_info.get("email"),
+                        "timestamp": comment.get("snapshot_time"),
+                        "page_id": comment.get("page_id"),
+                        "comment_id": comment.get("comment_id"),
+                        "author_name": comment.get("author_name"),
+                        "is_current": comment.get("is_current"),
+                    }
+                )
 
     return results
 
@@ -1038,7 +1128,11 @@ async def export_custom_data(
                 )
             elif source == "notion":
                 source_data = await fetch_notion_data(
-                    db, members_to_filter, date_filter, member_info_map
+                    db,
+                    members_to_filter,
+                    date_filter,
+                    member_info_map,
+                    body.selected_fields,
                 )
             elif source == "drive":
                 source_data = await fetch_drive_data(

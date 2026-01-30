@@ -100,9 +100,10 @@ const staticDataSources: DataSource[] = [
     name: "Notion",
     icon: "📝",
     fields: [
-      { id: "notion.pages", name: "Pages Created", description: "Page count" },
-      { id: "notion.edits", name: "Page Edits", description: "Edit count" },
-      { id: "notion.comments", name: "Comments", description: "Comment count" },
+      { id: "notion.pages", name: "Pages", description: "Page metadata" },
+      { id: "notion.content_diffs", name: "Content Changes", description: "Block/comment diffs" },
+      { id: "notion.block_snapshots", name: "Block Snapshots", description: "Block content history" },
+      { id: "notion.comment_snapshots", name: "Comment Snapshots", description: "Comment history" },
     ],
   },
   {
