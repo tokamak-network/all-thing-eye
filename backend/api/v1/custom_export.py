@@ -363,8 +363,16 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
                     )
                 )
 
-        # Sort by timestamp descending
-        results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        # Sort by timestamp descending (handle mixed datetime/string formats)
+        def get_sort_key(x):
+            ts = x.get("timestamp")
+            if ts is None:
+                return ""
+            if isinstance(ts, str):
+                return ts
+            return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+
+        results.sort(key=get_sort_key, reverse=True)
 
         # Apply pagination
         total_count = len(results)
