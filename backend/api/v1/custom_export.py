@@ -641,6 +641,23 @@ async def fetch_notion_data(
                 .limit(1000)
             )
             for diff in diffs:
+                changes = diff.get("changes", {})
+                added = changes.get("added", [])
+                deleted = changes.get("deleted", [])
+                modified = changes.get("modified", [])
+
+                added_summary = "; ".join(
+                    c.get("content", "")[:100] for c in added if c.get("content")
+                )
+                deleted_summary = "; ".join(
+                    c.get("content", "")[:100] for c in deleted if c.get("content")
+                )
+                modified_summary = "; ".join(
+                    f"{c.get('old_content', '')[:50]} → {c.get('new_content', '')[:50]}"
+                    for c in modified
+                    if c.get("old_content") or c.get("new_content")
+                )
+
                 results.append(
                     {
                         "source": "notion",
@@ -652,6 +669,16 @@ async def fetch_notion_data(
                         "page_title": diff.get("document_title"),
                         "diff_type": diff.get("diff_type"),
                         "editor_name": diff.get("editor_name"),
+                        "added_count": len(added),
+                        "deleted_count": len(deleted),
+                        "modified_count": len(modified),
+                        "added_summary": added_summary[:500] if added_summary else "",
+                        "deleted_summary": deleted_summary[:500]
+                        if deleted_summary
+                        else "",
+                        "modified_summary": modified_summary[:500]
+                        if modified_summary
+                        else "",
                     }
                 )
 
