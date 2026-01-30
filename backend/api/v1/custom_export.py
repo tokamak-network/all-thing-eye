@@ -565,8 +565,6 @@ async def fetch_notion_data(
     notion_fields = [f for f in (selected_fields or []) if f.startswith("notion.")]
     fetch_pages = not notion_fields or "notion.pages" in notion_fields
     fetch_content_diffs = "notion.content_diffs" in notion_fields
-    fetch_block_snapshots = "notion.block_snapshots" in notion_fields
-    fetch_comment_snapshots = "notion.comment_snapshots" in notion_fields
 
     for member_name in members:
         identifiers = get_identifiers_for_member(member_name, db)
@@ -640,56 +638,6 @@ async def fetch_notion_data(
                         "page_title": diff.get("document_title"),
                         "diff_type": diff.get("diff_type"),
                         "editor_name": diff.get("editor_name"),
-                    }
-                )
-
-        if fetch_block_snapshots:
-            snap_query = {}
-            if date_filter:
-                snap_query["snapshot_time"] = date_filter
-            snapshots = list(
-                db["notion_block_snapshots"]
-                .find(snap_query)
-                .sort("snapshot_time", -1)
-                .limit(1000)
-            )
-            for snap in snapshots:
-                results.append(
-                    {
-                        "source": "notion",
-                        "type": "block_snapshot",
-                        "member_name": member_name,
-                        "member_email": member_info.get("email"),
-                        "timestamp": snap.get("snapshot_time"),
-                        "page_id": snap.get("page_id"),
-                        "block_id": snap.get("block_id"),
-                        "block_type": snap.get("block_type"),
-                        "is_current": snap.get("is_current"),
-                    }
-                )
-
-        if fetch_comment_snapshots:
-            comment_query = {}
-            if date_filter:
-                comment_query["snapshot_time"] = date_filter
-            comments = list(
-                db["notion_comment_snapshots"]
-                .find(comment_query)
-                .sort("snapshot_time", -1)
-                .limit(1000)
-            )
-            for comment in comments:
-                results.append(
-                    {
-                        "source": "notion",
-                        "type": "comment_snapshot",
-                        "member_name": member_name,
-                        "member_email": member_info.get("email"),
-                        "timestamp": comment.get("snapshot_time"),
-                        "page_id": comment.get("page_id"),
-                        "comment_id": comment.get("comment_id"),
-                        "author_name": comment.get("author_name"),
-                        "is_current": comment.get("is_current"),
                     }
                 )
 
