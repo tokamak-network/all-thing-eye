@@ -627,7 +627,13 @@ async def fetch_notion_data(
             )
             diff_query = {"$or": diff_or_conditions} if diff_or_conditions else {}
             if date_filter:
-                diff_query["timestamp"] = date_filter
+                ts_filter = {}
+                for op, val in date_filter.items():
+                    if hasattr(val, "isoformat"):
+                        ts_filter[op] = val.isoformat() + "Z"
+                    else:
+                        ts_filter[op] = val
+                diff_query["timestamp"] = ts_filter
             diffs = list(
                 db["notion_content_diffs"]
                 .find(diff_query)
@@ -1107,8 +1113,15 @@ async def export_custom_data(
             results.extend(source_data)
             logger.info(f"Fetched {len(source_data)} records from {source}")
 
-        # Sort by timestamp
-        results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        def get_sort_key(x):
+            ts = x.get("timestamp")
+            if ts is None:
+                return ""
+            if isinstance(ts, str):
+                return ts
+            return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+
+        results.sort(key=get_sort_key, reverse=True)
 
         if not results:
             logger.warning(
