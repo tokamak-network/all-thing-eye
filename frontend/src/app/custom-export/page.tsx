@@ -59,8 +59,7 @@ export default function CustomExportPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isFilterPanelCollapsed, setIsFilterPanelCollapsed] = useState(false);
-  const [isChatPanelCollapsed, setIsChatPanelCollapsed] = useState(false);
+  const [collapsedPanel, setCollapsedPanel] = useState<"filter" | "chat" | null>(null);
 
   const handleFieldToggle = (fieldId: string) => {
     setSelectedFields((prev) =>
@@ -411,7 +410,7 @@ export default function CustomExportPage() {
               </div>
             </div>
 
-            <div className="flex gap-6">
+            <div className="flex gap-6 items-start">
               {/* Left Column: Field/Collection Selector */}
               <div className="w-80 flex-shrink-0">
                 <FieldSelector
@@ -425,17 +424,17 @@ export default function CustomExportPage() {
 
               {/* Middle Column: Filters + Preview (Collapsible) */}
               <div className={`transition-all duration-300 ease-in-out ${
-                isFilterPanelCollapsed ? "w-10" : "flex-1 min-w-[400px]"
+                collapsedPanel === "filter" ? "w-10" : "flex-1 min-w-[400px]"
               }`}>
-                {isFilterPanelCollapsed ? (
+                {collapsedPanel === "filter" ? (
                   <button
-                    onClick={() => setIsFilterPanelCollapsed(false)}
-                    className="h-full w-10 bg-white rounded-lg shadow-sm border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                    onClick={() => setCollapsedPanel(null)}
+                    className="h-[600px] w-10 bg-white rounded-lg shadow-sm border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
                     title="Expand Filter Panel"
                   >
                     <div className="flex flex-col items-center gap-2">
                       <ChevronRightIcon className="w-5 h-5 text-gray-500" />
-                      <span className="text-xs text-gray-500 writing-mode-vertical transform rotate-180" style={{ writingMode: 'vertical-rl' }}>
+                      <span className="text-xs text-gray-500" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                         Filters & Preview
                       </span>
                     </div>
@@ -443,7 +442,7 @@ export default function CustomExportPage() {
                 ) : (
                   <div className="space-y-6 relative">
                     <button
-                      onClick={() => setIsFilterPanelCollapsed(true)}
+                      onClick={() => setCollapsedPanel("filter")}
                       className="absolute -right-3 top-4 z-10 w-6 h-6 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
                       title="Collapse Filter Panel"
                     >
@@ -478,12 +477,12 @@ export default function CustomExportPage() {
               </div>
 
               {/* Right Column: AI Chat Panel (Collapsible) */}
-              <div className={`transition-all duration-300 ease-in-out ${
-                isChatPanelCollapsed ? "w-10" : isFilterPanelCollapsed ? "flex-1" : "w-96"
-              } flex-shrink-0`}>
-                {isChatPanelCollapsed ? (
+              <div className={`transition-all duration-300 ease-in-out flex-shrink-0 ${
+                collapsedPanel === "chat" ? "w-10" : collapsedPanel === "filter" ? "flex-1" : "w-96"
+              }`}>
+                {collapsedPanel === "chat" ? (
                   <button
-                    onClick={() => setIsChatPanelCollapsed(false)}
+                    onClick={() => setCollapsedPanel(null)}
                     className="h-[600px] w-10 bg-gradient-to-b from-blue-500 to-purple-500 rounded-lg shadow-sm flex items-center justify-center hover:from-blue-600 hover:to-purple-600 transition-colors"
                     title="Expand AI Chat"
                   >
@@ -497,7 +496,7 @@ export default function CustomExportPage() {
                 ) : (
                   <div className="relative">
                     <button
-                      onClick={() => setIsChatPanelCollapsed(true)}
+                      onClick={() => setCollapsedPanel("chat")}
                       className="absolute -left-3 top-4 z-10 w-6 h-6 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
                       title="Collapse AI Chat"
                     >
