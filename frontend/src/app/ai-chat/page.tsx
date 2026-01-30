@@ -34,6 +34,12 @@ interface ChatSession {
   messages: Message[];
   lastTimestamp: string;
   model: string;
+  dataContext?: {
+    raw_data: any;
+    data_stats: any;
+    filters: any;
+    selected_fields: string[];
+  };
 }
 
 const quickQuestions = [
@@ -60,6 +66,7 @@ export default function AIChat() {
   const [messages, setMessages] = useState<Message[]>([systemMessage]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentDataContext, setCurrentDataContext] = useState<ChatSession['dataContext'] | null>(null);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("qwen3-235b");
@@ -82,16 +89,18 @@ export default function AIChat() {
         messages: s.messages.map((m: any) => ({
           ...m,
           timestamp: new Date(m.timestamp)
-        }))
+        })),
+        dataContext: s.dataContext || null,
       }));
       setSessions(parsedSessions);
       
       const lastSessionId = localStorage.getItem(AI_CHAT_CURRENT_SESSION_KEY);
       if (lastSessionId) {
-        const lastSession = parsedSessions.find((s: any) => s.id === lastSessionId);
+        const lastSession = parsedSessions.find((s: ChatSession) => s.id === lastSessionId);
         if (lastSession) {
           setCurrentSessionId(lastSessionId);
           setMessages(lastSession.messages);
+          setCurrentDataContext(lastSession.dataContext || null);
         }
       }
     }
@@ -136,7 +145,6 @@ export default function AIChat() {
     }
   }, [messages, currentSessionId]);
 
-  // Create a new chat session
   const createNewSession = () => {
     const sessionId = `session-${Date.now()}`;
     const newSession: ChatSession = {
@@ -150,6 +158,7 @@ export default function AIChat() {
     setSessions(prev => [newSession, ...prev]);
     setCurrentSessionId(sessionId);
     setMessages([systemMessage]);
+    setCurrentDataContext(null);
     localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
   };
 
@@ -158,6 +167,7 @@ export default function AIChat() {
     if (session) {
       setCurrentSessionId(sessionId);
       setMessages(session.messages);
+      setCurrentDataContext(session.dataContext || null);
       localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
     }
   };
@@ -173,6 +183,7 @@ export default function AIChat() {
     if (currentSessionId === sessionId) {
       setCurrentSessionId(null);
       setMessages([systemMessage]);
+      setCurrentDataContext(null);
       localStorage.removeItem(AI_CHAT_CURRENT_SESSION_KEY);
     }
   };
@@ -288,13 +299,21 @@ export default function AIChat() {
       setAgentIterations(null);
       setAgentToolCalls([]);
       
-      // Use Agent Mode by default
-      response = await api.chatWithAgent(
-        apiMessages,
-        selectedModel,
-        10,
-        controller.signal
-      );
+      if (currentDataContext) {
+        response = await api.chatWithMCPContext(
+          apiMessages,
+          selectedModel,
+          currentDataContext,
+          controller.signal
+        );
+      } else {
+        response = await api.chatWithAgent(
+          apiMessages,
+          selectedModel,
+          10,
+          controller.signal
+        );
+      }
 
       let aiResponseContent = "";
       
@@ -398,7 +417,11 @@ export default function AIChat() {
               }`}
             >
               <div className="flex items-center gap-3 overflow-hidden">
-                <ChatBubbleLeftIcon className={`w-4 h-4 flex-shrink-0 ${currentSessionId === session.id ? 'text-purple-500' : 'text-gray-400'}`} />
+                {session.dataContext ? (
+                  <span className="text-base flex-shrink-0">📊</span>
+                ) : (
+                  <ChatBubbleLeftIcon className={`w-4 h-4 flex-shrink-0 ${currentSessionId === session.id ? 'text-purple-500' : 'text-gray-400'}`} />
+                )}
                 <span className="truncate">{session.title}</span>
               </div>
               <button
@@ -440,7 +463,7 @@ export default function AIChat() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-lg">
                 <span className="text-sm font-medium text-purple-900">
-                  🤖 Agent Mode
+                  {currentDataContext ? "📊 Data Analysis Mode" : "🤖 Agent Mode"}
                 </span>
               </div>
 

@@ -223,25 +223,49 @@ export default function DataAIChatPanel({
   ];
 
   const openFullscreen = () => {
-    if (messages.length > 0) {
-      const sessionId = `session-${Date.now()}`;
-      const sessionsJson = localStorage.getItem(AI_CHAT_SESSIONS_KEY);
-      const sessions = sessionsJson ? JSON.parse(sessionsJson) : [];
+    const sessionId = `data-analysis-${Date.now()}`;
+    const sessionsJson = localStorage.getItem(AI_CHAT_SESSIONS_KEY);
+    const sessions = sessionsJson ? JSON.parse(sessionsJson) : [];
 
-      const newSession = {
-        id: sessionId,
-        title: messages.find((m) => m.role === "user")?.content?.substring(0, 30) + "..." || "Data Analysis",
-        messages: messages,
-        lastTimestamp: new Date().toISOString(),
-        model: "qwen3-235b",
-      };
+    const contextMessage = cachedData ? {
+      id: `ctx-${Date.now()}`,
+      role: "system" as const,
+      content: `📊 **Data Analysis Context Loaded**\n\n` +
+        `**Period:** ${filters.startDate} ~ ${filters.endDate}\n` +
+        `**Fields:** ${selectedFields.join(", ")}\n` +
+        `**Total Records:** ${dataStats?.total || 0}\n\n` +
+        `Ask me anything about this data!`,
+      timestamp: new Date(),
+    } : null;
 
-      sessions.unshift(newSession);
-      localStorage.setItem(AI_CHAT_SESSIONS_KEY, JSON.stringify(sessions));
-      localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
-    }
+    const sessionMessages = contextMessage 
+      ? [contextMessage, ...messages.filter(m => m.role !== "system")]
+      : messages;
 
+    const newSession = {
+      id: sessionId,
+      title: `📊 Data Analysis (${filters.startDate})`,
+      messages: sessionMessages,
+      lastTimestamp: new Date().toISOString(),
+      model: "qwen3-235b",
+      dataContext: cachedData ? {
+        raw_data: cachedData,
+        data_stats: dataStats,
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          project: filters.project,
+          selectedMembers: filters.selectedMembers,
+        },
+        selected_fields: selectedFields,
+      } : null,
+    };
+
+    sessions.unshift(newSession);
+    localStorage.setItem(AI_CHAT_SESSIONS_KEY, JSON.stringify(sessions));
+    localStorage.setItem(AI_CHAT_CURRENT_SESSION_KEY, sessionId);
     localStorage.setItem(AI_CHAT_MODEL_KEY, "qwen3-235b");
+    
     router.push("/ai-chat");
   };
 
