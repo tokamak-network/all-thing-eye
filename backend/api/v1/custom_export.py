@@ -857,31 +857,89 @@ async def fetch_gemini_data(
                 key_decisions = summary.get("key_decisions", []) if summary else []
                 participants = analysis.get("participants", []) if analysis else []
 
-                results.append(
-                    {
-                        "source": "gemini",
-                        "type": "daily_analysis",
-                        "member_name": "System",
-                        "member_email": None,
-                        "timestamp": timestamp_str,
-                        "target_date": daily.get("target_date"),
-                        "meeting_count": daily.get("meeting_count", 0),
-                        "total_meeting_time": daily.get("total_meeting_time"),
-                        "total_meeting_time_seconds": daily.get(
-                            "total_meeting_time_seconds", 0
-                        ),
-                        "meeting_titles": daily.get("meeting_titles", []),
-                        "topics_count": len(topics) if isinstance(topics, list) else 0,
-                        "decisions_count": len(key_decisions)
-                        if isinstance(key_decisions, list)
-                        else 0,
-                        "participants_count": len(participants)
-                        if isinstance(participants, list)
-                        else 0,
-                        "status": daily.get("status"),
-                        "model_used": daily.get("model_used"),
-                    }
-                )
+                if isinstance(participants, list) and participants:
+                    for participant in participants:
+                        if not isinstance(participant, dict):
+                            continue
+
+                        p_name = participant.get("name", "Unknown")
+
+                        if members:
+                            match_found = False
+                            for member in members:
+                                if (
+                                    member.lower() in p_name.lower()
+                                    or p_name.lower() in member.lower()
+                                ):
+                                    match_found = True
+                                    break
+                            if not match_found:
+                                continue
+
+                        results.append(
+                            {
+                                "source": "gemini",
+                                "type": "meeting_participation",
+                                "member_name": p_name,
+                                "member_email": member_info_map.get(p_name, {}).get(
+                                    "email"
+                                ),
+                                "timestamp": timestamp_str,
+                                "target_date": daily.get("target_date"),
+                                "meeting_count": daily.get("meeting_count", 0),
+                                "meeting_titles": daily.get("meeting_titles", []),
+                                "speak_count": participant.get("speak_count", 0),
+                                "word_count": participant.get("word_count", 0),
+                                "speaking_time": participant.get("speaking_time", ""),
+                                "speaking_time_seconds": participant.get(
+                                    "speaking_time_seconds", 0
+                                ),
+                                "speaking_percentage": participant.get(
+                                    "speaking_percentage", 0
+                                ),
+                                "key_activities": "; ".join(
+                                    participant.get("key_activities", [])
+                                )[:500],
+                                "progress": "; ".join(participant.get("progress", []))[
+                                    :500
+                                ],
+                                "issues": "; ".join(participant.get("issues", []))[
+                                    :500
+                                ],
+                                "action_items": "; ".join(
+                                    participant.get("action_items", [])
+                                )[:500],
+                            }
+                        )
+                else:
+                    # Fallback: create summary row if no participants
+                    results.append(
+                        {
+                            "source": "gemini",
+                            "type": "daily_analysis",
+                            "member_name": "System",
+                            "member_email": None,
+                            "timestamp": timestamp_str,
+                            "target_date": daily.get("target_date"),
+                            "meeting_count": daily.get("meeting_count", 0),
+                            "total_meeting_time": daily.get("total_meeting_time"),
+                            "total_meeting_time_seconds": daily.get(
+                                "total_meeting_time_seconds", 0
+                            ),
+                            "meeting_titles": daily.get("meeting_titles", []),
+                            "topics_count": len(topics)
+                            if isinstance(topics, list)
+                            else 0,
+                            "decisions_count": len(key_decisions)
+                            if isinstance(key_decisions, list)
+                            else 0,
+                            "participants_count": len(participants)
+                            if isinstance(participants, list)
+                            else 0,
+                            "status": daily.get("status"),
+                            "model_used": daily.get("model_used"),
+                        }
+                    )
             except Exception as e:
                 logger.warning(f"Error processing recordings_daily document: {e}")
                 import traceback
