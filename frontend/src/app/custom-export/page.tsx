@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import FieldSelector from "./components/FieldSelector";
 import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
@@ -58,6 +59,8 @@ export default function CustomExportPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFilterPanelCollapsed, setIsFilterPanelCollapsed] = useState(false);
+  const [isChatPanelCollapsed, setIsChatPanelCollapsed] = useState(false);
 
   const handleFieldToggle = (fieldId: string) => {
     setSelectedFields((prev) =>
@@ -408,9 +411,9 @@ export default function CustomExportPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            <div className="flex gap-6">
               {/* Left Column: Field/Collection Selector */}
-              <div className="xl:col-span-1">
+              <div className="w-80 flex-shrink-0">
                 <FieldSelector
                   selectedFields={selectedFields}
                   onFieldToggle={handleFieldToggle}
@@ -420,42 +423,92 @@ export default function CustomExportPage() {
                 />
               </div>
 
-              {/* Middle Column: Filters + Preview */}
-              <div className="xl:col-span-2 space-y-6">
-                {/* Filter Panel */}
-                <FilterPanel
-                  filters={filters}
-                  onFiltersChange={setFilters}
-                  onPreview={handlePreview}
-                  onExport={handleExport}
-                  onSaveTemplate={handleSaveTemplate}
-                  isLoading={isLoading}
-                  exportMode={exportMode}
-                  exportFormat={exportFormat}
-                />
+              {/* Middle Column: Filters + Preview (Collapsible) */}
+              <div className={`transition-all duration-300 ease-in-out ${
+                isFilterPanelCollapsed ? "w-10" : "flex-1 min-w-[400px]"
+              }`}>
+                {isFilterPanelCollapsed ? (
+                  <button
+                    onClick={() => setIsFilterPanelCollapsed(false)}
+                    className="h-full w-10 bg-white rounded-lg shadow-sm border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                    title="Expand Filter Panel"
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <ChevronRightIcon className="w-5 h-5 text-gray-500" />
+                      <span className="text-xs text-gray-500 writing-mode-vertical transform rotate-180" style={{ writingMode: 'vertical-rl' }}>
+                        Filters & Preview
+                      </span>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="space-y-6 relative">
+                    <button
+                      onClick={() => setIsFilterPanelCollapsed(true)}
+                      className="absolute -right-3 top-4 z-10 w-6 h-6 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                      title="Collapse Filter Panel"
+                    >
+                      <ChevronLeftIcon className="w-4 h-4 text-gray-500" />
+                    </button>
 
-                {/* Error Message */}
-                {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm whitespace-pre-line">
-                    ❌ {error}
+                    <FilterPanel
+                      filters={filters}
+                      onFiltersChange={setFilters}
+                      onPreview={handlePreview}
+                      onExport={handleExport}
+                      onSaveTemplate={handleSaveTemplate}
+                      isLoading={isLoading}
+                      exportMode={exportMode}
+                      exportFormat={exportFormat}
+                    />
+
+                    {error && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm whitespace-pre-line">
+                        ❌ {error}
+                      </div>
+                    )}
+
+                    {exportMode === "fields" && (
+                      <PreviewTable
+                        selectedFields={selectedFields}
+                        filters={filters}
+                      />
+                    )}
                   </div>
-                )}
-
-                {/* Export Configuration Summary */}
-                {exportMode === "fields" && (
-                  <PreviewTable
-                    selectedFields={selectedFields}
-                    filters={filters}
-                  />
                 )}
               </div>
 
-              {/* Right Column: AI Chat Panel */}
-              <div className="xl:col-span-1">
-                <DataAIChatPanel
-                  selectedFields={selectedFields}
-                  filters={filters}
-                />
+              {/* Right Column: AI Chat Panel (Collapsible) */}
+              <div className={`transition-all duration-300 ease-in-out ${
+                isChatPanelCollapsed ? "w-10" : isFilterPanelCollapsed ? "flex-1" : "w-96"
+              } flex-shrink-0`}>
+                {isChatPanelCollapsed ? (
+                  <button
+                    onClick={() => setIsChatPanelCollapsed(false)}
+                    className="h-[600px] w-10 bg-gradient-to-b from-blue-500 to-purple-500 rounded-lg shadow-sm flex items-center justify-center hover:from-blue-600 hover:to-purple-600 transition-colors"
+                    title="Expand AI Chat"
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <ChevronLeftIcon className="w-5 h-5 text-white" />
+                      <span className="text-xs text-white font-medium" style={{ writingMode: 'vertical-rl' }}>
+                        🤖 AI Chat
+                      </span>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsChatPanelCollapsed(true)}
+                      className="absolute -left-3 top-4 z-10 w-6 h-6 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                      title="Collapse AI Chat"
+                    >
+                      <ChevronRightIcon className="w-4 h-4 text-gray-500" />
+                    </button>
+                    <DataAIChatPanel
+                      selectedFields={selectedFields}
+                      filters={filters}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </>
