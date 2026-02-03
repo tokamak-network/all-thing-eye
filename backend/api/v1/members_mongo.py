@@ -1049,6 +1049,7 @@ async def get_member_detail(
             "by_source": {},
             "by_type": {},
             "recent_activities": [],
+            "daily_trends": [],  # Initialize to empty array for charts
         }
 
         # GitHub statistics - use both member_mappings and direct identifiers
@@ -1061,7 +1062,10 @@ async def get_member_detail(
             await db["member_identifiers"]
             .find(
                 {
-                    "$or": [{"member_id": member_id}, {"member_id": member_obj_id}],
+                    "$or": [
+                        {"member_id": actual_member_id},
+                        {"member_id": member_obj_id},
+                    ],
                     "source": "github",
                 }
             )
@@ -1159,7 +1163,10 @@ async def get_member_detail(
             await db["member_identifiers"]
             .find(
                 {
-                    "$or": [{"member_id": member_id}, {"member_id": member_obj_id}],
+                    "$or": [
+                        {"member_id": actual_member_id},
+                        {"member_id": member_obj_id},
+                    ],
                     "source": "slack",
                 }
             )
@@ -1407,7 +1414,10 @@ async def get_member_detail(
             activity_stats["daily_trends"] = daily_trends
 
         except Exception as e:
+            import traceback
+
             logger.error(f"Failed to generate member daily trends: {e}")
+            logger.error(traceback.format_exc())
 
         logger.info(f"Retrieved member detail: {member_name} ({actual_member_id})")
 
