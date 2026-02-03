@@ -1,14 +1,8 @@
 import os
 import json
+import httpx
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, Protocol
-
-try:
-    import anthropic
-
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
 
 
 class DiagnosisResultProtocol(Protocol):
@@ -36,12 +30,13 @@ class FixResult:
 
 
 class AIFixer:
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if ANTHROPIC_AVAILABLE and self.api_key:
-            self.client = anthropic.Anthropic(api_key=self.api_key)
-        else:
-            self.client = None
+    DEFAULT_API_URL = "https://api.ai.tokamak.network"
+    DEFAULT_MODEL = "litellm/claude-opus-4.5"
+
+    def __init__(self, api_key: Optional[str] = None, api_url: Optional[str] = None):
+        self.api_key = api_key or os.environ.get("AI_API_KEY", "")
+        self.api_url = api_url or os.environ.get("AI_API_URL", self.DEFAULT_API_URL)
+        self.model = os.environ.get("AI_MODEL", self.DEFAULT_MODEL)
 
     def generate_identifier_insert_script(
         self, member_name: str, source: str, identifier_value: str
@@ -176,19 +171,39 @@ db.member_identifiers.insertOne({{
         return "\n".join(lines)
 
     async def generate_fix(self, diagnosis: DiagnosisResultProtocol) -> FixResult:
-        if not self.client:
+        if not self.api_key:
             return self.generate_fix_without_ai(diagnosis)
 
         prompt = self._build_claude_prompt(diagnosis)
 
         try:
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            content = response.content[0].text
-            return self._parse_claude_response(content, diagnosis)
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.api_url}/v1/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                        "max_tokens": 1024,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+
+                if response.status_code != 200:
+                    return self.generate_fix_without_ai(diagnosis)
+
+                data = response.json()
+                content = (
+                    data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                )
+
+                if not content:
+                    return self.generate_fix_without_ai(diagnosis)
+
+                return self._parse_claude_response(content, diagnosis)
 
         except Exception:
             return self.generate_fix_without_ai(diagnosis)
