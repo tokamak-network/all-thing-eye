@@ -944,11 +944,11 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
 
     if command == "/ati-schedule":
         await open_schedule_modal(trigger_id, user_id)
-        return ""
+        return Response(status_code=200)
 
     elif command == "/ati-report":
         await open_report_modal(trigger_id, channel_id)
-        return ""
+        return Response(status_code=200)
 
     return {"text": f"Unknown command: {command}"}
 
