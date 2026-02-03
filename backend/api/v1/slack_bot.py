@@ -162,11 +162,30 @@ async def process_slack_mention(event: Dict[str, Any]):
             )
 
 
-async def open_schedule_modal(trigger_id: str):
-    """Open the Block Kit modal for scheduling reports."""
+async def get_user_timezone(user_id: str) -> str:
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://slack.com/api/users.info",
+                params={"user": user_id},
+                headers={"Authorization": f"Bearer {bot_token}"},
+            )
+            data = resp.json()
+            if data.get("ok"):
+                return data.get("user", {}).get("tz", "Asia/Seoul")
+    except Exception as e:
+        logger.error(f"Failed to fetch user timezone: {e}")
+    return "Asia/Seoul"
+
+
+async def open_schedule_modal(trigger_id: str, user_id: str = None):
+    user_tz = await get_user_timezone(user_id) if user_id else "Asia/Seoul"
+
     view = {
         "type": "modal",
         "callback_id": "schedule_modal",
+        "private_metadata": user_tz,
         "title": {"type": "plain_text", "text": "Report Scheduling"},
         "submit": {"type": "plain_text", "text": "Create"},
         "close": {"type": "plain_text", "text": "Cancel"},
@@ -252,82 +271,6 @@ async def open_schedule_modal(trigger_id: str):
                     "placeholder": {"type": "plain_text", "text": "Select time"},
                 },
                 "label": {"type": "plain_text", "text": "Execution Time (Daily)"},
-            },
-            {
-                "type": "input",
-                "block_id": "timezone_block",
-                "element": {
-                    "type": "static_select",
-                    "action_id": "timezone_input",
-                    "placeholder": {"type": "plain_text", "text": "Select timezone"},
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇰🇷 Seoul (KST, UTC+9)",
-                            },
-                            "value": "Asia/Seoul",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇯🇵 Tokyo (JST, UTC+9)",
-                            },
-                            "value": "Asia/Tokyo",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇮🇳 India (IST, UTC+5:30)",
-                            },
-                            "value": "Asia/Kolkata",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇬🇧 London (GMT/BST)",
-                            },
-                            "value": "Europe/London",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇩🇪 Berlin (CET/CEST)",
-                            },
-                            "value": "Europe/Berlin",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇺🇸 New York (EST/EDT)",
-                            },
-                            "value": "America/New_York",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇺🇸 Los Angeles (PST/PDT)",
-                            },
-                            "value": "America/Los_Angeles",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "🇦🇺 Sydney (AEST/AEDT)",
-                            },
-                            "value": "Australia/Sydney",
-                        },
-                        {
-                            "text": {"type": "plain_text", "text": "🌐 UTC"},
-                            "value": "UTC",
-                        },
-                    ],
-                    "initial_option": {
-                        "text": {"type": "plain_text", "text": "🇰🇷 Seoul (KST, UTC+9)"},
-                        "value": "Asia/Seoul",
-                    },
-                },
-                "label": {"type": "plain_text", "text": "Timezone"},
             },
             {
                 "type": "input",
@@ -997,15 +940,15 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
     command = form_data.get("command")
     trigger_id = form_data.get("trigger_id")
     channel_id = form_data.get("channel_id")
+    user_id = form_data.get("user_id")
 
-    # All commands use 'ati-' prefix to avoid conflicts with other bots
     if command == "/ati-schedule":
-        await open_schedule_modal(trigger_id)
-        return ""  # Acknowledge immediately
+        await open_schedule_modal(trigger_id, user_id)
+        return ""
 
     elif command == "/ati-report":
         await open_report_modal(trigger_id, channel_id)
-        return ""  # Acknowledge immediately
+        return ""
 
     return {"text": f"Unknown command: {command}"}
 
@@ -1029,6 +972,7 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
         if view.get("callback_id") == "schedule_modal":
             try:
                 values = view["state"]["values"]
+                timezone = view.get("private_metadata", "Asia/Seoul")
                 print(f"🟢 Schedule modal values: {json.dumps(values, default=str)}")
 
                 name = values["name_block"]["name_input"]["value"]
@@ -1037,9 +981,6 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                 ]
                 prompt = values["prompt_block"]["prompt_input"].get("value")
                 time_str = values["time_block"]["time_input"]["selected_time"]
-                timezone = values["timezone_block"]["timezone_input"][
-                    "selected_option"
-                ]["value"]
                 channel_id = values["channel_block"]["channel_input"][
                     "selected_conversation"
                 ]
