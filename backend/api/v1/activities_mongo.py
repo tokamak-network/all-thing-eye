@@ -64,6 +64,9 @@ async def load_member_mappings(db) -> dict:
             member_name = identifier.get("member_name")
 
             if source and identifier_value and member_name:
+                if source not in mappings:
+                    continue
+
                 # Case-insensitive key for GitHub and email, but keep original value
                 if source in ["github", "drive"]:
                     key = identifier_value.lower()
