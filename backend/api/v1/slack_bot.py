@@ -285,52 +285,123 @@ async def open_schedule_modal(trigger_id: str):
 
 async def publish_app_home(user_id: str):
     """Publish the App Home view for the user."""
-    view = {
-        "type": "home",
-        "blocks": [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "🏠 All-Thing-Eye Analytics Home",
-                },
+    scheduler = get_scheduler()
+    user_schedules = await scheduler.get_user_schedules(user_id) if scheduler else []
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "🏠 All-Thing-Eye Analytics Home",
             },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Welcome to All-Thing-Eye Bot!*\nManage your team's productivity and activities smartly.",
+            },
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "📅 *Report Scheduling*\nReceive recurring reports at your preferred time.",
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "open_schedule_modal",
+                    "text": {"type": "plain_text", "text": "Create Schedule 📅"},
+                    "style": "primary",
+                }
+            ],
+        },
+    ]
+
+    if user_schedules:
+        blocks.append({"type": "divider"})
+        blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*Welcome to All-Thing-Eye Bot!*\nManage your team's productivity and activities smartly.",
+                    "text": f"📋 *Your Schedules* ({len(user_schedules)})",
                 },
-            },
-            {"type": "divider"},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "📅 *Report Scheduling*\nReceive recurring reports at your preferred time.",
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
+            }
+        )
+
+        for schedule in user_schedules:
+            schedule_id = str(schedule["_id"])
+            name = schedule.get("name", "Unnamed")
+            content_type = schedule.get("content_type", "custom_prompt")
+            cron = schedule.get("cron_expression", "")
+            channel_id = schedule.get("channel_id", "")
+            is_active = schedule.get("is_active", True)
+
+            parts = cron.split()
+            time_str = f"{parts[1]}:{parts[0]}" if len(parts) >= 2 else cron
+
+            content_display = (
+                "📊 Daily Analysis" if content_type == "daily_analysis" else "✍️ Custom"
+            )
+            status_emoji = "🟢" if is_active else "⏸️"
+
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"{status_emoji} *{name}*\n{content_display} • {time_str} daily • <#{channel_id}>",
+                    },
+                    "accessory": {
                         "type": "button",
-                        "action_id": "open_schedule_modal",
-                        "text": {"type": "plain_text", "text": "Create Schedule 📅"},
-                        "style": "primary",
-                    }
-                ],
-            },
-            {"type": "divider"},
+                        "action_id": f"delete_schedule_{schedule_id}",
+                        "text": {"type": "plain_text", "text": "🗑️ Delete"},
+                        "style": "danger",
+                        "confirm": {
+                            "title": {"type": "plain_text", "text": "Delete Schedule?"},
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"Are you sure you want to delete *{name}*?",
+                            },
+                            "confirm": {"type": "plain_text", "text": "Delete"},
+                            "deny": {"type": "plain_text", "text": "Cancel"},
+                        },
+                    },
+                }
+            )
+    else:
+        blocks.append({"type": "divider"})
+        blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "💡 *Tip*: You can also use the `/ati-schedule` command anytime.",
+                    "text": "📋 *Your Schedules*\n_No schedules yet. Create one above!_",
                 },
-            },
-        ],
-    }
+            }
+        )
+
+    blocks.append({"type": "divider"})
+    blocks.append(
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "💡 You can also use `/ati-schedule` command anytime.",
+                }
+            ],
+        }
+    )
+
+    view = {"type": "home", "blocks": blocks}
 
     bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
     async with httpx.AsyncClient() as client:
@@ -943,9 +1014,19 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
 
     elif payload.get("type") == "block_actions":
         for action in payload.get("actions", []):
-            if action.get("action_id") == "open_schedule_modal":
+            action_id = action.get("action_id", "")
+
+            if action_id == "open_schedule_modal":
                 trigger_id = payload.get("trigger_id")
                 background_tasks.add_task(open_schedule_modal, trigger_id)
+                return {"ok": True}
+
+            if action_id.startswith("delete_schedule_"):
+                schedule_id = action_id.replace("delete_schedule_", "")
+                user_id = payload.get("user", {}).get("id")
+                background_tasks.add_task(
+                    delete_schedule_and_notify, schedule_id, user_id
+                )
                 return {"ok": True}
 
     elif payload.get("type") == "shortcut":
@@ -959,11 +1040,150 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
 
 async def save_schedule_to_db(schedule_data: Dict[str, Any]):
     """Save schedule to MongoDB and update APScheduler."""
+    user_id = schedule_data.get("member_id")
+    schedule_name = schedule_data.get("name", "Unnamed")
+
     try:
         scheduler = get_scheduler()
         await scheduler.add_schedule(schedule_data)
         logger.info(
-            f"✅ Schedule '{schedule_data['name']}' saved and activated for user {schedule_data['member_id']}"
+            f"✅ Schedule '{schedule_name}' saved and activated for user {user_id}"
         )
+
+        await send_schedule_notification(
+            user_id=user_id,
+            success=True,
+            schedule_name=schedule_name,
+            schedule_data=schedule_data,
+        )
+        await publish_app_home(user_id)
+
     except Exception as e:
         logger.error(f"Failed to save schedule: {e}")
+        await send_schedule_notification(
+            user_id=user_id,
+            success=False,
+            schedule_name=schedule_name,
+            error_message=str(e),
+        )
+
+
+async def send_schedule_notification(
+    user_id: str,
+    success: bool,
+    schedule_name: str,
+    schedule_data: Dict[str, Any] = None,
+    error_message: str = None,
+):
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
+
+    if success and schedule_data:
+        cron = schedule_data.get("cron_expression", "")
+        content_type = schedule_data.get("content_type", "custom_prompt")
+        channel_id = schedule_data.get("channel_id", "")
+
+        parts = cron.split()
+        time_str = f"{parts[1]}:{parts[0]}" if len(parts) >= 2 else cron
+
+        content_display = (
+            "📊 Daily Analysis"
+            if content_type == "daily_analysis"
+            else "✍️ Custom Prompt"
+        )
+
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"✅ *Schedule Created Successfully!*\n\nYour recurring report has been set up.",
+                },
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*Name:*\n{schedule_name}"},
+                    {"type": "mrkdwn", "text": f"*Type:*\n{content_display}"},
+                    {"type": "mrkdwn", "text": f"*Time:*\n{time_str} (Daily)"},
+                    {"type": "mrkdwn", "text": f"*Recipient:*\n<#{channel_id}>"},
+                ],
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "💡 Manage your schedules in the *App Home* tab.",
+                    }
+                ],
+            },
+        ]
+    else:
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"❌ *Failed to Create Schedule*\n\nSchedule: {schedule_name}",
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Error:*\n```{error_message or 'Unknown error'}```",
+                },
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": "Please try again or contact support."}
+                ],
+            },
+        ]
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            SLACK_POST_MESSAGE_URL,
+            json={"channel": user_id, "blocks": blocks},
+            headers={
+                "Authorization": f"Bearer {bot_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        if not resp.json().get("ok"):
+            logger.error(f"Failed to send schedule notification: {resp.text}")
+
+
+async def delete_schedule_and_notify(schedule_id: str, user_id: str):
+    try:
+        scheduler = get_scheduler()
+        if not scheduler:
+            raise Exception("Scheduler not initialized")
+
+        schedule = await scheduler.collection.find_one(
+            {"_id": __import__("bson").ObjectId(schedule_id)}
+        )
+        schedule_name = schedule.get("name", "Unnamed") if schedule else "Unknown"
+
+        await scheduler.delete_schedule(schedule_id)
+        logger.info(f"🗑️ Schedule '{schedule_name}' deleted by user {user_id}")
+
+        bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                SLACK_POST_MESSAGE_URL,
+                json={
+                    "channel": user_id,
+                    "text": f"🗑️ Schedule *{schedule_name}* has been deleted.",
+                },
+                headers={
+                    "Authorization": f"Bearer {bot_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+
+        await publish_app_home(user_id)
+
+    except Exception as e:
+        logger.error(f"Failed to delete schedule {schedule_id}: {e}")
