@@ -230,8 +230,43 @@ TOOL_EXECUTOR_MAP = {
 
 
 def build_system_prompt() -> str:
-    now = datetime.utcnow()
+    # Use KST (Korea Standard Time, UTC+9) as the reference timezone
+    from datetime import timezone
+
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
     today = now.strftime("%Y-%m-%d")
+
+    # Calculate explicit date ranges for common relative terms
+    # "Today"
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
+
+    # "Yesterday"
+    yesterday = now - timedelta(days=1)
+    yesterday_str = yesterday.strftime("%Y-%m-%d")
+
+    # "This week" (Monday to Sunday)
+    days_since_monday = now.weekday()  # Monday = 0
+    this_week_start = (now - timedelta(days=days_since_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    this_week_end = (this_week_start + timedelta(days=6)).replace(
+        hour=23, minute=59, second=59, microsecond=0
+    )
+
+    # "Last week" (Previous Monday to Sunday)
+    last_week_start = this_week_start - timedelta(days=7)
+    last_week_end = this_week_start - timedelta(seconds=1)  # Sunday 23:59:59
+
+    # "This month"
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # "Last month"
+    last_month_end = this_month_start - timedelta(seconds=1)
+    last_month_start = last_month_end.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
 
     # Pre-fetch actual members for grounding
     db = get_mongo().db
@@ -263,8 +298,23 @@ When the analysis is complete, use the "final_answer" tool.
 ## AVAILABLE TOOLS
 {json.dumps(TOOLS, indent=2)}
 
-## CURRENT DATE
-{today} (UTC)
+## CURRENT DATE AND TIME REFERENCE (KST - Korea Standard Time)
+**Today**: {today} (KST)
+**Current Time**: {now.strftime("%Y-%m-%d %H:%M:%S")} KST
+
+## DATE RANGES FOR RELATIVE TERMS (USE THESE EXACT DATES)
+When the user mentions relative time expressions, use these exact date ranges:
+
+| Term | Start Date | End Date |
+|------|------------|----------|
+| "today", "오늘" | {today} | {today} |
+| "yesterday", "어제" | {yesterday_str} | {yesterday_str} |
+| "this week", "이번 주", "이번주" | {this_week_start.strftime("%Y-%m-%d")} | {this_week_end.strftime("%Y-%m-%d")} |
+| "last week", "지난 주", "지난주", "저번 주", "저번주" | {last_week_start.strftime("%Y-%m-%d")} | {last_week_end.strftime("%Y-%m-%d")} |
+| "this month", "이번 달", "이번달" | {this_month_start.strftime("%Y-%m-%d")} | {today} |
+| "last month", "지난 달", "지난달", "저번 달", "저번달" | {last_month_start.strftime("%Y-%m-%d")} | {last_month_end.strftime("%Y-%m-%d")} |
+
+**IMPORTANT**: Always use the dates from the table above. Do NOT calculate dates yourself.
 """
 
 
