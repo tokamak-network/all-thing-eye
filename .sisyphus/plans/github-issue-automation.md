@@ -428,7 +428,7 @@ pytest tests/test_issue_automation/test_pr_creator.py -v
 
 ---
 
-### - [ ] 6. Integration Testing & Documentation
+### - [x] 6. Integration Testing & Documentation
 
 **What to do**:
 - End-to-end 테스트 (mock 환경)

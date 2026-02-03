@@ -859,44 +859,58 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
         return {"ok": False, "error": "No payload"}
 
     payload = json.loads(payload_str)
+    logger.info(f"Interactive payload type: {payload.get('type')}")
 
     if payload.get("type") == "view_submission":
         view = payload.get("view", {})
+        logger.info(f"View submission callback_id: {view.get('callback_id')}")
 
         if view.get("callback_id") == "schedule_modal":
-            # Extract values
-            values = view["state"]["values"]
-            name = values["name_block"]["name_input"]["value"]
-            content_type = values["type_block"]["type_input"]["selected_option"][
-                "value"
-            ]
-            prompt = values["prompt_block"]["prompt_input"].get("value")
-            time_str = values["time_block"]["time_input"]["selected_time"]
-            channel_id = values["channel_block"]["channel_input"][
-                "selected_conversation"
-            ]
-            user_id = payload["user"]["id"]
+            try:
+                # Extract values
+                values = view["state"]["values"]
+                logger.info(f"Schedule modal values: {json.dumps(values, default=str)}")
 
-            # Convert time to cron expression (Daily at HH:mm)
-            # Slack timepicker provides HH:mm
-            hour, minute = time_str.split(":")
-            cron_expression = f"{minute} {hour} * * *"
+                name = values["name_block"]["name_input"]["value"]
+                content_type = values["type_block"]["type_input"]["selected_option"][
+                    "value"
+                ]
+                prompt = values["prompt_block"]["prompt_input"].get("value")
+                time_str = values["time_block"]["time_input"]["selected_time"]
+                channel_id = values["channel_block"]["channel_input"][
+                    "selected_conversation"
+                ]
+                user_id = payload["user"]["id"]
 
-            schedule_data = {
-                "member_id": user_id,
-                "name": name,
-                "channel_id": channel_id,
-                "content_type": content_type,
-                "prompt": prompt,
-                "cron_expression": cron_expression,
-                "is_active": True,
-            }
+                logger.info(
+                    f"Parsed schedule: name={name}, type={content_type}, time={time_str}, channel={channel_id}"
+                )
 
-            # Save to scheduler (Background task)
-            background_tasks.add_task(save_schedule_to_db, schedule_data)
+                # Convert time to cron expression (Daily at HH:mm)
+                # Slack timepicker provides HH:mm
+                hour, minute = time_str.split(":")
+                cron_expression = f"{minute} {hour} * * *"
 
-            # Return empty response to close modal
-            return ""
+                schedule_data = {
+                    "member_id": user_id,
+                    "name": name,
+                    "channel_id": channel_id,
+                    "content_type": content_type,
+                    "prompt": prompt,
+                    "cron_expression": cron_expression,
+                    "is_active": True,
+                }
+
+                logger.info(f"Schedule data to save: {schedule_data}")
+
+                # Save to scheduler (Background task)
+                background_tasks.add_task(save_schedule_to_db, schedule_data)
+
+                # Return empty response to close modal
+                return ""
+            except Exception as e:
+                logger.error(f"Error processing schedule_modal: {e}", exc_info=True)
+                return {"response_action": "errors", "errors": {"name_block": str(e)}}
 
         elif view.get("callback_id") == "report_modal":
             # Extract values for report generation
