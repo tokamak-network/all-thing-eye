@@ -255,6 +255,82 @@ async def open_schedule_modal(trigger_id: str):
             },
             {
                 "type": "input",
+                "block_id": "timezone_block",
+                "element": {
+                    "type": "static_select",
+                    "action_id": "timezone_input",
+                    "placeholder": {"type": "plain_text", "text": "Select timezone"},
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇰🇷 Seoul (KST, UTC+9)",
+                            },
+                            "value": "Asia/Seoul",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇯🇵 Tokyo (JST, UTC+9)",
+                            },
+                            "value": "Asia/Tokyo",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇮🇳 India (IST, UTC+5:30)",
+                            },
+                            "value": "Asia/Kolkata",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇬🇧 London (GMT/BST)",
+                            },
+                            "value": "Europe/London",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇩🇪 Berlin (CET/CEST)",
+                            },
+                            "value": "Europe/Berlin",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇺🇸 New York (EST/EDT)",
+                            },
+                            "value": "America/New_York",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇺🇸 Los Angeles (PST/PDT)",
+                            },
+                            "value": "America/Los_Angeles",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🇦🇺 Sydney (AEST/AEDT)",
+                            },
+                            "value": "Australia/Sydney",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "🌐 UTC"},
+                            "value": "UTC",
+                        },
+                    ],
+                    "initial_option": {
+                        "text": {"type": "plain_text", "text": "🇰🇷 Seoul (KST, UTC+9)"},
+                        "value": "Asia/Seoul",
+                    },
+                },
+                "label": {"type": "plain_text", "text": "Timezone"},
+            },
+            {
+                "type": "input",
                 "block_id": "channel_block",
                 "element": {
                     "type": "conversations_select",
@@ -342,10 +418,23 @@ async def publish_app_home(user_id: str):
             content_type = schedule.get("content_type", "custom_prompt")
             cron = schedule.get("cron_expression", "")
             channel_id = schedule.get("channel_id", "")
+            timezone = schedule.get("timezone", "Asia/Seoul")
             is_active = schedule.get("is_active", True)
 
             parts = cron.split()
             time_str = f"{parts[1]}:{parts[0]}" if len(parts) >= 2 else cron
+
+            tz_short = {
+                "Asia/Seoul": "KST",
+                "Asia/Tokyo": "JST",
+                "Asia/Kolkata": "IST",
+                "Europe/London": "GMT",
+                "Europe/Berlin": "CET",
+                "America/New_York": "EST",
+                "America/Los_Angeles": "PST",
+                "Australia/Sydney": "AEST",
+                "UTC": "UTC",
+            }.get(timezone, timezone)
 
             content_display = (
                 "📊 Daily Analysis" if content_type == "daily_analysis" else "✍️ Custom"
@@ -357,7 +446,7 @@ async def publish_app_home(user_id: str):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"{status_emoji} *{name}*\n{content_display} • {time_str} daily • <#{channel_id}>",
+                        "text": f"{status_emoji} *{name}*\n{content_display} • {time_str} ({tz_short}) daily • <#{channel_id}>",
                     },
                     "accessory": {
                         "type": "button",
@@ -939,7 +1028,6 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
 
         if view.get("callback_id") == "schedule_modal":
             try:
-                # Extract values
                 values = view["state"]["values"]
                 print(f"🟢 Schedule modal values: {json.dumps(values, default=str)}")
 
@@ -949,17 +1037,18 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                 ]
                 prompt = values["prompt_block"]["prompt_input"].get("value")
                 time_str = values["time_block"]["time_input"]["selected_time"]
+                timezone = values["timezone_block"]["timezone_input"][
+                    "selected_option"
+                ]["value"]
                 channel_id = values["channel_block"]["channel_input"][
                     "selected_conversation"
                 ]
                 user_id = payload["user"]["id"]
 
                 print(
-                    f"🟢 Parsed schedule: name={name}, type={content_type}, time={time_str}, channel={channel_id}"
+                    f"🟢 Parsed schedule: name={name}, type={content_type}, time={time_str}, tz={timezone}, channel={channel_id}"
                 )
 
-                # Convert time to cron expression (Daily at HH:mm)
-                # Slack timepicker provides HH:mm
                 hour, minute = time_str.split(":")
                 cron_expression = f"{minute} {hour} * * *"
 
@@ -970,6 +1059,7 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                     "content_type": content_type,
                     "prompt": prompt,
                     "cron_expression": cron_expression,
+                    "timezone": timezone,
                     "is_active": True,
                 }
 
@@ -1081,9 +1171,22 @@ async def send_schedule_notification(
         cron = schedule_data.get("cron_expression", "")
         content_type = schedule_data.get("content_type", "custom_prompt")
         channel_id = schedule_data.get("channel_id", "")
+        timezone = schedule_data.get("timezone", "Asia/Seoul")
 
         parts = cron.split()
         time_str = f"{parts[1]}:{parts[0]}" if len(parts) >= 2 else cron
+
+        tz_short = {
+            "Asia/Seoul": "KST",
+            "Asia/Tokyo": "JST",
+            "Asia/Kolkata": "IST",
+            "Europe/London": "GMT",
+            "Europe/Berlin": "CET",
+            "America/New_York": "EST",
+            "America/Los_Angeles": "PST",
+            "Australia/Sydney": "AEST",
+            "UTC": "UTC",
+        }.get(timezone, timezone)
 
         content_display = (
             "📊 Daily Analysis"
@@ -1104,7 +1207,10 @@ async def send_schedule_notification(
                 "fields": [
                     {"type": "mrkdwn", "text": f"*Name:*\n{schedule_name}"},
                     {"type": "mrkdwn", "text": f"*Type:*\n{content_display}"},
-                    {"type": "mrkdwn", "text": f"*Time:*\n{time_str} (Daily)"},
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Time:*\n{time_str} ({tz_short}) daily",
+                    },
                     {"type": "mrkdwn", "text": f"*Recipient:*\n<#{channel_id}>"},
                 ],
             },

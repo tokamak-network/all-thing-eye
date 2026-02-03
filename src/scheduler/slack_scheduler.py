@@ -43,13 +43,15 @@ class SlackScheduler:
         """Add a single job to APScheduler."""
         job_id = str(schedule["_id"])
 
-        # Check if job already exists
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
 
+        schedule_tz = schedule.get("timezone", "Asia/Seoul")
+        tz = ZoneInfo(schedule_tz)
+
         self.scheduler.add_job(
             self.execute_scheduled_task,
-            CronTrigger.from_crontab(schedule["cron_expression"]),
+            CronTrigger.from_crontab(schedule["cron_expression"], timezone=tz),
             args=[schedule],
             id=job_id,
             replace_existing=True,
