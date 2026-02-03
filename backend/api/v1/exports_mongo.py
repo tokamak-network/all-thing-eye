@@ -666,8 +666,12 @@ async def export_activities(
                             allowed_member_names.add(member_name_value.lower())
 
                     logger.info(
-                        f"Project {project_key} has {len(allowed_member_names)} members: {allowed_member_names}"
+                        f"[EXPORT] Project {project_key} has {len(allowed_member_names)} members: {allowed_member_names}"
                     )
+                else:
+                    logger.warning(f"[EXPORT] Project {project_key} has no member_ids")
+            else:
+                logger.warning(f"[EXPORT] Project {project_key} not found in database")
 
         # If member_name filter is specified, use it
         filter_member_name = member_name.lower() if member_name else None
@@ -1143,6 +1147,10 @@ async def export_activities(
                 except Exception as e:
                     logger.error(f"Error fetching recordings_daily data: {e}")
 
+        logger.info(f"[EXPORT] Total activities before filter: {len(activities)}")
+        logger.info(f"[EXPORT] allowed_member_names: {allowed_member_names}")
+        logger.info(f"[EXPORT] filter_member_name: {filter_member_name}")
+
         # Filter by member if project_key or member_name is specified
         if allowed_member_names is not None or filter_member_name:
             filtered_activities = []
@@ -1160,7 +1168,7 @@ async def export_activities(
                 filtered_activities.append(activity)
             activities = filtered_activities
             logger.info(
-                f"Filtered activities: {len(activities)} (project={project_key}, member={member_name})"
+                f"[EXPORT] Filtered activities: {len(activities)} (project={project_key}, member={member_name})"
             )
 
         # Sort all activities by timestamp (newest first)
