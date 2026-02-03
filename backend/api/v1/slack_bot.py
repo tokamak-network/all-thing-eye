@@ -3,7 +3,7 @@ Slack Bot Integration for All-Thing-Eye
 Connects Slack events to the MCP AI Agent.
 """
 
-from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Form
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Form, Response
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import json
@@ -907,8 +907,8 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                 # Save to scheduler (Background task)
                 background_tasks.add_task(save_schedule_to_db, schedule_data)
 
-                # Return empty response to close modal
-                return ""
+                # Return empty 200 response to close modal (Slack requires this)
+                return Response(status_code=200)
             except Exception as e:
                 print(f"🔴 Error processing schedule_modal: {e}")
                 return {"response_action": "errors", "errors": {"name_block": str(e)}}
@@ -939,8 +939,7 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                 user_id,
             )
 
-            # Return empty response to close modal
-            return ""
+            return Response(status_code=200)
 
     elif payload.get("type") == "block_actions":
         for action in payload.get("actions", []):
