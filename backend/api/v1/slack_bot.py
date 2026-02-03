@@ -86,7 +86,7 @@ async def process_slack_mention(event: Dict[str, Any]):
     if not cleaned_text:
         return
 
-    bot_token = os.getenv("SLACK_BOT_TOKEN", "")
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN", "")
     headers = {
         "Authorization": f"Bearer {bot_token}",
         "Content-Type": "application/json",
@@ -269,7 +269,7 @@ async def open_schedule_modal(trigger_id: str):
         ],
     }
 
-    bot_token = os.getenv("SLACK_BOT_TOKEN")
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             SLACK_VIEWS_OPEN_URL,
@@ -332,7 +332,7 @@ async def publish_app_home(user_id: str):
         ],
     }
 
-    bot_token = os.getenv("SLACK_BOT_TOKEN")
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             SLACK_VIEWS_PUBLISH_URL,
@@ -538,7 +538,7 @@ async def open_report_modal(trigger_id: str, channel_id: str = None):
         ],
     }
 
-    bot_token = os.getenv("SLACK_BOT_TOKEN")
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             SLACK_VIEWS_OPEN_URL,
@@ -557,7 +557,7 @@ async def generate_and_send_report(
     channel_id: str, start_date: str, end_date: str, use_ai: bool, user_id: str
 ):
     """Generate report and send to Slack channel with file attachment."""
-    bot_token = os.getenv("SLACK_BOT_TOKEN", "")
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN", "")
     headers = {
         "Authorization": f"Bearer {bot_token}",
         "Content-Type": "application/json",
