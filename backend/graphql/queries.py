@@ -1100,7 +1100,17 @@ class Query:
                     continue
 
                 # Convert Slack username to display name
-                display_name = identifier_to_member.get(("slack", user_name), user_name)
+                # Try user_id first (stored in member_identifiers), then user_name
+                user_id = doc.get("user_id")
+                display_name = (
+                    identifier_to_member.get(("slack", user_id), None)
+                    if user_id
+                    else None
+                )
+                if not display_name:
+                    display_name = identifier_to_member.get(
+                        ("slack", user_name), user_name
+                    )
                 # Capitalize first letter
                 if (
                     display_name
