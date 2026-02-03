@@ -1,0 +1,53 @@
+name: "📊 My Activity Data Not Showing"
+description: Report when your activities are not appearing in All-Thing-Eye
+title: "[Data Issue] <Source> activities not showing"
+labels: ["data-issue", "needs-investigation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thank you for reporting!
+        Please fill out the information below so we can investigate quickly.
+
+  - type: checkboxes
+    id: source
+    attributes:
+      label: Which data source is affected?
+      description: Select all that apply
+      options:
+        - label: GitHub (commits, PRs, issues)
+        - label: Slack (messages)
+        - label: Notion (page edits)
+        - label: Google Drive (file activities)
+        - label: Meeting Recordings
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What activities are missing?
+      description: Describe what you expected to see
+      placeholder: |
+        e.g., 
+        - I made 5 commits to tokamak-network/Tokamak-zk-EVM on Jan 28-30
+        - I posted messages in #project-ooo channel yesterday
+    validations:
+      required: true
+
+  - type: input
+    id: date-range
+    attributes:
+      label: Date Range
+      description: When did these activities occur?
+      placeholder: e.g., Jan 28 - Feb 3, 2026
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots (optional)
+      description: Attach screenshots of your member page or the missing activities
+    validations:
+      required: false
