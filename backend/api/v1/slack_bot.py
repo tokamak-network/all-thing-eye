@@ -858,6 +858,270 @@ async def generate_and_send_report(
             )
 
 
+def get_code_stats_presets() -> list:
+    """Get date presets for code statistics."""
+    now = datetime.now(KST)
+    current_day = now.day
+    current_month = now.month
+    current_year = now.year
+
+    presets = []
+
+    # This week
+    days_since_monday = now.weekday()
+    this_week_start = (now - timedelta(days=days_since_monday)).strftime("%Y-%m-%d")
+    presets.append({
+        "name": "This week",
+        "start_date": this_week_start,
+        "end_date": now.strftime("%Y-%m-%d"),
+    })
+
+    # Last 7 days
+    last_7_days_start = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    presets.append({
+        "name": "Last 7 days",
+        "start_date": last_7_days_start,
+        "end_date": now.strftime("%Y-%m-%d"),
+    })
+
+    # Last 14 days
+    last_14_days_start = (now - timedelta(days=14)).strftime("%Y-%m-%d")
+    presets.append({
+        "name": "Last 14 days",
+        "start_date": last_14_days_start,
+        "end_date": now.strftime("%Y-%m-%d"),
+    })
+
+    # This month
+    this_month_start = now.replace(day=1).strftime("%Y-%m-%d")
+    presets.append({
+        "name": "This month",
+        "start_date": this_month_start,
+        "end_date": now.strftime("%Y-%m-%d"),
+    })
+
+    # Last month
+    last_month_end = now.replace(day=1) - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1).strftime("%Y-%m-%d")
+    presets.append({
+        "name": "Last month",
+        "start_date": last_month_start,
+        "end_date": last_month_end.strftime("%Y-%m-%d"),
+    })
+
+    return presets
+
+
+async def open_code_stats_modal(trigger_id: str, channel_id: str = None):
+    """Open the Block Kit modal for viewing code statistics."""
+    presets = get_code_stats_presets()
+
+    preset_options = [
+        {
+            "text": {"type": "plain_text", "text": p["name"]},
+            "value": f"{p['start_date']}|{p['end_date']}",
+        }
+        for p in presets
+    ]
+
+    view = {
+        "type": "modal",
+        "callback_id": "code_stats_modal",
+        "private_metadata": json.dumps({"channel_id": channel_id}) if channel_id else "{}",
+        "title": {"type": "plain_text", "text": "Code Statistics"},
+        "submit": {"type": "plain_text", "text": "Get Stats"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "📊 *View Code Change Statistics*\nGet insights on code additions, deletions, top contributors, and active repositories.",
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "input",
+                "block_id": "period_block",
+                "element": {
+                    "type": "static_select",
+                    "action_id": "period_input",
+                    "placeholder": {"type": "plain_text", "text": "Select period"},
+                    "options": preset_options,
+                    "initial_option": preset_options[3],  # This month by default
+                },
+                "label": {"type": "plain_text", "text": "📅 Period"},
+            },
+            {
+                "type": "input",
+                "block_id": "channel_block",
+                "element": {
+                    "type": "conversations_select",
+                    "action_id": "channel_input",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Select channel to post stats",
+                    },
+                    "default_to_current_conversation": True,
+                },
+                "label": {"type": "plain_text", "text": "📢 Post to Channel"},
+            },
+        ],
+    }
+
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            SLACK_VIEWS_OPEN_URL,
+            json={"trigger_id": trigger_id, "view": view},
+            headers={
+                "Authorization": f"Bearer {bot_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        result = resp.json()
+        if not result.get("ok"):
+            logger.error(f"Failed to open code stats modal: {result}")
+
+
+async def generate_and_send_code_stats(
+    channel_id: str, start_date: str, end_date: str, user_id: str
+):
+    """Generate code statistics and send to Slack channel."""
+    from backend.api.v1.mcp_agent import MCPToolManager
+
+    bot_token = os.getenv("SLACK_CHATBOT_TOKEN", "")
+    headers = {
+        "Authorization": f"Bearer {bot_token}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        # 1. Send "Loading..." message
+        initial_resp = await client.post(
+            SLACK_POST_MESSAGE_URL,
+            json={
+                "channel": channel_id,
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"⏳ *Loading code statistics...*\n📅 Period: {start_date} ~ {end_date}",
+                        },
+                    },
+                ],
+            },
+            headers=headers,
+        )
+        initial_data = initial_resp.json()
+        message_ts = initial_data.get("ts")
+
+        if not message_ts:
+            logger.error(f"Failed to post initial message: {initial_data}")
+            return
+
+        try:
+            # 2. Get code stats using MCPToolManager
+            result = await MCPToolManager.get_code_stats({
+                "start_date": start_date,
+                "end_date": end_date,
+            })
+
+            if not result.get("success"):
+                raise Exception("Failed to fetch code stats")
+
+            data = result["data"]
+            total = data["total"]
+            contributors = data["top_contributors"][:5]
+            repositories = data["top_repositories"][:5]
+
+            # 3. Build Slack blocks
+            blocks = [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "📊 Code Statistics",
+                    },
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"📅 {start_date} ~ {end_date} | Requested by <@{user_id}>",
+                        }
+                    ],
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*📈 Summary*",
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Lines Added:*\n+{total['additions']:,}"},
+                        {"type": "mrkdwn", "text": f"*Lines Deleted:*\n-{total['deletions']:,}"},
+                        {"type": "mrkdwn", "text": f"*Net Change:*\n{'+' if total['net_change'] >= 0 else ''}{total['net_change']:,}"},
+                        {"type": "mrkdwn", "text": f"*Total Commits:*\n{total['commits']:,}"},
+                    ],
+                },
+            ]
+
+            # Top Contributors
+            if contributors:
+                contributor_text = "*🏆 Top Contributors*\n"
+                for i, c in enumerate(contributors, 1):
+                    medal = ["🥇", "🥈", "🥉"][i-1] if i <= 3 else f"{i}."
+                    contributor_text += f"{medal} *{c['name']}*: +{c['additions']:,} / -{c['deletions']:,} ({c['commits']} commits)\n"
+                blocks.append({"type": "divider"})
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": contributor_text},
+                })
+
+            # Top Repositories
+            if repositories:
+                repo_text = "*📁 Active Repositories*\n"
+                for i, r in enumerate(repositories, 1):
+                    repo_text += f"{i}. *{r['name']}*: +{r['additions']:,} / -{r['deletions']:,} ({r['commits']} commits)\n"
+                blocks.append({"type": "divider"})
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": repo_text},
+                })
+
+            # 4. Update message with stats
+            await client.post(
+                SLACK_UPDATE_MESSAGE_URL,
+                json={
+                    "channel": channel_id,
+                    "ts": message_ts,
+                    "blocks": blocks,
+                },
+                headers=headers,
+            )
+
+            logger.info(f"✅ Code stats sent to {channel_id}")
+
+        except Exception as e:
+            logger.error(f"Error generating code stats: {e}", exc_info=True)
+            await client.post(
+                SLACK_UPDATE_MESSAGE_URL,
+                json={
+                    "channel": channel_id,
+                    "ts": message_ts,
+                    "text": f"❌ Failed to generate code stats: {str(e)}",
+                },
+                headers=headers,
+            )
+
+
 def convert_markdown_to_slack(markdown: str) -> str:
     """Convert standard markdown to Slack mrkdwn format."""
     text = markdown
@@ -950,6 +1214,10 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
         await open_report_modal(trigger_id, channel_id)
         return Response(status_code=200)
 
+    elif command == "/ati-code-stats":
+        await open_code_stats_modal(trigger_id, channel_id)
+        return Response(status_code=200)
+
     return {"text": f"Unknown command: {command}"}
 
 
@@ -1038,6 +1306,31 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                 start_date,
                 end_date,
                 use_ai,
+                user_id,
+            )
+
+            return Response(status_code=200)
+
+        elif view.get("callback_id") == "code_stats_modal":
+            # Extract values for code stats
+            values = view["state"]["values"]
+            period_value = values["period_block"]["period_input"]["selected_option"][
+                "value"
+            ]
+            channel_id = values["channel_block"]["channel_input"][
+                "selected_conversation"
+            ]
+            user_id = payload["user"]["id"]
+
+            # Parse period (format: "start_date|end_date")
+            start_date, end_date = period_value.split("|")
+
+            # Generate code stats in background
+            background_tasks.add_task(
+                generate_and_send_code_stats,
+                channel_id,
+                start_date,
+                end_date,
                 user_id,
             )
 
