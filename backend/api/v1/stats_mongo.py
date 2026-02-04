@@ -568,3 +568,173 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to generate statistics: {str(e)}")
 
+
+@router.get("/code-changes")
+async def get_code_changes_stats(request: Request, _admin: str = Depends(require_admin)):
+    """
+    Get detailed code changes statistics from GitHub commits.
+
+    Returns:
+        - Total additions/deletions (last 90 days)
+        - Daily code changes (last 30 days)
+        - Weekly code changes (last 12 weeks)
+        - Top contributors by code changes
+        - Top repositories by activity
+        - Recent commits with details
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+
+        end_date = datetime.utcnow()
+        start_90d = end_date - timedelta(days=90)
+        start_30d = end_date - timedelta(days=30)
+        start_12w = end_date - timedelta(weeks=12)
+
+        # 1. Total code changes (last 90 days)
+        total_pipeline = [
+            {"$match": {"date": {"$gte": start_90d}}},
+            {"$group": {
+                "_id": None,
+                "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+            }}
+        ]
+        total_result = await db["github_commits"].aggregate(total_pipeline).to_list(1)
+        total = {"additions": 0, "deletions": 0}
+        if total_result:
+            total["additions"] = total_result[0].get("additions", 0)
+            total["deletions"] = total_result[0].get("deletions", 0)
+
+        # 2. Daily code changes (last 30 days)
+        daily_pipeline = [
+            {"$match": {"date": {"$gte": start_30d}}},
+            {"$group": {
+                "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$date"}},
+                "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+            }},
+            {"$sort": {"_id": 1}}
+        ]
+        daily_result = await db["github_commits"].aggregate(daily_pipeline).to_list(None)
+
+        # Fill missing days
+        daily_map = {}
+        current = start_30d
+        while current <= end_date:
+            d = current.strftime("%Y-%m-%d")
+            daily_map[d] = {"date": d, "additions": 0, "deletions": 0}
+            current += timedelta(days=1)
+
+        for doc in daily_result:
+            if doc["_id"] and doc["_id"] in daily_map:
+                daily_map[doc["_id"]]["additions"] = doc["additions"]
+                daily_map[doc["_id"]]["deletions"] = doc["deletions"]
+
+        daily = sorted(daily_map.values(), key=lambda x: x["date"])
+
+        # 3. Weekly code changes (last 12 weeks)
+        weekly_pipeline = [
+            {"$match": {"date": {"$gte": start_12w}}},
+            {"$group": {
+                "_id": {"$dateToString": {"format": "%Y-%V", "date": "$date"}},
+                "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+            }},
+            {"$sort": {"_id": 1}}
+        ]
+        weekly_result = await db["github_commits"].aggregate(weekly_pipeline).to_list(None)
+        weekly = [
+            {"week": doc["_id"], "additions": doc["additions"], "deletions": doc["deletions"]}
+            for doc in weekly_result if doc["_id"]
+        ]
+
+        # 4. Top contributors (by total changes)
+        member_pipeline = [
+            {"$match": {"date": {"$gte": start_90d}}},
+            {"$group": {
+                "_id": "$author_name",
+                "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}},
+                "commits": {"$sum": 1}
+            }},
+            {"$addFields": {
+                "total_changes": {"$add": ["$additions", "$deletions"]}
+            }},
+            {"$sort": {"total_changes": -1}},
+            {"$limit": 20}
+        ]
+        member_result = await db["github_commits"].aggregate(member_pipeline).to_list(None)
+        by_member = [
+            {
+                "name": doc["_id"] or "Unknown",
+                "additions": doc["additions"],
+                "deletions": doc["deletions"],
+                "commits": doc["commits"]
+            }
+            for doc in member_result if doc["_id"]
+        ]
+
+        # 5. Top repositories (by activity)
+        repo_pipeline = [
+            {"$match": {"date": {"$gte": start_90d}}},
+            {"$group": {
+                "_id": "$repository",
+                "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}},
+                "commits": {"$sum": 1}
+            }},
+            {"$addFields": {
+                "total_changes": {"$add": ["$additions", "$deletions"]}
+            }},
+            {"$sort": {"total_changes": -1}},
+            {"$limit": 20}
+        ]
+        repo_result = await db["github_commits"].aggregate(repo_pipeline).to_list(None)
+        by_repository = [
+            {
+                "name": doc["_id"] or "Unknown",
+                "additions": doc["additions"],
+                "deletions": doc["deletions"],
+                "commits": doc["commits"]
+            }
+            for doc in repo_result if doc["_id"]
+        ]
+
+        # 6. Recent commits
+        recent_cursor = db["github_commits"].find(
+            {"date": {"$gte": start_30d}},
+            {
+                "sha": 1, "message": 1, "author_name": 1, "repository": 1,
+                "date": 1, "additions": 1, "deletions": 1
+            }
+        ).sort("date", -1).limit(50)
+
+        recent_commits = []
+        async for commit in recent_cursor:
+            recent_commits.append({
+                "sha": commit.get("sha", "")[:7],
+                "message": commit.get("message", ""),
+                "author": commit.get("author_name", "Unknown"),
+                "repository": commit.get("repository", "Unknown"),
+                "date": commit.get("date").isoformat() + "Z" if commit.get("date") else None,
+                "additions": commit.get("additions", 0),
+                "deletions": commit.get("deletions", 0)
+            })
+
+        return {
+            "total": total,
+            "daily": daily,
+            "weekly": weekly,
+            "by_member": by_member,
+            "by_repository": by_repository,
+            "recent_commits": recent_commits,
+            "generated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating code changes stats: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to generate code statistics: {str(e)}")
+

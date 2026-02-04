@@ -492,6 +492,12 @@ class ApiClient {
     return response.data;
   }
 
+  // Code statistics API (GitHub commits)
+  async getCodeStats() {
+    const response = await this.client.get("/stats/code-changes");
+    return response.data;
+  }
+
   // Authentication API
   async login(address: string, message: string, signature: string) {
     const response = await this.client.post("/auth/login", {
