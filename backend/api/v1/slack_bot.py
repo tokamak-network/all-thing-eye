@@ -988,9 +988,13 @@ def _fetch_code_stats_sync(start_date: str, end_date: str) -> dict:
     """Synchronous helper to fetch code stats (runs in thread pool)."""
     from datetime import datetime
     from bson import ObjectId
-    from backend.api.v1.mcp_utils import get_mongo
+    from pymongo import MongoClient
 
-    db = get_mongo().db
+    # Direct MongoDB connection for thread-safe access
+    mongo_uri = os.getenv("MONGODB_URI")
+    mongo_db = os.getenv("MONGODB_DATABASE", "ati")
+    client = MongoClient(mongo_uri)
+    db = client[mongo_db]
 
     # Parse date range
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -1065,6 +1069,9 @@ def _fetch_code_stats_sync(start_date: str, end_date: str) -> dict:
         }
         for r in repo_results
     ]
+
+    # Close MongoDB connection
+    client.close()
 
     return {
         "total": {
