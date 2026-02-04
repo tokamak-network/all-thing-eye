@@ -88,6 +88,8 @@ export default function CodeStatsView() {
   const [stats, setStats] = useState<CodeStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [contributorPage, setContributorPage] = useState(1);
+  const CONTRIBUTORS_PER_PAGE = 10;
 
   // Fetch code stats when date range changes
   useEffect(() => {
@@ -95,6 +97,7 @@ export default function CodeStatsView() {
       try {
         setLoading(true);
         setError(null);
+        setContributorPage(1); // Reset page when date range changes
         const { startDate, endDate } = getDateRange(dateRange);
         const data = await api.getCodeStats(startDate, endDate);
         setStats(data);
@@ -275,55 +278,108 @@ export default function CodeStatsView() {
       {/* Member Rankings & Repository Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Contributors */}
-        {stats.by_member && stats.by_member.length > 0 && (
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <span className="text-2xl">🏆</span>
-              Top Contributors
-            </h2>
-            <div className="space-y-4">
-              {stats.by_member.slice(0, 10).map((member, index) => (
-                <div
-                  key={member.name}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
-                        index === 0
-                          ? "bg-yellow-500"
-                          : index === 1
-                          ? "bg-gray-400"
-                          : index === 2
-                          ? "bg-orange-400"
-                          : "bg-gray-300"
-                      }`}
+        {stats.by_member && stats.by_member.length > 0 && (() => {
+          const totalMembers = stats.by_member.length;
+          const totalPages = Math.ceil(totalMembers / CONTRIBUTORS_PER_PAGE);
+          const startIndex = (contributorPage - 1) * CONTRIBUTORS_PER_PAGE;
+          const endIndex = startIndex + CONTRIBUTORS_PER_PAGE;
+          const currentPageMembers = stats.by_member.slice(startIndex, endIndex);
+
+          return (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <span className="text-2xl">🏆</span>
+                  Top Contributors
+                </h2>
+                <span className="text-sm text-gray-500">
+                  {totalMembers} members
+                </span>
+              </div>
+              <div className="space-y-4">
+                {currentPageMembers.map((member, index) => {
+                  const globalIndex = startIndex + index;
+                  return (
+                    <div
+                      key={member.name}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                     >
-                      {index + 1}
-                    </span>
-                    <div>
-                      <p className="font-medium text-gray-900">{member.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {member.commits} commits
-                      </p>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                            globalIndex === 0
+                              ? "bg-yellow-500"
+                              : globalIndex === 1
+                              ? "bg-gray-400"
+                              : globalIndex === 2
+                              ? "bg-orange-400"
+                              : "bg-gray-300"
+                          }`}
+                        >
+                          {globalIndex + 1}
+                        </span>
+                        <div>
+                          <p className="font-medium text-gray-900">{member.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {member.commits} commits
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm">
+                          <span className="text-emerald-600">
+                            +{member.additions.toLocaleString()}
+                          </span>
+                          {" / "}
+                          <span className="text-rose-600">
+                            -{member.deletions.toLocaleString()}
+                          </span>
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm">
-                      <span className="text-emerald-600">
-                        +{member.additions.toLocaleString()}
-                      </span>
-                      {" / "}
-                      <span className="text-rose-600">
-                        -{member.deletions.toLocaleString()}
-                      </span>
-                    </p>
-                  </div>
+                  );
+                })}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => setContributorPage(1)}
+                    disabled={contributorPage === 1}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ««
+                  </button>
+                  <button
+                    onClick={() => setContributorPage(p => Math.max(1, p - 1))}
+                    disabled={contributorPage === 1}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ‹
+                  </button>
+                  <span className="px-4 py-1 text-sm bg-indigo-50 text-indigo-700 rounded font-medium">
+                    {contributorPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setContributorPage(p => Math.min(totalPages, p + 1))}
+                    disabled={contributorPage === totalPages}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ›
+                  </button>
+                  <button
+                    onClick={() => setContributorPage(totalPages)}
+                    disabled={contributorPage === totalPages}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    »»
+                  </button>
                 </div>
-              ))}
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Top Repositories */}
         {stats.by_repository && stats.by_repository.length > 0 && (

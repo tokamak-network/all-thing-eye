@@ -721,8 +721,8 @@ async def get_code_changes_stats(
             {"$addFields": {
                 "total_changes": {"$add": ["$additions", "$deletions"]}
             }},
-            {"$sort": {"total_changes": -1}},
-            {"$limit": 20}
+            {"$sort": {"total_changes": -1}}
+            # No limit - return all members for frontend pagination
         ]
         member_result = await db["github_commits"].aggregate(member_pipeline).to_list(None)
 
