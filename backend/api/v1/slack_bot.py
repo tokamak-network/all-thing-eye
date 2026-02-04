@@ -1091,13 +1091,20 @@ async def generate_and_send_code_stats(
     """Generate code statistics and send to Slack channel."""
     import asyncio
 
+    logger.info(f"🚀 Starting code stats generation: {start_date} ~ {end_date} for channel {channel_id}")
+
     bot_token = os.getenv("SLACK_CHATBOT_TOKEN", "")
+    if not bot_token:
+        logger.error("❌ SLACK_CHATBOT_TOKEN not configured!")
+        return
+
     headers = {
         "Authorization": f"Bearer {bot_token}",
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    message_ts = None
+    async with httpx.AsyncClient(timeout=120.0) as client:
         # 1. Send "Loading..." message
         initial_resp = await client.post(
             SLACK_POST_MESSAGE_URL,
@@ -1124,7 +1131,9 @@ async def generate_and_send_code_stats(
 
         try:
             # 2. Get code stats (run in thread pool to avoid blocking)
+            logger.info(f"📊 Fetching code stats from MongoDB...")
             data = await asyncio.to_thread(_fetch_code_stats_sync, start_date, end_date)
+            logger.info(f"✅ Code stats fetched: {data['total']['commits']} commits")
 
             total = data["total"]
             contributors = data["top_contributors"][:5]
@@ -1191,7 +1200,8 @@ async def generate_and_send_code_stats(
                 })
 
             # 4. Update message with stats
-            await client.post(
+            logger.info(f"📤 Sending code stats to Slack channel {channel_id}...")
+            update_resp = await client.post(
                 SLACK_UPDATE_MESSAGE_URL,
                 json={
                     "channel": channel_id,
@@ -1200,20 +1210,24 @@ async def generate_and_send_code_stats(
                 },
                 headers=headers,
             )
-
-            logger.info(f"✅ Code stats sent to {channel_id}")
+            update_result = update_resp.json()
+            if update_result.get("ok"):
+                logger.info(f"✅ Code stats sent to {channel_id}")
+            else:
+                logger.error(f"❌ Failed to update Slack message: {update_result}")
 
         except Exception as e:
             logger.error(f"Error generating code stats: {e}", exc_info=True)
-            await client.post(
-                SLACK_UPDATE_MESSAGE_URL,
-                json={
-                    "channel": channel_id,
-                    "ts": message_ts,
-                    "text": f"❌ Failed to generate code stats: {str(e)}",
-                },
-                headers=headers,
-            )
+            if message_ts:
+                await client.post(
+                    SLACK_UPDATE_MESSAGE_URL,
+                    json={
+                        "channel": channel_id,
+                        "ts": message_ts,
+                        "text": f"❌ Failed to generate code stats: {str(e)}",
+                    },
+                    headers=headers,
+                )
 
 
 def convert_markdown_to_slack(markdown: str) -> str:
