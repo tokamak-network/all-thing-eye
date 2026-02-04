@@ -697,7 +697,7 @@ async def generate_and_send_report(
         message_ts = initial_data.get("ts")
 
         if not message_ts:
-            logger.error(f"Failed to post initial message: {initial_data}")
+            print(f"Failed to post initial message: {initial_data}")
             return
 
         try:
@@ -1091,7 +1091,7 @@ async def generate_and_send_code_stats(
     """Generate code statistics and send to Slack channel."""
     import asyncio
 
-    logger.info(f"🚀 Starting code stats generation: {start_date} ~ {end_date} for channel {channel_id}")
+    print(f"🚀 Starting code stats generation: {start_date} ~ {end_date} for channel {channel_id}")
 
     bot_token = os.getenv("SLACK_CHATBOT_TOKEN", "")
     if not bot_token:
@@ -1126,14 +1126,14 @@ async def generate_and_send_code_stats(
         message_ts = initial_data.get("ts")
 
         if not message_ts:
-            logger.error(f"Failed to post initial message: {initial_data}")
+            print(f"Failed to post initial message: {initial_data}")
             return
 
         try:
             # 2. Get code stats (run in thread pool to avoid blocking)
-            logger.info(f"📊 Fetching code stats from MongoDB...")
+            print(f"📊 Fetching code stats from MongoDB...")
             data = await asyncio.to_thread(_fetch_code_stats_sync, start_date, end_date)
-            logger.info(f"✅ Code stats fetched: {data['total']['commits']} commits")
+            print(f"✅ Code stats fetched: {data['total']['commits']} commits")
 
             total = data["total"]
             contributors = data["top_contributors"][:5]
@@ -1200,7 +1200,7 @@ async def generate_and_send_code_stats(
                 })
 
             # 4. Update message with stats
-            logger.info(f"📤 Sending code stats to Slack channel {channel_id}...")
+            print(f"📤 Sending code stats to Slack channel {channel_id}...")
             update_resp = await client.post(
                 SLACK_UPDATE_MESSAGE_URL,
                 json={
@@ -1212,12 +1212,14 @@ async def generate_and_send_code_stats(
             )
             update_result = update_resp.json()
             if update_result.get("ok"):
-                logger.info(f"✅ Code stats sent to {channel_id}")
+                print(f"✅ Code stats sent to {channel_id}")
             else:
-                logger.error(f"❌ Failed to update Slack message: {update_result}")
+                print(f"❌ Failed to update Slack message: {update_result}")
 
         except Exception as e:
-            logger.error(f"Error generating code stats: {e}", exc_info=True)
+            print(f"Error generating code stats: {e}")
+            import traceback
+            traceback.print_exc()
             if message_ts:
                 await client.post(
                     SLACK_UPDATE_MESSAGE_URL,
@@ -1420,10 +1422,11 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
             return Response(status_code=200)
 
         elif view.get("callback_id") == "code_stats_modal":
-            logger.info("🟢 code_stats_modal submission received")
+            print("🟢 code_stats_modal handler entered")
             try:
                 # Extract values for code stats
                 values = view["state"]["values"]
+                print(f"🟢 values: {values}")
                 period_value = values["period_block"]["period_input"]["selected_option"][
                     "value"
                 ]
@@ -1435,7 +1438,7 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                 # Parse period (format: "start_date|end_date")
                 start_date, end_date = period_value.split("|")
 
-                logger.info(f"📊 Code stats request: {start_date} ~ {end_date}, channel: {channel_id}, user: {user_id}")
+                print(f"📊 Code stats request: {start_date} ~ {end_date}, channel: {channel_id}, user: {user_id}")
 
                 # Generate code stats in background
                 background_tasks.add_task(
@@ -1445,9 +1448,11 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
                     end_date,
                     user_id,
                 )
-                logger.info("✅ Code stats background task added")
+                print("✅ Code stats background task added")
             except Exception as e:
-                logger.error(f"❌ Error processing code_stats_modal: {e}", exc_info=True)
+                print(f"❌ Error processing code_stats_modal: {e}")
+                import traceback
+                traceback.print_exc()
                 return {"response_action": "errors", "errors": {"period_block": str(e)}}
 
             return Response(status_code=200)
