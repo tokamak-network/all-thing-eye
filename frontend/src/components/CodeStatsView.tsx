@@ -397,7 +397,14 @@ export default function CodeStatsView() {
                   <div className="flex items-center gap-3">
                     <span className="text-xl">🐙</span>
                     <div>
-                      <p className="font-medium text-gray-900">{repo.name}</p>
+                      <a
+                        href={`https://github.com/tokamak-network/${repo.name}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-gray-900 hover:text-indigo-600 hover:underline transition-colors"
+                      >
+                        {repo.name}
+                      </a>
                       <p className="text-sm text-gray-500">
                         {repo.commits} commits
                       </p>
