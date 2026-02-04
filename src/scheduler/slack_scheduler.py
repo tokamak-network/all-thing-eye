@@ -19,7 +19,7 @@ class SlackScheduler:
         self.scheduler = AsyncIOScheduler(timezone=KST)
         self.db = mongo_manager.async_db
         self.collection = self.db["slack_schedules"]
-        self.bot_token = os.getenv("SLACK_BOT_TOKEN")
+        self.bot_token = os.getenv("SLACK_CHATBOT_TOKEN")
         self.post_message_url = "https://slack.com/api/chat.postMessage"
 
     async def start(self):
@@ -27,6 +27,10 @@ class SlackScheduler:
         if not self.scheduler.running:
             self.scheduler.start()
             logger.info("⏰ Slack Scheduler started.")
+            if not self.bot_token:
+                logger.warning("⚠️ SLACK_CHATBOT_TOKEN not configured! Scheduled messages will fail.")
+            else:
+                logger.info(f"🔑 Slack bot token loaded: {self.bot_token[:10]}...{self.bot_token[-4:]}")
             await self.load_all_jobs()
 
     async def load_all_jobs(self):
@@ -42,6 +46,7 @@ class SlackScheduler:
     def add_job_to_scheduler(self, schedule):
         """Add a single job to APScheduler."""
         job_id = str(schedule["_id"])
+        schedule_name = schedule.get("name", "Unnamed")
 
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
@@ -49,13 +54,16 @@ class SlackScheduler:
         schedule_tz = schedule.get("timezone", "Asia/Seoul")
         tz = ZoneInfo(schedule_tz)
 
-        self.scheduler.add_job(
+        job = self.scheduler.add_job(
             self.execute_scheduled_task,
             CronTrigger.from_crontab(schedule["cron_expression"], timezone=tz),
             args=[schedule],
             id=job_id,
             replace_existing=True,
         )
+
+        next_run = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S %Z") if job.next_run_time else "N/A"
+        logger.info(f"📅 Job added: '{schedule_name}' (cron: {schedule['cron_expression']}, tz: {schedule_tz}, next: {next_run})")
 
     async def execute_scheduled_task(self, schedule):
         """Execute the scheduled task (fetch data/AI answer and send to Slack)."""
