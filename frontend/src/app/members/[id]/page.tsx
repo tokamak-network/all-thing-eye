@@ -15,6 +15,8 @@ import {
 import {
   Area,
   AreaChart,
+  BarChart,
+  Bar,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -88,6 +90,22 @@ interface ActivityStats {
     notion: number;
     drive: number;
   }>;
+  code_changes?: {
+    total: {
+      additions: number;
+      deletions: number;
+    };
+    daily: Array<{
+      date: string;
+      additions: number;
+      deletions: number;
+    }>;
+    weekly: Array<{
+      week: string;
+      additions: number;
+      deletions: number;
+    }>;
+  };
 }
 
 interface MemberDetail {
@@ -706,6 +724,145 @@ export default function MemberDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Code Changes Section */}
+        {member.activity_stats.code_changes && (
+          <div className="space-y-6">
+            {/* Code Changes Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-emerald-100 text-sm font-medium mb-1">
+                      Lines Added (90d)
+                    </p>
+                    <p className="text-3xl font-bold">
+                      +
+                      {member.activity_stats.code_changes.total.additions.toLocaleString()}
+                    </p>
+                  </div>
+                  <span className="text-5xl opacity-20">➕</span>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl shadow-lg p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-rose-100 text-sm font-medium mb-1">
+                      Lines Deleted (90d)
+                    </p>
+                    <p className="text-3xl font-bold">
+                      -
+                      {member.activity_stats.code_changes.total.deletions.toLocaleString()}
+                    </p>
+                  </div>
+                  <span className="text-5xl opacity-20">➖</span>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-indigo-100 text-sm font-medium mb-1">
+                      Net Change (90d)
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {member.activity_stats.code_changes.total.additions -
+                        member.activity_stats.code_changes.total.deletions >=
+                      0
+                        ? "+"
+                        : ""}
+                      {(
+                        member.activity_stats.code_changes.total.additions -
+                        member.activity_stats.code_changes.total.deletions
+                      ).toLocaleString()}
+                    </p>
+                  </div>
+                  <span className="text-5xl opacity-20">📊</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Code Changes Chart */}
+            {member.activity_stats.code_changes.daily.length > 0 && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                  <span className="text-xl">💻</span>
+                  Code Changes (Last 30 Days)
+                </h2>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={member.activity_stats.code_changes.daily.map(
+                        (d) => ({
+                          ...d,
+                          changes: d.additions + d.deletions,
+                        })
+                      )}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient
+                          id="colorMemberChanges"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#6366f1"
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#6366f1"
+                            stopOpacity={0.1}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 12 }}
+                        tickFormatter={(value) =>
+                          format(new Date(value), "MM/dd")
+                        }
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: "8px",
+                          border: "none",
+                          boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                        }}
+                        labelFormatter={(value) =>
+                          format(new Date(value), "MMM dd, yyyy")
+                        }
+                        formatter={(value: number, name: string, props: any) => {
+                          const item = props.payload;
+                          return [
+                            `${value.toLocaleString()} lines (+${item.additions.toLocaleString()} / -${item.deletions.toLocaleString()})`,
+                            "Code Changes",
+                          ];
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="changes"
+                        name="Code Changes"
+                        stroke="#6366f1"
+                        fill="url(#colorMemberChanges)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Collaboration Network */}
         <CollaborationNetwork memberName={member.name} days={90} limit={10} />

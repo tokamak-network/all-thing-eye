@@ -319,6 +319,105 @@ export default function Home() {
 
 
 
+      {/* Code Changes Statistics */}
+      {stats.code_changes && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Code Changes Summary Cards */}
+          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-emerald-100 text-sm font-medium mb-1">Lines Added (90d)</p>
+                <p className="text-4xl font-bold">+{stats.code_changes.total.additions.toLocaleString()}</p>
+                <p className="text-emerald-200 text-xs mt-2">Code contributions</p>
+              </div>
+              <div className="text-6xl opacity-20">➕</div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-rose-100 text-sm font-medium mb-1">Lines Deleted (90d)</p>
+                <p className="text-4xl font-bold">-{stats.code_changes.total.deletions.toLocaleString()}</p>
+                <p className="text-rose-200 text-xs mt-2">Code removed</p>
+              </div>
+              <div className="text-6xl opacity-20">➖</div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-indigo-100 text-sm font-medium mb-1">Net Change (90d)</p>
+                <p className="text-4xl font-bold">
+                  {(stats.code_changes.total.additions - stats.code_changes.total.deletions) >= 0 ? '+' : ''}
+                  {(stats.code_changes.total.additions - stats.code_changes.total.deletions).toLocaleString()}
+                </p>
+                <p className="text-indigo-200 text-xs mt-2">Lines of code</p>
+              </div>
+              <div className="text-6xl opacity-20">📊</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Code Changes Chart */}
+      {stats.code_changes && stats.code_changes.daily.length > 0 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <span className="text-3xl">💻</span>
+            Code Changes (Last 30 Days)
+          </h2>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={stats.code_changes.daily.map(d => ({
+                  ...d,
+                  changes: d.additions + d.deletions
+                }))}
+                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="colorChanges" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.1}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(str) => str.slice(5)}
+                  stroke="#9ca3af"
+                  fontSize={12}
+                  tickMargin={10}
+                />
+                <YAxis stroke="#9ca3af" fontSize={12} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#fff', borderRadius: '0.5rem', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                  itemStyle={{ fontSize: '0.875rem' }}
+                  labelStyle={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#111827' }}
+                  formatter={(value: number, name: string, props: any) => {
+                    const item = props.payload;
+                    return [
+                      `${value.toLocaleString()} lines (+${item.additions.toLocaleString()} / -${item.deletions.toLocaleString()})`,
+                      'Code Changes'
+                    ];
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="changes"
+                  name="Code Changes"
+                  stroke="#6366f1"
+                  fill="url(#colorChanges)"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {/* Team Activity Flow (Activity Trends) */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">

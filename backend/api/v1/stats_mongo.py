@@ -176,7 +176,79 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
                 }
             }
         
-        # 5. Get daily trends
+        # 5. Get code changes statistics (additions + deletions from github_commits)
+        code_changes = {
+            "total": {"additions": 0, "deletions": 0},
+            "daily": [],
+            "weekly": []
+        }
+        try:
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=90)
+
+            # Total code changes (last 90 days)
+            total_pipeline = [
+                {"$match": {"date": {"$gte": start_date}}},
+                {"$group": {
+                    "_id": None,
+                    "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                    "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+                }}
+            ]
+            total_result = await db["github_commits"].aggregate(total_pipeline).to_list(1)
+            if total_result:
+                code_changes["total"]["additions"] = total_result[0].get("additions", 0)
+                code_changes["total"]["deletions"] = total_result[0].get("deletions", 0)
+
+            # Daily code changes (last 30 days for chart)
+            daily_start = end_date - timedelta(days=30)
+            daily_pipeline = [
+                {"$match": {"date": {"$gte": daily_start}}},
+                {"$group": {
+                    "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$date"}},
+                    "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                    "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+                }},
+                {"$sort": {"_id": 1}}
+            ]
+            daily_result = await db["github_commits"].aggregate(daily_pipeline).to_list(None)
+
+            # Fill missing days with zeros
+            daily_map = {}
+            current = daily_start
+            while current <= end_date:
+                d = current.strftime("%Y-%m-%d")
+                daily_map[d] = {"date": d, "additions": 0, "deletions": 0}
+                current += timedelta(days=1)
+
+            for doc in daily_result:
+                if doc["_id"] in daily_map:
+                    daily_map[doc["_id"]]["additions"] = doc["additions"]
+                    daily_map[doc["_id"]]["deletions"] = doc["deletions"]
+
+            code_changes["daily"] = sorted(daily_map.values(), key=lambda x: x["date"])
+
+            # Weekly code changes (last 12 weeks)
+            weekly_start = end_date - timedelta(weeks=12)
+            weekly_pipeline = [
+                {"$match": {"date": {"$gte": weekly_start}}},
+                {"$group": {
+                    "_id": {"$dateToString": {"format": "%Y-%V", "date": "$date"}},
+                    "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                    "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+                }},
+                {"$sort": {"_id": 1}}
+            ]
+            weekly_result = await db["github_commits"].aggregate(weekly_pipeline).to_list(None)
+            code_changes["weekly"] = [
+                {"week": doc["_id"], "additions": doc["additions"], "deletions": doc["deletions"]}
+                for doc in weekly_result
+            ]
+
+        except Exception as e:
+            logger.warning(f"Failed to get code changes stats: {e}")
+
+        # 6. Get daily activity trends
         daily_trends = []
         try:
             # Last 90 days
@@ -460,18 +532,21 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
             logger.warning(traceback.format_exc())
             last_collected['notion'] = None
         
-        # 8. Compile final response
+        # 9. Compile final response
         return {
             # Main statistics (for Dashboard cards)
             "total_members": total_members,
             "total_activities": total_documents,
             "active_projects": active_projects,
             "data_sources": len(activity_summary),
-            
+
             # Activity breakdown (for Dashboard summary section)
             "activity_summary": activity_summary,
             "daily_trends": daily_trends,
             "top_keywords": top_keywords,
+
+            # Code changes (additions/deletions from GitHub commits)
+            "code_changes": code_changes,
             
             # Database information (for Database Viewer)
             "database": {

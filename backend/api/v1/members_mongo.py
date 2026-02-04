@@ -1152,6 +1152,81 @@ async def get_member_detail(
                 github_commits + github_prs + github_issues
             )
 
+        # Calculate code changes (additions/deletions) for this member
+        code_changes = {
+            "total": {"additions": 0, "deletions": 0},
+            "daily": [],
+            "weekly": []
+        }
+        try:
+            from datetime import timedelta as td
+            end_dt = datetime.utcnow()
+            start_90d = end_dt - td(days=90)
+
+            # Total code changes (last 90 days)
+            code_total_pipeline = [
+                {"$match": {"$and": [github_query, {"date": {"$gte": start_90d}}]}},
+                {"$group": {
+                    "_id": None,
+                    "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                    "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+                }}
+            ]
+            code_total_result = await db["github_commits"].aggregate(code_total_pipeline).to_list(1)
+            if code_total_result:
+                code_changes["total"]["additions"] = code_total_result[0].get("additions", 0)
+                code_changes["total"]["deletions"] = code_total_result[0].get("deletions", 0)
+
+            # Daily code changes (last 30 days)
+            start_30d = end_dt - td(days=30)
+            daily_pipeline = [
+                {"$match": {"$and": [github_query, {"date": {"$gte": start_30d}}]}},
+                {"$group": {
+                    "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$date"}},
+                    "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                    "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+                }},
+                {"$sort": {"_id": 1}}
+            ]
+            daily_result = await db["github_commits"].aggregate(daily_pipeline).to_list(None)
+
+            # Fill missing days with zeros
+            daily_map = {}
+            current = start_30d
+            while current <= end_dt:
+                d = current.strftime("%Y-%m-%d")
+                daily_map[d] = {"date": d, "additions": 0, "deletions": 0}
+                current += td(days=1)
+
+            for doc in daily_result:
+                if doc["_id"] and doc["_id"] in daily_map:
+                    daily_map[doc["_id"]]["additions"] = doc["additions"]
+                    daily_map[doc["_id"]]["deletions"] = doc["deletions"]
+
+            code_changes["daily"] = sorted(daily_map.values(), key=lambda x: x["date"])
+
+            # Weekly code changes (last 12 weeks)
+            start_12w = end_dt - td(weeks=12)
+            weekly_pipeline = [
+                {"$match": {"$and": [github_query, {"date": {"$gte": start_12w}}]}},
+                {"$group": {
+                    "_id": {"$dateToString": {"format": "%Y-%V", "date": "$date"}},
+                    "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                    "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}}
+                }},
+                {"$sort": {"_id": 1}}
+            ]
+            weekly_result = await db["github_commits"].aggregate(weekly_pipeline).to_list(None)
+            code_changes["weekly"] = [
+                {"week": doc["_id"], "additions": doc["additions"], "deletions": doc["deletions"]}
+                for doc in weekly_result if doc["_id"]
+            ]
+
+        except Exception as e:
+            logger.warning(f"Failed to get code changes for member {member_name}: {e}")
+
+        activity_stats["code_changes"] = code_changes
+
         # Slack statistics - use both member_mappings and direct identifiers
         slack_identifiers = get_identifiers_for_member(
             member_mappings, "slack", member_name

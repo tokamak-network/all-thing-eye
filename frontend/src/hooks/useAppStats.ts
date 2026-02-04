@@ -34,6 +34,24 @@ export interface AppStats {
     drive: number;
   }>;
 
+  // Code changes statistics (additions/deletions from GitHub)
+  code_changes?: {
+    total: {
+      additions: number;
+      deletions: number;
+    };
+    daily: Array<{
+      date: string;
+      additions: number;
+      deletions: number;
+    }>;
+    weekly: Array<{
+      week: string;
+      additions: number;
+      deletions: number;
+    }>;
+  };
+
   // Context keywords (Recent 7 days)
   top_keywords?: Array<{
     text: string;
