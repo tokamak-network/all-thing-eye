@@ -293,6 +293,68 @@ export default function DatabasePage() {
     }
   };
 
+  // Helper functions for Data Freshness (moved from dashboard)
+  const getSourceStyle = (source: string) => {
+    const styles: Record<string, { icon: string; color: string; bgColor: string; borderColor: string; chartColor: string }> = {
+      github: { icon: '🐙', color: 'text-green-700', bgColor: 'bg-green-50', borderColor: 'border-green-200', chartColor: '#10b981' },
+      slack: { icon: '💬', color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', chartColor: '#8b5cf6' },
+      notion: { icon: '📝', color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', chartColor: '#f97316' },
+      drive: { icon: '📁', color: 'text-yellow-700', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200', chartColor: '#eab308' },
+      recordings: { icon: '🎥', color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200', chartColor: '#ef4444' }
+    };
+    return styles[source] || { icon: '📦', color: 'text-gray-700', bgColor: 'bg-gray-50', borderColor: 'border-gray-200', chartColor: '#6b7280' };
+  };
+
+  const formatLastCollected = (isoTime: string | null) => {
+    if (!isoTime) return 'Never';
+
+    try {
+      const date = new Date(isoTime);
+      const now = new Date();
+
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+
+      const diffMs = now.getTime() - date.getTime();
+
+      if (diffMs < 0) {
+        return 'In the future';
+      }
+
+      const diffSeconds = Math.floor(diffMs / 1000);
+      const diffMinutes = Math.floor(diffSeconds / 60);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffDays > 0) return `${diffDays}d ago`;
+      if (diffHours > 0) return `${diffHours}h ago`;
+      if (diffMinutes > 0) return `${diffMinutes}m ago`;
+      if (diffSeconds > 0) return `${diffSeconds}s ago`;
+
+      return 'Just now';
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  const getDataFreshness = (isoTime: string | null) => {
+    if (!isoTime) return { status: 'Never', color: 'text-gray-500', bgColor: 'bg-gray-100' };
+
+    const date = new Date(isoTime);
+
+    if (isNaN(date.getTime())) {
+      return { status: 'No data', color: 'text-gray-500', bgColor: 'bg-gray-100' };
+    }
+
+    const now = new Date();
+    const diffHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+
+    if (diffHours < 24) return { status: '✓ Fresh', color: 'text-green-600', bgColor: 'bg-green-100' };
+    if (diffHours < 48) return { status: '⚠ 1d old', color: 'text-yellow-600', bgColor: 'bg-yellow-100' };
+    return { status: '⚠ Stale', color: 'text-red-600', bgColor: 'bg-red-100' };
+  };
+
   const getCollectionGroup = (
     collectionName: string
   ): { group: string; color: string; icon: string } => {
@@ -573,111 +635,33 @@ export default function DatabasePage() {
           </div>
         </div>
 
-        {/* Last Collection Times - Unified with Dashboard */}
+        {/* Data Freshness - Moved from Dashboard */}
         {appStats && appStats.last_collected && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow p-4 mb-6 border border-blue-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <span className="text-lg">⏰</span>
-                Last Data Collection
-              </h3>
-            </div>
-            <div className="grid grid-cols-4 gap-4">
-              {/* Fixed order: GitHub, Slack, Notion, Drive (same as Dashboard) */}
-              {["github", "slack", "notion", "drive"].map((source) => {
-                const time = appStats.last_collected[source];
-                
-                const sourceIcons: Record<string, string> = {
-                  github: "🐙",
-                  slack: "💬",
-                  notion: "📝",
-                  drive: "📁",
-                };
-
-                const sourceColors: Record<string, string> = {
-                  github: "text-green-700 bg-green-100",
-                  slack: "text-purple-700 bg-purple-100",
-                  notion: "text-orange-700 bg-orange-100",
-                  drive: "text-yellow-700 bg-yellow-100",
-                };
-
-                const getTimeAgo = (isoTime: string | null) => {
-                  if (!isoTime) return "Never collected";
-                  
-                  try {
-                    const date = new Date(isoTime);
-                    const now = new Date();
-                    
-                    // Check if date is valid
-                    if (isNaN(date.getTime())) {
-                      return "Invalid date";
-                    }
-                    
-                    const diffMs = now.getTime() - date.getTime();
-                    
-                    // Handle negative differences (future dates)
-                    if (diffMs < 0) {
-                      return "In the future";
-                    }
-                    
-                    const diffSeconds = Math.floor(diffMs / 1000);
-                    const diffMinutes = Math.floor(diffSeconds / 60);
-                    const diffHours = Math.floor(diffMinutes / 60);
-                    const diffDays = Math.floor(diffHours / 24);
-                    const diffWeeks = Math.floor(diffDays / 7);
-                    const diffMonths = Math.floor(diffDays / 30);
-                    const diffYears = Math.floor(diffDays / 365);
-
-                    if (diffYears > 0) return `${diffYears} ${diffYears === 1 ? 'year' : 'years'} ago`;
-                    if (diffMonths > 0) return `${diffMonths} ${diffMonths === 1 ? 'month' : 'months'} ago`;
-                    if (diffWeeks > 0) return `${diffWeeks} ${diffWeeks === 1 ? 'week' : 'weeks'} ago`;
-                    if (diffDays > 0) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
-                    if (diffHours > 0) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
-                    if (diffMinutes > 0) return `${diffMinutes} ${diffMinutes === 1 ? 'minute' : 'minutes'} ago`;
-                    if (diffSeconds > 0) return `${diffSeconds} ${diffSeconds === 1 ? 'second' : 'seconds'} ago`;
-                    
-                    return "Just now";
-                  } catch (error) {
-                    console.error("Error calculating time ago:", error);
-                    return "Unknown";
-                  }
-                };
-
-                const getStatus = (isoTime: string | null) => {
-                  if (!isoTime)
-                    return { text: "Never", color: "text-gray-500" };
-                  const date = new Date(isoTime);
-                  const now = new Date();
-                  const diffMs = now.getTime() - date.getTime();
-                  const diffHours = diffMs / (1000 * 60 * 60);
-
-                  if (diffHours < 24)
-                    return { text: "✓ Fresh", color: "text-green-600" };
-                  if (diffHours < 48)
-                    return { text: "⚠ 1d old", color: "text-yellow-600" };
-                  return { text: "⚠ Stale", color: "text-red-600" };
-                };
-
-                const status = getStatus(time);
-
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <span className="text-3xl">⏰</span>
+              Data Freshness
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Object.entries(appStats.last_collected).map(([source, time]) => {
+                const style = getSourceStyle(source);
+                const freshness = getDataFreshness(time);
                 return (
                   <div
                     key={source}
-                    className={`rounded-lg p-3 ${
-                      sourceColors[source] || "bg-gray-100"
-                    }`}
+                    className={`${style.bgColor} ${style.borderColor} border-2 rounded-lg p-4 hover:shadow-lg transition-shadow`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base">{sourceIcons[source]}</span>
-                      <span className="font-semibold capitalize text-sm">
-                        {source}
-                      </span>
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="text-3xl">{style.icon}</span>
+                      <div className="flex-1">
+                        <div className="font-bold text-gray-900 capitalize">{source}</div>
+                        <div className="text-sm text-gray-600">
+                          {formatLastCollected(time)}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs font-medium mb-1">
-                      {getTimeAgo(time)}
-                    </div>
-                    <div className={`text-xs font-semibold ${status.color}`}>
-                      {status.text}
+                    <div className={`${freshness.bgColor} ${freshness.color} font-semibold text-sm px-3 py-1 rounded-full text-center`}>
+                      {freshness.status}
                     </div>
                   </div>
                 );

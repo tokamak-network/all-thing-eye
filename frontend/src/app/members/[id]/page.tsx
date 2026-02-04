@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { api as apiClient } from "@/lib/api";
@@ -37,6 +37,18 @@ import { useProjects } from "@/graphql/hooks";
 // import { useMemberDetail } from "@/graphql/hooks";
 // import MemberCollaboration from "@/components/MemberCollaboration";
 // import MemberActivityStats from "@/components/MemberActivityStats";
+
+// Date range presets for code changes chart
+type DateRangePreset = "24h" | "3d" | "7d" | "14d" | "month" | "lastMonth";
+
+const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string; days: number }[] = [
+  { value: "24h", label: "24 Hours", days: 1 },
+  { value: "3d", label: "3 Days", days: 3 },
+  { value: "7d", label: "1 Week", days: 7 },
+  { value: "14d", label: "2 Weeks", days: 14 },
+  { value: "month", label: "This Month", days: -1 },
+  { value: "lastMonth", label: "Last Month", days: -2 },
+];
 
 // Helper function to safely format timestamps
 function formatTimestamp(timestamp: string, formatStr: string): string {
@@ -152,6 +164,45 @@ export default function MemberDetailPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
+  const [codeChangesRange, setCodeChangesRange] = useState<DateRangePreset>("month");
+
+  // Filter code changes data based on selected date range
+  const filteredCodeChanges = useMemo(() => {
+    if (!member?.activity_stats?.code_changes?.daily) return [];
+
+    const now = new Date();
+    const preset = DATE_RANGE_PRESETS.find((p) => p.value === codeChangesRange);
+    if (!preset) return member.activity_stats.code_changes.daily;
+
+    let startDate: Date;
+    let endDate: Date = now;
+
+    if (preset.value === "month") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (preset.value === "lastMonth") {
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else {
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - preset.days);
+    }
+
+    return member.activity_stats.code_changes.daily.filter((d) => {
+      const date = new Date(d.date);
+      return date >= startDate && date <= endDate;
+    });
+  }, [member?.activity_stats?.code_changes?.daily, codeChangesRange]);
+
+  // Calculate filtered totals for member
+  const filteredMemberTotals = useMemo(() => {
+    return filteredCodeChanges.reduce(
+      (acc, d) => ({
+        additions: acc.additions + d.additions,
+        deletions: acc.deletions + d.deletions,
+      }),
+      { additions: 0, deletions: 0 }
+    );
+  }, [filteredCodeChanges]);
 
   // TODO: Fix issues with new GraphQL components before re-enabling
   // GraphQL: Fetch member detail with collaboration and repository data
@@ -728,17 +779,34 @@ export default function MemberDetailPage() {
         {/* Code Changes Section */}
         {member.activity_stats.code_changes && (
           <div className="space-y-6">
+            {/* Date Range Filter */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Period:</span>
+              {DATE_RANGE_PRESETS.map((preset) => (
+                <button
+                  key={preset.value}
+                  onClick={() => setCodeChangesRange(preset.value)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                    codeChangesRange === preset.value
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
             {/* Code Changes Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-emerald-100 text-sm font-medium mb-1">
-                      Lines Added (90d)
+                      Lines Added
                     </p>
                     <p className="text-3xl font-bold">
-                      +
-                      {member.activity_stats.code_changes.total.additions.toLocaleString()}
+                      +{filteredMemberTotals.additions.toLocaleString()}
                     </p>
                   </div>
                   <span className="text-5xl opacity-20">➕</span>
@@ -749,11 +817,10 @@ export default function MemberDetailPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-rose-100 text-sm font-medium mb-1">
-                      Lines Deleted (90d)
+                      Lines Deleted
                     </p>
                     <p className="text-3xl font-bold">
-                      -
-                      {member.activity_stats.code_changes.total.deletions.toLocaleString()}
+                      -{filteredMemberTotals.deletions.toLocaleString()}
                     </p>
                   </div>
                   <span className="text-5xl opacity-20">➖</span>
@@ -764,17 +831,17 @@ export default function MemberDetailPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-indigo-100 text-sm font-medium mb-1">
-                      Net Change (90d)
+                      Net Change
                     </p>
                     <p className="text-3xl font-bold">
-                      {member.activity_stats.code_changes.total.additions -
-                        member.activity_stats.code_changes.total.deletions >=
+                      {filteredMemberTotals.additions -
+                        filteredMemberTotals.deletions >=
                       0
                         ? "+"
                         : ""}
                       {(
-                        member.activity_stats.code_changes.total.additions -
-                        member.activity_stats.code_changes.total.deletions
+                        filteredMemberTotals.additions -
+                        filteredMemberTotals.deletions
                       ).toLocaleString()}
                     </p>
                   </div>
@@ -784,21 +851,19 @@ export default function MemberDetailPage() {
             </div>
 
             {/* Code Changes Chart */}
-            {member.activity_stats.code_changes.daily.length > 0 && (
+            {filteredCodeChanges.length > 0 && (
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
                   <span className="text-xl">💻</span>
-                  Code Changes (Last 30 Days)
+                  Code Changes
                 </h2>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={member.activity_stats.code_changes.daily.map(
-                        (d) => ({
-                          ...d,
-                          changes: d.additions + d.deletions,
-                        })
-                      )}
+                      data={filteredCodeChanges.map((d) => ({
+                        ...d,
+                        changes: d.additions + d.deletions,
+                      }))}
                       margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                     >
                       <defs>

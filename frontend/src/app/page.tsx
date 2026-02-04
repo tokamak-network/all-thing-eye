@@ -2,19 +2,72 @@
 
 import Link from 'next/link';
 import { useAppStats } from '@/hooks/useAppStats';
-import { useEffect, useState } from 'react';
-import { 
+import { useEffect, useState, useMemo } from 'react';
+import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts';
 
+// Date range presets for code changes chart
+type DateRangePreset = '24h' | '3d' | '7d' | '14d' | 'month' | 'lastMonth';
+
+const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string; days: number }[] = [
+  { value: '24h', label: '24 Hours', days: 1 },
+  { value: '3d', label: '3 Days', days: 3 },
+  { value: '7d', label: '1 Week', days: 7 },
+  { value: '14d', label: '2 Weeks', days: 14 },
+  { value: 'month', label: 'This Month', days: -1 }, // Special case
+  { value: 'lastMonth', label: 'Last Month', days: -2 }, // Special case
+];
+
 export default function Home() {
   const { stats, loading, error } = useAppStats();
   const [mounted, setMounted] = useState(false);
+  const [codeChangesRange, setCodeChangesRange] = useState<DateRangePreset>('month');
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Filter code changes data based on selected date range
+  const filteredCodeChanges = useMemo(() => {
+    if (!stats?.code_changes?.daily) return [];
+
+    const now = new Date();
+    const preset = DATE_RANGE_PRESETS.find(p => p.value === codeChangesRange);
+    if (!preset) return stats.code_changes.daily;
+
+    let startDate: Date;
+    let endDate: Date = now;
+
+    if (preset.value === 'month') {
+      // This month: from 1st of current month
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (preset.value === 'lastMonth') {
+      // Last month: from 1st to last day of previous month
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0); // Last day of previous month
+    } else {
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - preset.days);
+    }
+
+    return stats.code_changes.daily.filter(d => {
+      const date = new Date(d.date);
+      return date >= startDate && date <= endDate;
+    });
+  }, [stats?.code_changes?.daily, codeChangesRange]);
+
+  // Calculate filtered totals
+  const filteredTotals = useMemo(() => {
+    return filteredCodeChanges.reduce(
+      (acc, d) => ({
+        additions: acc.additions + d.additions,
+        deletions: acc.deletions + d.deletions,
+      }),
+      { additions: 0, deletions: 0 }
+    );
+  }, [filteredCodeChanges]);
 
   if (loading) {
     return (
@@ -233,39 +286,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Data Freshness */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-          <span className="text-3xl">⏰</span>
-          Data Freshness
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.entries(stats.last_collected).map(([source, time]) => {
-            const style = getSourceStyle(source);
-            const freshness = getDataFreshness(time);
-            return (
-              <div
-                key={source}
-                className={`${style.bgColor} ${style.borderColor} border-2 rounded-lg p-4 hover:shadow-lg transition-shadow`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-3xl">{style.icon}</span>
-                  <div className="flex-1">
-                    <div className="font-bold text-gray-900 capitalize">{source}</div>
-                    <div className="text-sm text-gray-600">
-                      {formatLastCollected(time)}
-                    </div>
-                  </div>
-                </div>
-                <div className={`${freshness.bgColor} ${freshness.color} font-semibold text-sm px-3 py-1 rounded-full text-center`}>
-                  {freshness.status}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Key Metrics */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {/* Total Members */}
@@ -321,100 +341,120 @@ export default function Home() {
 
       {/* Code Changes Statistics */}
       {stats.code_changes && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Code Changes Summary Cards */}
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-emerald-100 text-sm font-medium mb-1">Lines Added (90d)</p>
-                <p className="text-4xl font-bold">+{stats.code_changes.total.additions.toLocaleString()}</p>
-                <p className="text-emerald-200 text-xs mt-2">Code contributions</p>
-              </div>
-              <div className="text-6xl opacity-20">➕</div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-rose-100 text-sm font-medium mb-1">Lines Deleted (90d)</p>
-                <p className="text-4xl font-bold">-{stats.code_changes.total.deletions.toLocaleString()}</p>
-                <p className="text-rose-200 text-xs mt-2">Code removed</p>
-              </div>
-              <div className="text-6xl opacity-20">➖</div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-indigo-100 text-sm font-medium mb-1">Net Change (90d)</p>
-                <p className="text-4xl font-bold">
-                  {(stats.code_changes.total.additions - stats.code_changes.total.deletions) >= 0 ? '+' : ''}
-                  {(stats.code_changes.total.additions - stats.code_changes.total.deletions).toLocaleString()}
-                </p>
-                <p className="text-indigo-200 text-xs mt-2">Lines of code</p>
-              </div>
-              <div className="text-6xl opacity-20">📊</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Code Changes Chart */}
-      {stats.code_changes && stats.code_changes.daily.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-3xl">💻</span>
-            Code Changes (Last 30 Days)
-          </h2>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={stats.code_changes.daily.map(d => ({
-                  ...d,
-                  changes: d.additions + d.deletions
-                }))}
-                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+        <div className="space-y-6">
+          {/* Date Range Filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">Period:</span>
+            {DATE_RANGE_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                onClick={() => setCodeChangesRange(preset.value)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                  codeChangesRange === preset.value
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
               >
-                <defs>
-                  <linearGradient id="colorChanges" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.1}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(str) => str.slice(5)}
-                  stroke="#9ca3af"
-                  fontSize={12}
-                  tickMargin={10}
-                />
-                <YAxis stroke="#9ca3af" fontSize={12} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#fff', borderRadius: '0.5rem', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                  itemStyle={{ fontSize: '0.875rem' }}
-                  labelStyle={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#111827' }}
-                  formatter={(value: number, name: string, props: any) => {
-                    const item = props.payload;
-                    return [
-                      `${value.toLocaleString()} lines (+${item.additions.toLocaleString()} / -${item.deletions.toLocaleString()})`,
-                      'Code Changes'
-                    ];
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="changes"
-                  name="Code Changes"
-                  stroke="#6366f1"
-                  fill="url(#colorChanges)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+                {preset.label}
+              </button>
+            ))}
           </div>
+
+          {/* Code Changes Summary Cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-emerald-100 text-sm font-medium mb-1">Lines Added</p>
+                  <p className="text-4xl font-bold">+{filteredTotals.additions.toLocaleString()}</p>
+                  <p className="text-emerald-200 text-xs mt-2">Code contributions</p>
+                </div>
+                <div className="text-6xl opacity-20">➕</div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-rose-100 text-sm font-medium mb-1">Lines Deleted</p>
+                  <p className="text-4xl font-bold">-{filteredTotals.deletions.toLocaleString()}</p>
+                  <p className="text-rose-200 text-xs mt-2">Code removed</p>
+                </div>
+                <div className="text-6xl opacity-20">➖</div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-indigo-100 text-sm font-medium mb-1">Net Change</p>
+                  <p className="text-4xl font-bold">
+                    {(filteredTotals.additions - filteredTotals.deletions) >= 0 ? '+' : ''}
+                    {(filteredTotals.additions - filteredTotals.deletions).toLocaleString()}
+                  </p>
+                  <p className="text-indigo-200 text-xs mt-2">Lines of code</p>
+                </div>
+                <div className="text-6xl opacity-20">📊</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Code Changes Chart */}
+          {filteredCodeChanges.length > 0 && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                <span className="text-3xl">💻</span>
+                Code Changes
+              </h2>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={filteredCodeChanges.map(d => ({
+                      ...d,
+                      changes: d.additions + d.deletions
+                    }))}
+                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorChanges" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0.1}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(str) => str.slice(5)}
+                      stroke="#9ca3af"
+                      fontSize={12}
+                      tickMargin={10}
+                    />
+                    <YAxis stroke="#9ca3af" fontSize={12} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#fff', borderRadius: '0.5rem', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                      itemStyle={{ fontSize: '0.875rem' }}
+                      labelStyle={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#111827' }}
+                      formatter={(value: number, name: string, props: any) => {
+                        const item = props.payload;
+                        return [
+                          `${value.toLocaleString()} lines (+${item.additions.toLocaleString()} / -${item.deletions.toLocaleString()})`,
+                          'Code Changes'
+                        ];
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="changes"
+                      name="Code Changes"
+                      stroke="#6366f1"
+                      fill="url(#colorChanges)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
