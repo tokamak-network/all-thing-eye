@@ -722,16 +722,32 @@ async def get_code_changes_stats(
                 "total_changes": {"$add": ["$additions", "$deletions"]}
             }},
             {"$sort": {"total_changes": -1}}
-            # No limit - return all members for frontend pagination
         ]
         member_result = await db["github_commits"].aggregate(member_pipeline).to_list(None)
 
+        # Build stats by github username (case-insensitive)
+        github_stats = {}
+        for doc in member_result:
+            if doc["_id"]:
+                github_stats[doc["_id"].lower()] = {
+                    "additions": doc["additions"],
+                    "deletions": doc["deletions"],
+                    "commits": doc["commits"]
+                }
+
+        # Get all active members and include those with 0 commits
+        all_members = []
+        async for member in db["members"].find({"is_active": {"$ne": False}}, {"_id": 1, "name": 1}):
+            all_members.append(member)
+
         by_member = []
+        members_with_stats = set()  # Track which members we've added
+
+        # First, add members with commits (from github_commits data)
         for doc in member_result:
             if not doc["_id"]:
                 continue
             github_username = doc["_id"]
-            # Try to find member name (case-insensitive)
             member_name = github_to_member.get(github_username) or github_to_member.get(github_username.lower()) or github_username
             by_member.append({
                 "name": member_name,
@@ -740,6 +756,25 @@ async def get_code_changes_stats(
                 "deletions": doc["deletions"],
                 "commits": doc["commits"]
             })
+            members_with_stats.add(member_name.lower())
+
+        # Then, add members with 0 commits (from members collection)
+        for member in all_members:
+            member_name = member.get("name", "")
+            if member_name.lower() not in members_with_stats:
+                # Find github_id for this member
+                member_id_str = str(member["_id"])
+                github_id = member_id_to_github.get(member_id_str, "")
+                by_member.append({
+                    "name": member_name,
+                    "github_id": github_id,
+                    "additions": 0,
+                    "deletions": 0,
+                    "commits": 0
+                })
+
+        # Sort by total changes (commits with activity first, then alphabetically for 0s)
+        by_member.sort(key=lambda x: (-(x["additions"] + x["deletions"]), x["name"].lower()))
 
         # 5. Top repositories (by activity)
         repo_pipeline = [
