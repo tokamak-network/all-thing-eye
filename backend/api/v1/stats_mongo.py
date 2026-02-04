@@ -570,30 +570,46 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
 
 
 @router.get("/code-changes")
-async def get_code_changes_stats(request: Request, _admin: str = Depends(require_admin)):
+async def get_code_changes_stats(
+    request: Request,
+    start_date: str = None,
+    end_date: str = None,
+    _admin: str = Depends(require_admin)
+):
     """
     Get detailed code changes statistics from GitHub commits.
 
+    Args:
+        start_date: Start date in YYYY-MM-DD format (optional)
+        end_date: End date in YYYY-MM-DD format (optional)
+
     Returns:
-        - Total additions/deletions (last 90 days)
-        - Daily code changes (last 30 days)
-        - Weekly code changes (last 12 weeks)
+        - Total additions/deletions
+        - Daily code changes
+        - Weekly code changes
         - Top contributors by code changes
         - Top repositories by activity
-        - Recent commits with details
     """
     try:
         mongo = get_mongo()
         db = mongo.async_db
 
-        end_date = datetime.utcnow()
-        start_90d = end_date - timedelta(days=90)
-        start_30d = end_date - timedelta(days=30)
-        start_12w = end_date - timedelta(weeks=12)
+        # Parse date range or use defaults
+        if start_date and end_date:
+            try:
+                filter_start = datetime.strptime(start_date, "%Y-%m-%d")
+                filter_end = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)  # Include end date
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        else:
+            filter_end = datetime.utcnow()
+            filter_start = filter_end - timedelta(days=30)  # Default: last 30 days
 
-        # 1. Total code changes (last 90 days)
+        date_filter = {"date": {"$gte": filter_start, "$lt": filter_end}}
+
+        # 1. Total code changes
         total_pipeline = [
-            {"$match": {"date": {"$gte": start_90d}}},
+            {"$match": date_filter},
             {"$group": {
                 "_id": None,
                 "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
@@ -606,9 +622,9 @@ async def get_code_changes_stats(request: Request, _admin: str = Depends(require
             total["additions"] = total_result[0].get("additions", 0)
             total["deletions"] = total_result[0].get("deletions", 0)
 
-        # 2. Daily code changes (last 30 days)
+        # 2. Daily code changes
         daily_pipeline = [
-            {"$match": {"date": {"$gte": start_30d}}},
+            {"$match": date_filter},
             {"$group": {
                 "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$date"}},
                 "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
@@ -620,8 +636,8 @@ async def get_code_changes_stats(request: Request, _admin: str = Depends(require
 
         # Fill missing days
         daily_map = {}
-        current = start_30d
-        while current <= end_date:
+        current = filter_start
+        while current < filter_end:
             d = current.strftime("%Y-%m-%d")
             daily_map[d] = {"date": d, "additions": 0, "deletions": 0}
             current += timedelta(days=1)
@@ -633,9 +649,9 @@ async def get_code_changes_stats(request: Request, _admin: str = Depends(require
 
         daily = sorted(daily_map.values(), key=lambda x: x["date"])
 
-        # 3. Weekly code changes (last 12 weeks)
+        # 3. Weekly code changes
         weekly_pipeline = [
-            {"$match": {"date": {"$gte": start_12w}}},
+            {"$match": date_filter},
             {"$group": {
                 "_id": {"$dateToString": {"format": "%Y-%V", "date": "$date"}},
                 "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
@@ -650,8 +666,52 @@ async def get_code_changes_stats(request: Request, _admin: str = Depends(require
         ]
 
         # 4. Top contributors (by total changes)
+        # First, build GitHub username → member name mapping
+        github_to_member = {}
+        try:
+            # Get all GitHub identifiers
+            github_identifiers = await db["member_identifiers"].find(
+                {"source": "github"}
+            ).to_list(None)
+
+            # Build member_id → github_username mapping
+            member_ids = set()
+            member_id_to_github = {}
+            for ident in github_identifiers:
+                member_id = ident.get("member_id")
+                github_username = ident.get("identifier_value")
+                if member_id and github_username:
+                    member_ids.add(member_id)
+                    # Handle both string and ObjectId member_ids
+                    member_id_to_github[str(member_id)] = github_username
+
+            # Get member names
+            from bson import ObjectId
+            member_obj_ids = []
+            for mid in member_ids:
+                try:
+                    member_obj_ids.append(ObjectId(mid))
+                except:
+                    pass
+
+            if member_obj_ids:
+                members_cursor = db["members"].find(
+                    {"_id": {"$in": member_obj_ids}},
+                    {"_id": 1, "name": 1}
+                )
+                async for member in members_cursor:
+                    member_id_str = str(member["_id"])
+                    member_name = member.get("name")
+                    # Find the github username for this member
+                    for mid, github_user in member_id_to_github.items():
+                        if mid == member_id_str and member_name:
+                            github_to_member[github_user.lower()] = member_name
+                            github_to_member[github_user] = member_name
+        except Exception as e:
+            logger.warning(f"Failed to build GitHub to member mapping: {e}")
+
         member_pipeline = [
-            {"$match": {"date": {"$gte": start_90d}}},
+            {"$match": date_filter},
             {"$group": {
                 "_id": "$author_name",
                 "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
@@ -665,19 +725,25 @@ async def get_code_changes_stats(request: Request, _admin: str = Depends(require
             {"$limit": 20}
         ]
         member_result = await db["github_commits"].aggregate(member_pipeline).to_list(None)
-        by_member = [
-            {
-                "name": doc["_id"] or "Unknown",
+
+        by_member = []
+        for doc in member_result:
+            if not doc["_id"]:
+                continue
+            github_username = doc["_id"]
+            # Try to find member name (case-insensitive)
+            member_name = github_to_member.get(github_username) or github_to_member.get(github_username.lower()) or github_username
+            by_member.append({
+                "name": member_name,
+                "github_id": github_username,
                 "additions": doc["additions"],
                 "deletions": doc["deletions"],
                 "commits": doc["commits"]
-            }
-            for doc in member_result if doc["_id"]
-        ]
+            })
 
         # 5. Top repositories (by activity)
         repo_pipeline = [
-            {"$match": {"date": {"$gte": start_90d}}},
+            {"$match": date_filter},
             {"$group": {
                 "_id": "$repository",
                 "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
@@ -701,34 +767,12 @@ async def get_code_changes_stats(request: Request, _admin: str = Depends(require
             for doc in repo_result if doc["_id"]
         ]
 
-        # 6. Recent commits
-        recent_cursor = db["github_commits"].find(
-            {"date": {"$gte": start_30d}},
-            {
-                "sha": 1, "message": 1, "author_name": 1, "repository": 1,
-                "date": 1, "additions": 1, "deletions": 1
-            }
-        ).sort("date", -1).limit(50)
-
-        recent_commits = []
-        async for commit in recent_cursor:
-            recent_commits.append({
-                "sha": commit.get("sha", "")[:7],
-                "message": commit.get("message", ""),
-                "author": commit.get("author_name", "Unknown"),
-                "repository": commit.get("repository", "Unknown"),
-                "date": commit.get("date").isoformat() + "Z" if commit.get("date") else None,
-                "additions": commit.get("additions", 0),
-                "deletions": commit.get("deletions", 0)
-            })
-
         return {
             "total": total,
             "daily": daily,
             "weekly": weekly,
             "by_member": by_member,
             "by_repository": by_repository,
-            "recent_commits": recent_commits,
             "generated_at": datetime.utcnow().isoformat() + "Z"
         }
 

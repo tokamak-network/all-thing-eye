@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import {
   AreaChart,
@@ -17,14 +17,13 @@ import {
 import { api } from "@/lib/api";
 
 // Date range presets
-type DateRangePreset = "24h" | "3d" | "7d" | "14d" | "month" | "lastMonth";
+type DateRangePreset = "3d" | "7d" | "14d" | "month" | "lastMonth";
 
 const DATE_RANGE_PRESETS: {
   value: DateRangePreset;
   label: string;
   days: number;
 }[] = [
-  { value: "24h", label: "24 Hours", days: 1 },
   { value: "3d", label: "3 Days", days: 3 },
   { value: "7d", label: "1 Week", days: 7 },
   { value: "14d", label: "2 Weeks", days: 14 },
@@ -59,15 +58,29 @@ interface CodeStats {
     deletions: number;
     commits: number;
   }>;
-  recent_commits?: Array<{
-    sha: string;
-    message: string;
-    author: string;
-    repository: string;
-    date: string;
-    additions: number;
-    deletions: number;
-  }>;
+}
+
+// Helper to calculate date range
+function getDateRange(preset: DateRangePreset): { startDate: string; endDate: string } {
+  const now = new Date();
+  let startDate: Date;
+  let endDate: Date = now;
+
+  if (preset === "month") {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (preset === "lastMonth") {
+    startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+  } else {
+    const days = DATE_RANGE_PRESETS.find((p) => p.value === preset)?.days || 7;
+    startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - days);
+  }
+
+  return {
+    startDate: startDate.toISOString().split("T")[0],
+    endDate: endDate.toISOString().split("T")[0],
+  };
 }
 
 export default function CodeStatsView() {
@@ -76,13 +89,14 @@ export default function CodeStatsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch code stats
+  // Fetch code stats when date range changes
   useEffect(() => {
     const fetchStats = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await api.getCodeStats();
+        const { startDate, endDate } = getDateRange(dateRange);
+        const data = await api.getCodeStats(startDate, endDate);
         setStats(data);
       } catch (err: any) {
         console.error("Failed to fetch code stats:", err);
@@ -93,45 +107,11 @@ export default function CodeStatsView() {
     };
 
     fetchStats();
-  }, []);
+  }, [dateRange]);
 
-  // Filter data based on date range
-  const filteredData = useMemo(() => {
-    if (!stats?.daily) return [];
-
-    const now = new Date();
-    const preset = DATE_RANGE_PRESETS.find((p) => p.value === dateRange);
-    if (!preset) return stats.daily;
-
-    let startDate: Date;
-    let endDate: Date = now;
-
-    if (preset.value === "month") {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else if (preset.value === "lastMonth") {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0);
-    } else {
-      startDate = new Date(now);
-      startDate.setDate(startDate.getDate() - preset.days);
-    }
-
-    return stats.daily.filter((d) => {
-      const date = new Date(d.date);
-      return date >= startDate && date <= endDate;
-    });
-  }, [stats?.daily, dateRange]);
-
-  // Calculate filtered totals
-  const filteredTotals = useMemo(() => {
-    return filteredData.reduce(
-      (acc, d) => ({
-        additions: acc.additions + d.additions,
-        deletions: acc.deletions + d.deletions,
-      }),
-      { additions: 0, deletions: 0 }
-    );
-  }, [filteredData]);
+  // Use stats directly (already filtered by API)
+  const dailyData = stats?.daily || [];
+  const totals = stats?.total || { additions: 0, deletions: 0 };
 
   if (loading) {
     return (
@@ -197,24 +177,22 @@ export default function CodeStatsView() {
             Lines Added
           </p>
           <p className="text-3xl font-bold">
-            +{filteredTotals.additions.toLocaleString()}
+            +{totals.additions.toLocaleString()}
           </p>
         </div>
 
         <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl shadow-lg p-6 text-white">
           <p className="text-rose-100 text-sm font-medium mb-1">Lines Deleted</p>
           <p className="text-3xl font-bold">
-            -{filteredTotals.deletions.toLocaleString()}
+            -{totals.deletions.toLocaleString()}
           </p>
         </div>
 
         <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white">
           <p className="text-indigo-100 text-sm font-medium mb-1">Net Change</p>
           <p className="text-3xl font-bold">
-            {filteredTotals.additions - filteredTotals.deletions >= 0 ? "+" : ""}
-            {(
-              filteredTotals.additions - filteredTotals.deletions
-            ).toLocaleString()}
+            {totals.additions - totals.deletions >= 0 ? "+" : ""}
+            {(totals.additions - totals.deletions).toLocaleString()}
           </p>
         </div>
 
@@ -223,15 +201,13 @@ export default function CodeStatsView() {
             Total Changes
           </p>
           <p className="text-3xl font-bold">
-            {(
-              filteredTotals.additions + filteredTotals.deletions
-            ).toLocaleString()}
+            {(totals.additions + totals.deletions).toLocaleString()}
           </p>
         </div>
       </div>
 
       {/* Code Changes Chart */}
-      {filteredData.length > 0 && (
+      {dailyData.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
             <span className="text-2xl">📈</span>
@@ -240,7 +216,7 @@ export default function CodeStatsView() {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
-                data={filteredData.map((d) => ({
+                data={dailyData.map((d) => ({
                   ...d,
                   changes: d.additions + d.deletions,
                 }))}
@@ -388,48 +364,6 @@ export default function CodeStatsView() {
           </div>
         )}
       </div>
-
-      {/* Recent Commits */}
-      {stats.recent_commits && stats.recent_commits.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="text-2xl">📝</span>
-            Recent Commits
-          </h2>
-          <div className="space-y-3">
-            {stats.recent_commits.slice(0, 20).map((commit) => (
-              <div
-                key={commit.sha}
-                className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">
-                      {commit.message.split("\n")[0]}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
-                      <span>{commit.author}</span>
-                      <span>•</span>
-                      <span>{commit.repository}</span>
-                      <span>•</span>
-                      <span>
-                        {format(new Date(commit.date), "MMM dd, HH:mm")}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right text-sm whitespace-nowrap">
-                    <span className="text-emerald-600">
-                      +{commit.additions}
-                    </span>
-                    {" / "}
-                    <span className="text-rose-600">-{commit.deletions}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -493,8 +493,11 @@ class ApiClient {
   }
 
   // Code statistics API (GitHub commits)
-  async getCodeStats() {
-    const response = await this.client.get("/stats/code-changes");
+  async getCodeStats(startDate?: string, endDate?: string) {
+    const params: { start_date?: string; end_date?: string } = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    const response = await this.client.get("/stats/code-changes", { params });
     return response.data;
   }
 
