@@ -157,6 +157,24 @@ python scripts/daily_data_collection_mongo.py
 docker-compose up -d
 ```
 
+## Scheduled Tasks (Cron)
+
+### Daily Data Collection
+매일 자정(KST)에 어제 데이터 수집:
+```bash
+# AWS EC2 crontab
+0 0 * * * docker exec all-thing-eye-backend python scripts/daily_data_collection_mongo.py
+```
+
+### Weekly GitHub Catch-up
+뒤늦게 푸쉬된 커밋을 잡기 위해 매주 일요일 새벽 2시(KST)에 지난 7일 데이터 재수집:
+```bash
+# AWS EC2 crontab
+0 2 * * 0 docker exec all-thing-eye-backend python scripts/weekly_github_catchup.py
+```
+
+**왜 필요한가?**: 커밋을 만들고 며칠 뒤에 푸쉬하면, daily collector가 놓칠 수 있음 (GitHub API가 `committedDate` 기준으로 필터링하기 때문)
+
 ## Key Patterns
 
 ### 프로젝트 필터링
