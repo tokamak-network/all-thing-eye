@@ -1420,27 +1420,35 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
             return Response(status_code=200)
 
         elif view.get("callback_id") == "code_stats_modal":
-            # Extract values for code stats
-            values = view["state"]["values"]
-            period_value = values["period_block"]["period_input"]["selected_option"][
-                "value"
-            ]
-            channel_id = values["channel_block"]["channel_input"][
-                "selected_conversation"
-            ]
-            user_id = payload["user"]["id"]
+            logger.info("🟢 code_stats_modal submission received")
+            try:
+                # Extract values for code stats
+                values = view["state"]["values"]
+                period_value = values["period_block"]["period_input"]["selected_option"][
+                    "value"
+                ]
+                channel_id = values["channel_block"]["channel_input"][
+                    "selected_conversation"
+                ]
+                user_id = payload["user"]["id"]
 
-            # Parse period (format: "start_date|end_date")
-            start_date, end_date = period_value.split("|")
+                # Parse period (format: "start_date|end_date")
+                start_date, end_date = period_value.split("|")
 
-            # Generate code stats in background
-            background_tasks.add_task(
-                generate_and_send_code_stats,
-                channel_id,
-                start_date,
-                end_date,
-                user_id,
-            )
+                logger.info(f"📊 Code stats request: {start_date} ~ {end_date}, channel: {channel_id}, user: {user_id}")
+
+                # Generate code stats in background
+                background_tasks.add_task(
+                    generate_and_send_code_stats,
+                    channel_id,
+                    start_date,
+                    end_date,
+                    user_id,
+                )
+                logger.info("✅ Code stats background task added")
+            except Exception as e:
+                logger.error(f"❌ Error processing code_stats_modal: {e}", exc_info=True)
+                return {"response_action": "errors", "errors": {"period_block": str(e)}}
 
             return Response(status_code=200)
 
