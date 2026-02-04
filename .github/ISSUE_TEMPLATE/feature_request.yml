@@ -1,0 +1,30 @@
+name: Feature Request
+description: Request a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: What do you want to add or change?
+      placeholder: "Add dark mode to the dashboard"
+    validations:
+      required: true
+
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: Which page, component, or file?
+      placeholder: "Dashboard page (frontend/src/app/page.tsx)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Any additional context or references?
+      placeholder: "Related to #123, see Figma design link..."
+    validations:
+      required: false
