@@ -984,11 +984,105 @@ async def open_code_stats_modal(trigger_id: str, channel_id: str = None):
             logger.error(f"Failed to open code stats modal: {result}")
 
 
+def _fetch_code_stats_sync(start_date: str, end_date: str) -> dict:
+    """Synchronous helper to fetch code stats (runs in thread pool)."""
+    from datetime import datetime
+    from bson import ObjectId
+    from backend.api.v1.mcp_utils import get_mongo
+
+    db = get_mongo().db
+
+    # Parse date range
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+
+    date_filter = {"date": {"$gte": start_dt, "$lte": end_dt}}
+
+    # GitHub username to member name mapping
+    github_to_member = {}
+    github_identifiers = list(db["member_identifiers"].find({"source": "github"}))
+    for ident in github_identifiers:
+        member_id = ident.get("member_id")
+        github_username = ident.get("identifier_value", "").lower()
+        if member_id and github_username:
+            member = db["members"].find_one({"_id": ObjectId(member_id)})
+            if member:
+                github_to_member[github_username] = member.get("name", github_username)
+
+    # Aggregate total stats
+    total_result = list(db["github_commits"].aggregate([
+        {"$match": date_filter},
+        {"$group": {
+            "_id": None,
+            "additions": {"$sum": "$additions"},
+            "deletions": {"$sum": "$deletions"},
+            "commits": {"$sum": 1}
+        }}
+    ]))
+    total = total_result[0] if total_result else {"additions": 0, "deletions": 0, "commits": 0}
+
+    # Aggregate by member
+    member_results = list(db["github_commits"].aggregate([
+        {"$match": date_filter},
+        {"$group": {
+            "_id": "$author_name",
+            "additions": {"$sum": "$additions"},
+            "deletions": {"$sum": "$deletions"},
+            "commits": {"$sum": 1}
+        }},
+        {"$sort": {"additions": -1}},
+        {"$limit": 10}
+    ]))
+    by_member = []
+    for m in member_results:
+        github_username = (m["_id"] or "").lower()
+        member_name = github_to_member.get(github_username, m["_id"])
+        by_member.append({
+            "name": member_name,
+            "additions": m["additions"],
+            "deletions": m["deletions"],
+            "commits": m["commits"]
+        })
+
+    # Aggregate by repository
+    repo_results = list(db["github_commits"].aggregate([
+        {"$match": date_filter},
+        {"$group": {
+            "_id": "$repository",
+            "additions": {"$sum": "$additions"},
+            "deletions": {"$sum": "$deletions"},
+            "commits": {"$sum": 1}
+        }},
+        {"$sort": {"additions": -1}},
+        {"$limit": 10}
+    ]))
+    by_repository = [
+        {
+            "name": r["_id"],
+            "additions": r["additions"],
+            "deletions": r["deletions"],
+            "commits": r["commits"]
+        }
+        for r in repo_results
+    ]
+
+    return {
+        "total": {
+            "additions": total.get("additions", 0),
+            "deletions": total.get("deletions", 0),
+            "commits": total.get("commits", 0),
+            "net_change": total.get("additions", 0) - total.get("deletions", 0)
+        },
+        "top_contributors": by_member,
+        "top_repositories": by_repository
+    }
+
+
 async def generate_and_send_code_stats(
     channel_id: str, start_date: str, end_date: str, user_id: str
 ):
     """Generate code statistics and send to Slack channel."""
-    from backend.api.v1.mcp_agent import MCPToolManager
+    import asyncio
 
     bot_token = os.getenv("SLACK_CHATBOT_TOKEN", "")
     headers = {
@@ -1022,16 +1116,9 @@ async def generate_and_send_code_stats(
             return
 
         try:
-            # 2. Get code stats using MCPToolManager
-            result = await MCPToolManager.get_code_stats({
-                "start_date": start_date,
-                "end_date": end_date,
-            })
+            # 2. Get code stats (run in thread pool to avoid blocking)
+            data = await asyncio.to_thread(_fetch_code_stats_sync, start_date, end_date)
 
-            if not result.get("success"):
-                raise Exception("Failed to fetch code stats")
-
-            data = result["data"]
             total = data["total"]
             contributors = data["top_contributors"][:5]
             repositories = data["top_repositories"][:5]
