@@ -159,11 +159,11 @@ docker-compose up -d
 
 ## Scheduled Tasks (Cron)
 
-### Daily Data Collection
-매일 자정(KST)에 어제 데이터 수집:
+### Data Collection (Every 4 Hours)
+4시간 주기(KST)로 데이터 수집 (0시, 4시, 8시, 12시, 16시, 20시):
 ```bash
 # AWS EC2 crontab
-0 0 * * * docker exec all-thing-eye-backend python scripts/daily_data_collection_mongo.py
+0 0,4,8,12,16,20 * * * docker exec all-thing-eye-backend python scripts/daily_data_collection_mongo.py
 ```
 
 ### Weekly GitHub Catch-up
