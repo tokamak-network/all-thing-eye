@@ -9,10 +9,9 @@ import {
 } from 'recharts';
 
 // Date range presets for code changes chart
-type DateRangePreset = '24h' | '3d' | '7d' | '14d' | 'month' | 'lastMonth';
+type DateRangePreset = '3d' | '7d' | '14d' | 'month' | 'lastMonth';
 
 const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string; days: number }[] = [
-  { value: '24h', label: '24 Hours', days: 1 },
   { value: '3d', label: '3 Days', days: 3 },
   { value: '7d', label: '1 Week', days: 7 },
   { value: '14d', label: '2 Weeks', days: 14 },
