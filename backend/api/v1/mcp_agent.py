@@ -115,6 +115,23 @@ TOOLS = [
         },
     },
     {
+        "name": "get_code_stats",
+        "description": "Get code change statistics (lines added/deleted) from GitHub commits. Use this for questions about code contributions, lines of code, additions, deletions, or code volume. Returns total additions/deletions, daily breakdown, top contributors by code volume, and top repositories.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "description": "Start date in YYYY-MM-DD format (optional, defaults to last 30 days)",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "End date in YYYY-MM-DD format (optional)",
+                },
+            },
+        },
+    },
+    {
         "name": "final_answer",
         "description": "Provide the final answer to the user. Use this ONLY after you have gathered all data.",
         "parameters": {
@@ -216,12 +233,127 @@ class MCPToolManager:
 
         return {"success": True, "data": results}
 
+    @staticmethod
+    async def get_code_stats(args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get code change statistics from GitHub commits."""
+        db = get_mongo().db
+
+        # Parse date range
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=30)  # Default: last 30 days
+
+        if args.get("start_date"):
+            try:
+                start_dt = datetime.strptime(args["start_date"], "%Y-%m-%d")
+            except:
+                pass
+
+        if args.get("end_date"):
+            try:
+                end_dt = datetime.strptime(args["end_date"], "%Y-%m-%d")
+                end_dt = end_dt.replace(hour=23, minute=59, second=59)
+            except:
+                pass
+
+        # Build date filter
+        date_filter = {"date": {"$gte": start_dt, "$lte": end_dt}}
+
+        # GitHub username to member name mapping
+        github_to_member = {}
+        github_identifiers = list(db["member_identifiers"].find({"source": "github"}))
+        for ident in github_identifiers:
+            member_id = ident.get("member_id")
+            github_username = ident.get("identifier_value", "").lower()
+            if member_id and github_username:
+                member = db["members"].find_one({"_id": ObjectId(member_id)})
+                if member:
+                    github_to_member[github_username] = member.get("name", github_username)
+
+        # Aggregate total stats
+        total_pipeline = [
+            {"$match": date_filter},
+            {"$group": {
+                "_id": None,
+                "additions": {"$sum": "$additions"},
+                "deletions": {"$sum": "$deletions"},
+                "commits": {"$sum": 1}
+            }}
+        ]
+        total_result = list(db["github_commits"].aggregate(total_pipeline))
+        total = total_result[0] if total_result else {"additions": 0, "deletions": 0, "commits": 0}
+
+        # Aggregate by member
+        member_pipeline = [
+            {"$match": date_filter},
+            {"$group": {
+                "_id": "$author_name",
+                "additions": {"$sum": "$additions"},
+                "deletions": {"$sum": "$deletions"},
+                "commits": {"$sum": 1}
+            }},
+            {"$sort": {"additions": -1}},
+            {"$limit": 10}
+        ]
+        member_results = list(db["github_commits"].aggregate(member_pipeline))
+        by_member = []
+        for m in member_results:
+            github_username = (m["_id"] or "").lower()
+            member_name = github_to_member.get(github_username, m["_id"])
+            by_member.append({
+                "name": member_name,
+                "additions": m["additions"],
+                "deletions": m["deletions"],
+                "commits": m["commits"]
+            })
+
+        # Aggregate by repository
+        repo_pipeline = [
+            {"$match": date_filter},
+            {"$group": {
+                "_id": "$repository",
+                "additions": {"$sum": "$additions"},
+                "deletions": {"$sum": "$deletions"},
+                "commits": {"$sum": 1}
+            }},
+            {"$sort": {"additions": -1}},
+            {"$limit": 10}
+        ]
+        repo_results = list(db["github_commits"].aggregate(repo_pipeline))
+        by_repository = [
+            {
+                "name": r["_id"],
+                "additions": r["additions"],
+                "deletions": r["deletions"],
+                "commits": r["commits"]
+            }
+            for r in repo_results
+        ]
+
+        return {
+            "success": True,
+            "data": {
+                "period": {
+                    "start": start_dt.strftime("%Y-%m-%d"),
+                    "end": end_dt.strftime("%Y-%m-%d")
+                },
+                "total": {
+                    "additions": total.get("additions", 0),
+                    "deletions": total.get("deletions", 0),
+                    "commits": total.get("commits", 0),
+                    "net_change": total.get("additions", 0) - total.get("deletions", 0)
+                },
+                "top_contributors": by_member,
+                "top_repositories": by_repository
+            }
+        }
+
 
 TOOL_EXECUTOR_MAP = {
     "get_team_members": MCPToolManager.get_team_members,
     "get_projects": MCPToolManager.get_projects,
     "get_project_details": MCPToolManager.get_project_details,
     "get_activities": MCPToolManager.get_activities,
+    "get_code_stats": MCPToolManager.get_code_stats,
 }
 
 # ============================================================================
