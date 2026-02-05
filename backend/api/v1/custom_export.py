@@ -1239,8 +1239,7 @@ async def export_custom_data(
             # CSV export (default)
             output_stream = io.StringIO()
 
-            # Order fields: base fields first, then preserve order from first record,
-            # new fields discovered in subsequent records go at the end
+            # Order fields: base fields first, then source-specific fields, then remaining fields
             base_fields = [
                 "source",
                 "type",
@@ -1249,11 +1248,38 @@ async def export_custom_data(
                 "timestamp",
             ]
 
-            # Build ordered field list: base fields + fields from first record + new fields from other records
+            # Source-specific field order (fields after base_fields, before remaining)
+            source_specific_fields = {
+                "notion": [
+                    "added_count",
+                    "added_summary",
+                    "deleted_count",
+                    "deleted_summary",
+                    "diff_type",
+                    "editor_name",
+                    "modified_count",
+                    "modified_summary",
+                    "page_id",
+                    "page_title",
+                ],
+            }
+
+            # Determine which source-specific fields to include based on data
+            sources_in_data = set(row.get("source") for row in results)
+
+            # Build ordered field list
             ordered_fields = list(base_fields)
             seen_fields = set(base_fields)
 
-            # First pass: add fields in order they appear in each record
+            # Add source-specific fields in order (if that source is in data)
+            for source_name, specific_fields in source_specific_fields.items():
+                if source_name in sources_in_data:
+                    for field in specific_fields:
+                        if field not in seen_fields:
+                            ordered_fields.append(field)
+                            seen_fields.add(field)
+
+            # Add remaining fields from data (new fields go at the end)
             for row in results:
                 for field in row.keys():
                     if field not in seen_fields:
