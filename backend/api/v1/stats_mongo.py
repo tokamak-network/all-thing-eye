@@ -776,7 +776,7 @@ async def get_code_changes_stats(
         # Sort by total changes (commits with activity first, then alphabetically for 0s)
         by_member.sort(key=lambda x: (-(x["additions"] + x["deletions"]), x["name"].lower()))
 
-        # 5. Top repositories (by activity)
+        # 5. Repositories (by activity)
         repo_pipeline = [
             {"$match": date_filter},
             {"$group": {
@@ -788,8 +788,7 @@ async def get_code_changes_stats(
             {"$addFields": {
                 "total_changes": {"$add": ["$additions", "$deletions"]}
             }},
-            {"$sort": {"total_changes": -1}},
-            {"$limit": 20}
+            {"$sort": {"total_changes": -1}}
         ]
         repo_result = await db["github_commits"].aggregate(repo_pipeline).to_list(None)
         by_repository = [
