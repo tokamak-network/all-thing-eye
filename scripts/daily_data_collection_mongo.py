@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """
-Daily Data Collection Script for MongoDB
+Data Collection Script for MongoDB
 
-Collects data from the previous day (KST timezone).
-Should be run daily at midnight KST.
-
-Example:
-    - Runs at Friday 00:00:00 KST
-    - Collects Thursday's data (00:00:00 ~ 23:59:59 KST)
+Supports multiple collection modes:
+1. Hourly mode: Collect recent N hours of data (for cron jobs running every hour)
+2. Daily mode: Collect previous day's data (default)
+3. Custom date/range mode: Collect specific date(s)
 
 Usage:
+    # Hourly collection (recommended for cron jobs)
+    python scripts/daily_data_collection_mongo.py --hours 2
+
+    # Daily collection (previous day)
     python scripts/daily_data_collection_mongo.py
+
+    # Specific date
     python scripts/daily_data_collection_mongo.py --date 2025-11-17
+
+    # Date range
+    python scripts/daily_data_collection_mongo.py --start-date 2025-11-01 --end-date 2025-11-17
 """
 
 import os
@@ -487,6 +494,11 @@ async def main():
         description="Collect data for date range (KST timezone)"
     )
     parser.add_argument(
+        "--hours",
+        type=int,
+        help="Collect data from the last N hours (recommended for hourly cron jobs, e.g., --hours 2)",
+    )
+    parser.add_argument(
         "--date",
         type=str,
         help="Specific date to collect (YYYY-MM-DD in KST). Default: yesterday",
@@ -517,11 +529,25 @@ async def main():
     args = parser.parse_args()
 
     logger.info("=" * 80)
-    logger.info(f"🚀 Starting DAILY data collection - {datetime.now(KST).isoformat()}")
+    logger.info(f"🚀 Starting data collection - {datetime.now(KST).isoformat()}")
     logger.info("=" * 80)
 
     # Calculate date range
-    if args.start_date:
+    if args.hours:
+        # Hourly mode: collect last N hours
+        now_utc = datetime.now(ZoneInfo("UTC"))
+        end_utc = now_utc.replace(tzinfo=None)
+        start_utc = (now_utc - timedelta(hours=args.hours)).replace(tzinfo=None)
+
+        now_kst = now_utc.astimezone(KST)
+        start_kst = (now_utc - timedelta(hours=args.hours)).astimezone(KST)
+
+        logger.info(f"⏰ Hourly mode: collecting last {args.hours} hour(s)")
+        logger.info(f"   Current time (KST): {now_kst.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   Start (KST): {start_kst.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   Start (UTC): {start_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"   End (UTC): {end_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+    elif args.start_date:
         # Date range mode
         start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
         start_kst = start_date.replace(hour=0, minute=0, second=0, tzinfo=KST)
