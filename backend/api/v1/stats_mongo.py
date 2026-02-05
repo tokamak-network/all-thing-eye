@@ -740,23 +740,41 @@ async def get_code_changes_stats(
         async for member in db["members"].find({"is_active": {"$ne": False}}, {"_id": 1, "name": 1}):
             all_members.append(member)
 
-        by_member = []
+        # Aggregate by member_name (same person may have multiple GitHub usernames)
+        member_stats = {}  # member_name -> {additions, deletions, commits, github_ids}
         members_with_stats = set()  # Track which members we've added
 
-        # First, add members with commits (from github_commits data)
+        # First, aggregate members with commits (from github_commits data)
         for doc in member_result:
             if not doc["_id"]:
                 continue
             github_username = doc["_id"]
             member_name = github_to_member.get(github_username) or github_to_member.get(github_username.lower()) or github_username
+
+            # Aggregate stats by member_name
+            if member_name not in member_stats:
+                member_stats[member_name] = {
+                    "additions": 0,
+                    "deletions": 0,
+                    "commits": 0,
+                    "github_ids": []
+                }
+            member_stats[member_name]["additions"] += doc["additions"]
+            member_stats[member_name]["deletions"] += doc["deletions"]
+            member_stats[member_name]["commits"] += doc["commits"]
+            member_stats[member_name]["github_ids"].append(github_username)
+            members_with_stats.add(member_name.lower())
+
+        # Convert to list
+        by_member = []
+        for member_name, stats in member_stats.items():
             by_member.append({
                 "name": member_name,
-                "github_id": github_username,
-                "additions": doc["additions"],
-                "deletions": doc["deletions"],
-                "commits": doc["commits"]
+                "github_id": stats["github_ids"][0] if len(stats["github_ids"]) == 1 else ", ".join(stats["github_ids"]),
+                "additions": stats["additions"],
+                "deletions": stats["deletions"],
+                "commits": stats["commits"]
             })
-            members_with_stats.add(member_name.lower())
 
         # Then, add members with 0 commits (from members collection)
         for member in all_members:
@@ -776,7 +794,7 @@ async def get_code_changes_stats(
         # Sort by total changes (commits with activity first, then alphabetically for 0s)
         by_member.sort(key=lambda x: (-(x["additions"] + x["deletions"]), x["name"].lower()))
 
-        # 5. Repositories (by activity)
+        # 5. Repositories (by activity) with contributor breakdown
         repo_pipeline = [
             {"$match": date_filter},
             {"$group": {
@@ -791,12 +809,49 @@ async def get_code_changes_stats(
             {"$sort": {"total_changes": -1}}
         ]
         repo_result = await db["github_commits"].aggregate(repo_pipeline).to_list(None)
+
+        # Get contributor breakdown per repository
+        repo_contributor_pipeline = [
+            {"$match": date_filter},
+            {"$group": {
+                "_id": {"repository": "$repository", "author": "$author_name"},
+                "additions": {"$sum": {"$ifNull": ["$additions", 0]}},
+                "deletions": {"$sum": {"$ifNull": ["$deletions", 0]}},
+                "commits": {"$sum": 1}
+            }},
+            {"$addFields": {
+                "total_changes": {"$add": ["$additions", "$deletions"]}
+            }},
+            {"$sort": {"total_changes": -1}}
+        ]
+        repo_contributors = await db["github_commits"].aggregate(repo_contributor_pipeline).to_list(None)
+
+        # Build a map of repository -> contributors
+        repo_to_contributors = {}
+        for doc in repo_contributors:
+            repo_name = doc["_id"]["repository"]
+            author = doc["_id"]["author"]
+            if not repo_name or not author:
+                continue
+            if repo_name not in repo_to_contributors:
+                repo_to_contributors[repo_name] = []
+            # Map github username to member name
+            member_name = github_to_member.get(author) or github_to_member.get(author.lower()) or author
+            repo_to_contributors[repo_name].append({
+                "name": member_name,
+                "github_id": author,
+                "additions": doc["additions"],
+                "deletions": doc["deletions"],
+                "commits": doc["commits"]
+            })
+
         by_repository = [
             {
                 "name": doc["_id"] or "Unknown",
                 "additions": doc["additions"],
                 "deletions": doc["deletions"],
-                "commits": doc["commits"]
+                "commits": doc["commits"],
+                "contributors": repo_to_contributors.get(doc["_id"], [])
             }
             for doc in repo_result if doc["_id"]
         ]
