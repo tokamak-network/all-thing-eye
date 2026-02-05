@@ -33,7 +33,7 @@ class ApiClient {
       },
       (error) => {
         return Promise.reject(error);
-      }
+      },
     );
 
     // Response interceptor for error handling
@@ -50,7 +50,7 @@ class ApiClient {
         }
         console.error("API Error:", error.response?.data || error.message);
         return Promise.reject(error);
-      }
+      },
     );
   }
 
@@ -94,11 +94,11 @@ class ApiClient {
       projects?: string[];
       eoa_address?: string;
       recording_name?: string;
-    }
+    },
   ) {
     const response = await this.client.patch(
       `/members/${memberId}`,
-      memberData
+      memberData,
     );
     return response.data;
   }
@@ -122,7 +122,7 @@ class ApiClient {
       end_date?: string;
       limit?: number;
       offset?: number;
-    }
+    },
   ) {
     const response = await this.client.get(`/members/${memberId}/activities`, {
       params,
@@ -135,9 +135,12 @@ class ApiClient {
     params?: {
       start_date?: string;
       end_date?: string;
-    }
+    },
   ) {
-    const response = await this.client.post(`/members/${memberId}/summary`, params || {});
+    const response = await this.client.post(
+      `/members/${memberId}/summary`,
+      params || {},
+    );
     return response.data;
   }
 
@@ -203,7 +206,9 @@ class ApiClient {
   }
 
   async getProjectManagement(projectKey: string) {
-    const response = await this.client.get(`/projects-management/projects/${projectKey}`);
+    const response = await this.client.get(
+      `/projects-management/projects/${projectKey}`,
+    );
     return response.data;
   }
 
@@ -223,7 +228,10 @@ class ApiClient {
     member_ids?: string[];
     is_active?: boolean;
   }) {
-    const response = await this.client.post("/projects-management/projects", projectData);
+    const response = await this.client.post(
+      "/projects-management/projects",
+      projectData,
+    );
     return response.data;
   }
 
@@ -243,25 +251,34 @@ class ApiClient {
       sub_projects?: string[];
       member_ids?: string[];
       is_active?: boolean;
-    }
+    },
   ) {
-    const response = await this.client.put(`/projects-management/projects/${projectKey}`, projectData);
+    const response = await this.client.put(
+      `/projects-management/projects/${projectKey}`,
+      projectData,
+    );
     return response.data;
   }
 
   async deleteProject(projectKey: string) {
-    const response = await this.client.delete(`/projects-management/projects/${projectKey}`);
+    const response = await this.client.delete(
+      `/projects-management/projects/${projectKey}`,
+    );
     return response.data;
   }
 
   async syncProjectRepositories(projectKey: string) {
-    const response = await this.client.post(`/projects-management/projects/${projectKey}/sync-repositories`);
+    const response = await this.client.post(
+      `/projects-management/projects/${projectKey}/sync-repositories`,
+    );
     return response.data;
   }
 
   // Grant Reports Management
   async getGrantReports(projectKey: string) {
-    const response = await this.client.get(`/projects-management/projects/${projectKey}/grant-reports`);
+    const response = await this.client.get(
+      `/projects-management/projects/${projectKey}/grant-reports`,
+    );
     return response.data;
   }
 
@@ -273,9 +290,12 @@ class ApiClient {
       quarter: number;
       drive_url: string;
       file_name?: string;
-    }
+    },
   ) {
-    const response = await this.client.post(`/projects-management/projects/${projectKey}/grant-reports`, reportData);
+    const response = await this.client.post(
+      `/projects-management/projects/${projectKey}/grant-reports`,
+      reportData,
+    );
     return response.data;
   }
 
@@ -288,23 +308,32 @@ class ApiClient {
       quarter: number;
       drive_url: string;
       file_name?: string;
-    }
+    },
   ) {
-    const response = await this.client.put(`/projects-management/projects/${projectKey}/grant-reports/${reportId}`, reportData);
+    const response = await this.client.put(
+      `/projects-management/projects/${projectKey}/grant-reports/${reportId}`,
+      reportData,
+    );
     return response.data;
   }
 
   async deleteGrantReport(projectKey: string, reportId: string) {
-    const response = await this.client.delete(`/projects-management/projects/${projectKey}/grant-reports/${reportId}`);
+    const response = await this.client.delete(
+      `/projects-management/projects/${projectKey}/grant-reports/${reportId}`,
+    );
     return response.data;
   }
 
   // Grant Report Summary API
-  async summarizeGrantReport(projectKey: string, reportId: string, forceRefresh: boolean = false) {
+  async summarizeGrantReport(
+    projectKey: string,
+    reportId: string,
+    forceRefresh: boolean = false,
+  ) {
     const response = await this.client.post(
       `/projects-management/projects/${projectKey}/grant-reports/${reportId}/summarize`,
       null,
-      { params: { force_refresh: forceRefresh }, timeout: 180000 } // 3 min timeout for AI
+      { params: { force_refresh: forceRefresh }, timeout: 180000 }, // 3 min timeout for AI
     );
     return response.data;
   }
@@ -312,17 +341,19 @@ class ApiClient {
   async getProjectSummary(projectKey: string, forceRefresh: boolean = false) {
     const response = await this.client.get(
       `/projects-management/projects/${projectKey}/grant-reports/summary`,
-      { 
+      {
         params: { force_refresh: forceRefresh },
-        timeout: 180000 // 3 min timeout for AI
-      }
+        timeout: 180000, // 3 min timeout for AI
+      },
     );
     return response.data;
   }
 
   // Drive Folder API
   async getDriveFolderFiles(folderId: string) {
-    const response = await this.client.get(`/projects-management/drive/folder/${folderId}/files`);
+    const response = await this.client.get(
+      `/projects-management/drive/folder/${folderId}/files`,
+    );
     return response.data;
   }
 
@@ -330,7 +361,7 @@ class ApiClient {
     if (!channelName || !channelName.trim()) {
       return undefined;
     }
-    
+
     try {
       // Query slack_channels collection via database API
       const response = await this.client.get(
@@ -339,18 +370,18 @@ class ApiClient {
           params: {
             limit: 100,
             filter: JSON.stringify({
-              name: { $regex: channelName.trim(), $options: "i" }
-            })
-          }
-        }
+              name: { $regex: channelName.trim(), $options: "i" },
+            }),
+          },
+        },
       );
-      
+
       const channels = response.data?.documents || [];
       if (channels.length > 0) {
         // Return channel_id or slack_id
         return channels[0].channel_id || channels[0].slack_id;
       }
-      
+
       return undefined;
     } catch (error) {
       console.error("Error finding Slack channel ID:", error);
@@ -369,7 +400,7 @@ class ApiClient {
     table: string,
     limit?: number,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
   ) {
     const queryParams = new URLSearchParams();
     if (limit) queryParams.append("limit", limit.toString());
@@ -394,7 +425,7 @@ class ApiClient {
       project_key?: string;
       member_name?: string;
       limit?: number;
-    }
+    },
   ) {
     const queryParams = new URLSearchParams();
     queryParams.append("format", format);
@@ -411,7 +442,7 @@ class ApiClient {
   getExportProjectUrl(
     projectKey: string,
     format: "csv" | "json" = "csv",
-    dataType: "all" | "slack" | "github" | "google_drive" = "all"
+    dataType: "all" | "slack" | "github" | "google_drive" = "all",
   ) {
     return `${API_BASE_URL}/api/v1/exports/projects/${projectKey}?format=${format}&data_type=${dataType}`;
   }
@@ -420,7 +451,7 @@ class ApiClient {
     tables: Array<{ source: string; table: string }>,
     startDate?: string,
     endDate?: string,
-    format: "csv" | "json" | "toon" = "csv"
+    format: "csv" | "json" | "toon" = "csv",
   ) {
     const payload: any = {
       tables,
@@ -448,7 +479,7 @@ class ApiClient {
 
   async getCollectionSchema(collectionName: string) {
     const response = await this.client.get(
-      `/database/collections/${collectionName}/schema`
+      `/database/collections/${collectionName}/schema`,
     );
     return response.data;
   }
@@ -457,11 +488,11 @@ class ApiClient {
     collectionName: string,
     page: number = 1,
     limit: number = 30,
-    search?: string
+    search?: string,
   ) {
     const response = await this.client.get(
       `/database/collections/${collectionName}/documents`,
-      { params: { page, limit, search } }
+      { params: { page, limit, search } },
     );
     return response.data;
   }
@@ -469,14 +500,14 @@ class ApiClient {
   async getCollectionSample(collectionName: string, limit: number = 10) {
     const response = await this.client.get(
       `/database/collections/${collectionName}/sample`,
-      { params: { limit } }
+      { params: { limit } },
     );
     return response.data;
   }
 
   async getCollectionStats(collectionName: string) {
     const response = await this.client.get(
-      `/database/collections/${collectionName}/stats`
+      `/database/collections/${collectionName}/stats`,
     );
     return response.data;
   }
@@ -492,9 +523,8 @@ class ApiClient {
     return response.data;
   }
 
-  // Code statistics API (GitHub commits)
   async getCodeStats(startDate?: string, endDate?: string) {
-    const params: { start_date?: string; end_date?: string } = {};
+    const params: Record<string, string> = {};
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
     const response = await this.client.get("/stats/code-changes", { params });
@@ -536,7 +566,7 @@ class ApiClient {
   async translateText(
     text: string,
     targetLanguage: string = "ko",
-    sourceLanguage?: string
+    sourceLanguage?: string,
   ) {
     const response = await this.client.post("/ai/translate", {
       text,
@@ -565,7 +595,7 @@ class ApiClient {
 
   async getMeetingAnalysis(meetingId: string, template: string) {
     const response = await this.client.get(
-      `/ai/meetings/${meetingId}/analysis/${template}`
+      `/ai/meetings/${meetingId}/analysis/${template}`,
     );
     return response.data;
   }
@@ -635,7 +665,7 @@ class ApiClient {
   }) {
     const response = await this.client.post("/custom-export/preview", {
       ...params,
-      limit: params.limit || 500,  // Higher limit for AI analysis
+      limit: params.limit || 500, // Higher limit for AI analysis
       offset: params.offset || 0,
     });
     return response.data;
@@ -649,12 +679,12 @@ class ApiClient {
       project?: string;
       selected_fields?: string[];
     },
-    format: "csv" | "json" | "toon" = "csv"
+    format: "csv" | "json" | "toon" = "csv",
   ) {
     const response = await this.client.post(
       `/custom-export/export?format=${format}`,
       params,
-      { responseType: "blob" }
+      { responseType: "blob" },
     );
     return response.data;
   }
@@ -674,7 +704,7 @@ class ApiClient {
     format: "csv" | "json" | "toon" = "csv",
     startDate?: string,
     endDate?: string,
-    limit?: number
+    limit?: number,
   ) {
     // Increase timeout for large collection exports (3 minutes)
     const response = await this.client.post(
@@ -686,10 +716,10 @@ class ApiClient {
         end_date: endDate,
         limit,
       },
-      { 
+      {
         responseType: "blob",
-        timeout: 180000 // 3 minutes for large single collection exports
-      }
+        timeout: 180000, // 3 minutes for large single collection exports
+      },
     );
     return response.data;
   }
@@ -699,7 +729,7 @@ class ApiClient {
     format: "csv" | "json" | "toon" = "csv",
     startDate?: string,
     endDate?: string,
-    limit?: number
+    limit?: number,
   ) {
     // Increase timeout for bulk exports (5 minutes)
     const response = await this.client.post(
@@ -711,10 +741,10 @@ class ApiClient {
         end_date: endDate,
         limit,
       },
-      { 
+      {
         responseType: "blob",
-        timeout: 300000 // 5 minutes for large bulk exports
-      }
+        timeout: 300000, // 5 minutes for large bulk exports
+      },
     );
     return response.data;
   }
@@ -722,7 +752,7 @@ class ApiClient {
   async exportMembers(format: "csv" | "json" | "toon" = "csv") {
     const response = await this.client.get(
       `/custom-export/members?format=${format}`,
-      { responseType: "blob" }
+      { responseType: "blob" },
     );
     return response.data;
   }
@@ -731,7 +761,7 @@ class ApiClient {
   private getAIClient(): AxiosInstance {
     const AI_API_BASE_URL =
       process.env.NEXT_PUBLIC_AI_API_URL || "https://api.ai.tokamak.network";
-    
+
     const aiClient = axios.create({
       baseURL: AI_API_BASE_URL,
       headers: {
@@ -758,7 +788,7 @@ class ApiClient {
       },
       (error) => {
         return Promise.reject(error);
-      }
+      },
     );
 
     return aiClient;
@@ -773,7 +803,7 @@ class ApiClient {
   async chatWithAI(
     messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
     model?: string,
-    context?: Record<string, any>
+    context?: Record<string, any>,
   ) {
     // Use backend proxy instead of direct API call
     const requestBody: any = {
@@ -809,7 +839,7 @@ class ApiClient {
   async generateWithAI(
     prompt: string,
     model?: string,
-    context?: Record<string, any>
+    context?: Record<string, any>,
   ) {
     // Use backend proxy instead of direct API call
     const requestBody: any = {
@@ -903,16 +933,20 @@ class ApiClient {
     messages: Array<{ role: string; content: string }>,
     model?: string,
     contextHints?: Record<string, any>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ) {
     const isDev = process.env.NODE_ENV === "development";
     const endpoint = isDev ? "/mcp/chat/test" : "/mcp/chat";
-    
-    const response = await this.client.post(endpoint, {
-      messages,
-      model,
-      context_hints: contextHints,
-    }, { signal });
+
+    const response = await this.client.post(
+      endpoint,
+      {
+        messages,
+        model,
+        context_hints: contextHints,
+      },
+      { signal },
+    );
     return response.data;
   }
 
@@ -924,22 +958,26 @@ class ApiClient {
     messages: Array<{ role: string; content: string }>,
     model?: string,
     maxIterations?: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ) {
     // Use test endpoint in development (no auth required)
     // Use regular endpoint in production (requires auth)
     const isDev = process.env.NODE_ENV === "development";
     const endpoint = isDev ? "/mcp/agent/test" : "/mcp/agent";
-    
+
     console.log(`🤖 Agent API call to ${endpoint}`);
     console.log(`   Messages: ${messages.length}, Model: ${model}`);
-    
-    const response = await this.client.post(endpoint, {
-      messages,
-      model,
-      max_iterations: maxIterations || 10,
-    }, { signal });
-    
+
+    const response = await this.client.post(
+      endpoint,
+      {
+        messages,
+        model,
+        max_iterations: maxIterations || 10,
+      },
+      { signal },
+    );
+
     console.log(`🤖 Agent API response:`, response.data);
     return response.data;
   }
@@ -962,7 +1000,7 @@ class ApiClient {
   async generateReport(
     startDate: string,
     endDate: string,
-    useAi: boolean = true
+    useAi: boolean = true,
   ): Promise<{
     content: string;
     metadata: {
