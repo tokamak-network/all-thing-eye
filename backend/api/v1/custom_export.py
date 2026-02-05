@@ -1239,22 +1239,26 @@ async def export_custom_data(
             # CSV export (default)
             output_stream = io.StringIO()
 
-            # Get all possible field names from results
-            all_fields = set()
-            for row in results:
-                all_fields.update(row.keys())
-
-            # Order fields logically
-            ordered_fields = [
+            # Order fields: base fields first, then preserve order from first record,
+            # new fields discovered in subsequent records go at the end
+            base_fields = [
                 "source",
                 "type",
                 "member_name",
                 "member_email",
                 "timestamp",
             ]
-            for field in sorted(all_fields):
-                if field not in ordered_fields:
-                    ordered_fields.append(field)
+
+            # Build ordered field list: base fields + fields from first record + new fields from other records
+            ordered_fields = list(base_fields)
+            seen_fields = set(base_fields)
+
+            # First pass: add fields in order they appear in each record
+            for row in results:
+                for field in row.keys():
+                    if field not in seen_fields:
+                        ordered_fields.append(field)
+                        seen_fields.add(field)
 
             # Use QUOTE_ALL to properly handle special characters and newlines
             writer = csv.DictWriter(
@@ -1534,11 +1538,14 @@ async def export_collection(request: Request, body: CollectionExportRequest):
         else:  # CSV
             output_stream = io.StringIO()
             if rows:
-                # Collect all possible fieldnames from all rows
-                all_fieldnames = set()
+                # Preserve field order: fields from first record, then new fields from other records at the end
+                fieldnames = []
+                seen_fields = set()
                 for row in rows:
-                    all_fieldnames.update(row.keys())
-                fieldnames = sorted(list(all_fieldnames))
+                    for field in row.keys():
+                        if field not in seen_fields:
+                            fieldnames.append(field)
+                            seen_fields.add(field)
 
                 writer = csv.DictWriter(
                     output_stream, fieldnames=fieldnames, extrasaction="ignore"
@@ -1740,11 +1747,14 @@ async def export_collections_bulk(request: Request, body: CollectionExportReques
                     else:  # CSV
                         output_stream = io.StringIO()
                         if rows:
-                            # Collect all possible fieldnames from all rows
-                            all_fieldnames = set()
+                            # Preserve field order: fields from first record, then new fields from other records at the end
+                            fieldnames = []
+                            seen_fields = set()
                             for row in rows:
-                                all_fieldnames.update(row.keys())
-                            fieldnames = sorted(list(all_fieldnames))
+                                for field in row.keys():
+                                    if field not in seen_fields:
+                                        fieldnames.append(field)
+                                        seen_fields.add(field)
 
                             writer = csv.DictWriter(
                                 output_stream,
