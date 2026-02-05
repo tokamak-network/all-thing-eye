@@ -89,7 +89,9 @@ export default function CodeStatsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contributorPage, setContributorPage] = useState(1);
+  const [repositoryPage, setRepositoryPage] = useState(1);
   const CONTRIBUTORS_PER_PAGE = 10;
+  const REPOSITORIES_PER_PAGE = 10;
 
   // Fetch code stats when date range changes
   useEffect(() => {
@@ -98,6 +100,7 @@ export default function CodeStatsView() {
         setLoading(true);
         setError(null);
         setContributorPage(1); // Reset page when date range changes
+        setRepositoryPage(1);
         const { startDate, endDate } = getDateRange(dateRange);
         const data = await api.getCodeStats(startDate, endDate);
         setStats(data);
@@ -382,50 +385,100 @@ export default function CodeStatsView() {
         })()}
 
         {/* Top Repositories */}
-        {stats.by_repository && stats.by_repository.length > 0 && (
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <span className="text-2xl">📁</span>
-              Active Repositories
-            </h2>
-            <div className="space-y-4">
-              {stats.by_repository.slice(0, 10).map((repo, index) => (
-                <div
-                  key={repo.name}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">🐙</span>
-                    <div>
-                      <a
-                        href={`https://github.com/tokamak-network/${repo.name}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-gray-900 hover:text-indigo-600 hover:underline transition-colors"
-                      >
-                        {repo.name}
-                      </a>
-                      <p className="text-sm text-gray-500">
-                        {repo.commits} commits
+        {stats.by_repository && stats.by_repository.length > 0 && (() => {
+          const totalRepos = stats.by_repository.length;
+          const totalRepoPages = Math.ceil(totalRepos / REPOSITORIES_PER_PAGE);
+          const repoStartIndex = (repositoryPage - 1) * REPOSITORIES_PER_PAGE;
+          const repoEndIndex = repoStartIndex + REPOSITORIES_PER_PAGE;
+          const currentPageRepos = stats.by_repository.slice(repoStartIndex, repoEndIndex);
+
+          return (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <span className="text-2xl">📁</span>
+                  Active Repositories
+                </h2>
+                <span className="text-sm text-gray-500">
+                  {totalRepos} repositories
+                </span>
+              </div>
+              <div className="space-y-4">
+                {currentPageRepos.map((repo) => (
+                  <div
+                    key={repo.name}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">🐙</span>
+                      <div>
+                        <a
+                          href={`https://github.com/tokamak-network/${repo.name}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-gray-900 hover:text-indigo-600 hover:underline transition-colors"
+                        >
+                          {repo.name}
+                        </a>
+                        <p className="text-sm text-gray-500">
+                          {repo.commits} commits
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm">
+                        <span className="text-emerald-600">
+                          +{repo.additions.toLocaleString()}
+                        </span>
+                        {" / "}
+                        <span className="text-rose-600">
+                          -{repo.deletions.toLocaleString()}
+                        </span>
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm">
-                      <span className="text-emerald-600">
-                        +{repo.additions.toLocaleString()}
-                      </span>
-                      {" / "}
-                      <span className="text-rose-600">
-                        -{repo.deletions.toLocaleString()}
-                      </span>
-                    </p>
-                  </div>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {totalRepoPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => setRepositoryPage(1)}
+                    disabled={repositoryPage === 1}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ««
+                  </button>
+                  <button
+                    onClick={() => setRepositoryPage(p => Math.max(1, p - 1))}
+                    disabled={repositoryPage === 1}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ‹
+                  </button>
+                  <span className="px-4 py-1 text-sm bg-indigo-50 text-indigo-700 rounded font-medium">
+                    {repositoryPage} / {totalRepoPages}
+                  </span>
+                  <button
+                    onClick={() => setRepositoryPage(p => Math.min(totalRepoPages, p + 1))}
+                    disabled={repositoryPage === totalRepoPages}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ›
+                  </button>
+                  <button
+                    onClick={() => setRepositoryPage(totalRepoPages)}
+                    disabled={repositoryPage === totalRepoPages}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    »»
+                  </button>
                 </div>
-              ))}
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
