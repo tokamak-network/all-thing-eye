@@ -103,9 +103,14 @@ async def get_app_stats(request: Request, _admin: str = Depends(require_admin)):
         total_documents = sum(c["count"] for c in collections_info)
         total_collections = len(collections_info)
         
-        # 2. Get members count
+        # 2. Get active members count (exclude inactive/resigned members)
         members = db["members"]
-        total_members = await members.count_documents({})
+        total_members = await members.count_documents({
+            "$or": [
+                {"is_active": True},
+                {"is_active": {"$exists": False}}  # Backwards compatibility
+            ]
+        })
         
         # 3. Get active projects from projects collection
         try:
