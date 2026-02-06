@@ -58,6 +58,7 @@ COLLECTION_MAP = {
         "github_commits",
         "github_pull_requests",
         "github_issues",
+        "github_reviews",
     ],
     "slack": ["slack_channels", "slack_messages"],
     "notion": [

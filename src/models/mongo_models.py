@@ -188,6 +188,36 @@ class GitHubReview(BaseModel):
     body: Optional[str] = None
 
 
+class GitHubReviewDocument(BaseModel):
+    """GitHub review document for separate collection"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+
+    # PR reference
+    repository: str
+    pr_number: int
+    pr_title: str
+    pr_url: str
+    pr_author: str
+
+    # Review details
+    reviewer: str  # GitHub username (will be mapped to member name)
+    state: str  # APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
+    submitted_at: datetime
+    body: Optional[str] = None
+
+    # Code comment specifics (optional)
+    comment_path: Optional[str] = None  # File path
+    comment_line: Optional[int] = None  # Line number
+
+    # Metadata
+    collected_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
 class GitHubPullRequest(BaseModel):
     """GitHub pull request document"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
@@ -617,6 +647,187 @@ class NotionComment(BaseModel):
     # Metadata
     collected_at: datetime = Field(default_factory=datetime.utcnow)
     
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+# =============================================================================
+# Multi-Tenant Support Collections
+# =============================================================================
+
+class TenantBranding(BaseModel):
+    """Embedded document for tenant custom branding"""
+    primary_color: Optional[str] = "#3B82F6"  # Default blue
+    logo_url: Optional[str] = None
+    favicon_url: Optional[str] = None
+    custom_css: Optional[str] = None
+
+
+class TenantSettings(BaseModel):
+    """Embedded document for tenant configuration settings"""
+    timezone: str = "UTC"
+    date_format: str = "YYYY-MM-DD"
+    language: str = "en"
+    features_enabled: List[str] = Field(default_factory=lambda: [
+        "github", "slack", "notion", "google_drive"
+    ])
+
+
+class Tenant(BaseModel):
+    """
+    Tenant document for multi-tenant support.
+
+    Each tenant represents an organization with isolated data.
+    """
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    slug: str  # Unique identifier, e.g., "acme-corp"
+    name: str  # Display name, e.g., "Acme Corporation"
+
+    # Branding (embedded)
+    branding: TenantBranding = Field(default_factory=TenantBranding)
+
+    # Settings (embedded)
+    settings: TenantSettings = Field(default_factory=TenantSettings)
+
+    # Plan/subscription info
+    plan: str = "free"  # free, starter, professional, enterprise
+    max_members: int = 10
+    max_projects: int = 5
+
+    # Data source configuration
+    github_org: Optional[str] = None
+    slack_workspace_id: Optional[str] = None
+    notion_workspace_id: Optional[str] = None
+    google_drive_folder_id: Optional[str] = None
+
+    # Status
+    is_active: bool = True
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+class UserRole(BaseModel):
+    """
+    User role document for role-based access control (RBAC).
+
+    Defines permissions for users within a tenant.
+    """
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    tenant_id: PyObjectId  # Reference to tenant
+    name: str  # e.g., "admin", "manager", "viewer"
+
+    # Permissions
+    permissions: List[str] = Field(default_factory=list)
+    # Example permissions:
+    # - "members:read", "members:write", "members:delete"
+    # - "projects:read", "projects:write", "projects:delete"
+    # - "activities:read", "activities:export"
+    # - "settings:read", "settings:write"
+    # - "tenant:manage"
+
+    # Is this a system role (cannot be deleted)
+    is_system_role: bool = False
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+class TenantUser(BaseModel):
+    """
+    Tenant user document linking users to tenants with roles.
+
+    A user can belong to multiple tenants with different roles.
+    """
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    tenant_id: PyObjectId  # Reference to tenant
+
+    # User identification
+    wallet_address: str  # Ethereum wallet address (primary identifier)
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+
+    # Role reference
+    role_id: PyObjectId  # Reference to UserRole
+    role_name: str  # Denormalized for quick access
+
+    # Member link (if this user is also a tracked team member)
+    member_id: Optional[PyObjectId] = None
+
+    # Status
+    is_active: bool = True
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_login_at: Optional[datetime] = None
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+# =============================================================================
+# Projects Collection
+# =============================================================================
+
+# =============================================================================
+# Support Ticket Collection
+# =============================================================================
+
+class SupportTicketMessage(BaseModel):
+    """Embedded document for ticket conversation messages"""
+    from_type: str  # "reporter" or "admin"
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SupportTicket(BaseModel):
+    """
+    Support ticket document for bug reports, feature requests, and questions.
+    Used by the ATI Support Slack bot.
+    """
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    ticket_id: str  # Human-readable ID like "TKT-001"
+
+    # Reporter information
+    reporter_id: str  # Slack User ID
+    reporter_name: str  # Slack display name
+
+    # Ticket details
+    category: str  # "bug", "feature", "question"
+    title: str
+    description: str
+
+    # Status tracking
+    status: str = "open"  # "open", "in_progress", "resolved", "closed"
+
+    # Admin handling
+    admin_notes: Optional[str] = None
+
+    # Conversation history (embedded)
+    messages: List[SupportTicketMessage] = Field(default_factory=list)
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = None
+
     class Config:
         populate_by_name = True
         arbitrary_types_allowed = True

@@ -15,6 +15,7 @@ from src.models.mongo_models import (
     GitHubIssue,
     GitHubFileChange,
     GitHubReview,
+    GitHubReviewDocument,
 )
 
 
@@ -53,6 +54,7 @@ class GitHubPluginMongo(DataSourcePlugin):
         self.prs_col = self.mongo.get_collection("github_pull_requests")
         self.issues_col = self.mongo.get_collection("github_issues")
         self.repos_col = self.mongo.get_collection("github_repositories")
+        self.reviews_col = self.mongo.get_collection("github_reviews")
 
         # Session for REST API
         self.session = requests.Session()
@@ -499,8 +501,64 @@ class GitHubPluginMongo(DataSourcePlugin):
                     print(
                         f"      ✅ PR #{pr_data.get('number')}: {len(reviews)} reviews saved"
                     )
+                    # Also save reviews to separate collection
+                    self._save_reviews(pr_data, reviews)
             except Exception as e:
                 print(f"      ⚠️  Error saving PR #{pr_data.get('number')}: {e}")
+
+        return saved_count
+
+    def _save_reviews(self, pr_data: Dict[str, Any], reviews: List[Dict[str, Any]]) -> int:
+        """Save reviews to separate github_reviews collection"""
+        if not reviews:
+            return 0
+
+        saved_count = 0
+        repository = pr_data.get("repository_name")
+        pr_number = pr_data.get("number")
+        pr_title = pr_data.get("title")
+        pr_url = pr_data.get("url")
+        pr_author = pr_data.get("author_login")
+
+        for review in reviews:
+            try:
+                reviewer = review.get("reviewer")
+                submitted_at = review.get("submitted_at")
+
+                if not reviewer or not submitted_at:
+                    continue
+
+                # Unique key: repository + pr_number + reviewer + submitted_at
+                self.reviews_col.update_one(
+                    {
+                        "repository": repository,
+                        "pr_number": pr_number,
+                        "reviewer": reviewer,
+                        "submitted_at": submitted_at,
+                    },
+                    {
+                        "$set": {
+                            "repository": repository,
+                            "pr_number": pr_number,
+                            "pr_title": pr_title,
+                            "pr_url": pr_url,
+                            "pr_author": pr_author,
+                            "reviewer": reviewer,
+                            "state": review.get("state", "COMMENTED"),
+                            "submitted_at": submitted_at,
+                            "body": review.get("body", "") or "",
+                            "comment_path": review.get("comment_path"),
+                            "comment_line": review.get("comment_line"),
+                            "collected_at": datetime.utcnow(),
+                        }
+                    },
+                    upsert=True,
+                )
+                saved_count += 1
+            except Exception as e:
+                print(
+                    f"      ⚠️  Error saving review by {review.get('reviewer', 'unknown')}: {e}"
+                )
 
         return saved_count
 

@@ -429,6 +429,77 @@ async def get_activities(
                             )
                         )
 
+                # GitHub reviews (separate collection)
+                if not activity_type or activity_type == "review":
+                    reviews = db["github_reviews"]
+                    query = {}
+                    # Bot reviewers to exclude
+                    bot_reviewers = ["gemini-code-assist", "github-actions[bot]"]
+                    if filter_member_name:
+                        # Reverse lookup: Find identifiers for this member name
+                        identifiers = get_identifiers_for_member(
+                            member_mappings, "github", filter_member_name
+                        )
+                        if identifiers:
+                            # Filter by member identifiers (bots won't be in member identifiers)
+                            query["reviewer"] = {"$in": identifiers}
+                        else:
+                            query["reviewer"] = filter_member_name
+                    else:
+                        # No member filter - exclude bot reviewers
+                        query["reviewer"] = {"$nin": bot_reviewers}
+                    if date_filter:
+                        query["submitted_at"] = date_filter
+                    if filter_keyword:
+                        # Search in review body or PR title
+                        query["$or"] = [
+                            {"body": {"$regex": filter_keyword, "$options": "i"}},
+                            {"pr_title": {"$regex": filter_keyword, "$options": "i"}},
+                        ]
+                    if project_config and project_config["repositories"]:
+                        # Filter by project repositories
+                        query["repository"] = {"$in": project_config["repositories"]}
+
+                    async for review in (
+                        reviews.find(query).sort("submitted_at", -1).limit(source_limit)
+                    ):
+                        submitted_at = review.get("submitted_at")
+                        # Add 'Z' to indicate UTC timezone for proper frontend conversion
+                        if isinstance(submitted_at, datetime):
+                            timestamp_str = (
+                                submitted_at.isoformat() + "Z"
+                                if submitted_at.tzinfo is None
+                                else submitted_at.isoformat()
+                            )
+                        else:
+                            timestamp_str = str(submitted_at) if submitted_at else ""
+
+                        # Map GitHub username to member name
+                        github_username = review.get("reviewer", "")
+                        display_member_name = get_mapped_member_name(
+                            member_mappings, "github", github_username
+                        )
+
+                        activities.append(
+                            ActivityResponse(
+                                id=str(review["_id"]),
+                                member_name=display_member_name,
+                                source_type="github",
+                                activity_type="review",
+                                timestamp=timestamp_str,
+                                metadata={
+                                    "repository": review.get("repository"),
+                                    "pr_number": review.get("pr_number"),
+                                    "pr_title": review.get("pr_title"),
+                                    "state": review.get("state"),
+                                    "body": (review.get("body") or "")[:200],
+                                    "comment_path": review.get("comment_path"),
+                                    "comment_line": review.get("comment_line"),
+                                    "url": review.get("pr_url"),
+                                },
+                            )
+                        )
+
             elif source == "slack":
                 messages = db["slack_messages"]
                 query = {}
@@ -1295,7 +1366,7 @@ async def get_activity_types(
     """
     try:
         types = {
-            "github": ["commit", "pull_request", "issue"],
+            "github": ["commit", "pull_request", "issue", "review"],
             "slack": ["message", "reaction"],
             "notion": ["page_created", "page_edited", "comment_added"],
             "drive": ["create", "edit", "upload", "download", "share"],

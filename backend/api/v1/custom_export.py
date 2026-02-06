@@ -505,6 +505,57 @@ async def fetch_github_data(
                 }
             )
 
+        # Fetch reviews (as reviewer)
+        # Bot reviewers to exclude
+        bot_reviewers = ["gemini-code-assist", "github-actions[bot]"]
+
+        review_query = {}
+        review_or_conditions = []
+        if identifiers["github"]:
+            # Filter out bots from identifiers (shouldn't be there, but just in case)
+            filtered_ids = [id for id in identifiers["github"] if id not in bot_reviewers]
+            if filtered_ids:
+                review_or_conditions.append({"reviewer": {"$in": filtered_ids}})
+        # Also add regex match for member name (case-insensitive, partial match)
+        # but exclude bots
+        review_or_conditions.append({
+            "$and": [
+                {"reviewer": {"$regex": f"{member_name}", "$options": "i"}},
+                {"reviewer": {"$nin": bot_reviewers}}
+            ]
+        })
+
+        if review_or_conditions:
+            review_query["$or"] = review_or_conditions
+
+        if date_filter:
+            review_query["submitted_at"] = date_filter
+
+        # Add repository filter if project is specified
+        if project_repos:
+            review_query["repository"] = {"$in": list(project_repos)}
+
+        reviews = list(
+            db["github_reviews"].find(review_query).sort("submitted_at", -1)
+        )
+        for review in reviews:
+            results.append(
+                {
+                    "source": "github",
+                    "type": "review",
+                    "member_name": member_name,
+                    "member_email": member_info.get("email"),
+                    "timestamp": review.get("submitted_at"),
+                    "repository": review.get("repository"),
+                    "pr_number": review.get("pr_number"),
+                    "pr_title": review.get("pr_title"),
+                    "review_state": review.get("state"),
+                    "body": (review.get("body") or "")[:500],
+                    "comment_path": review.get("comment_path"),
+                    "comment_line": review.get("comment_line"),
+                }
+            )
+
     return results
 
 
