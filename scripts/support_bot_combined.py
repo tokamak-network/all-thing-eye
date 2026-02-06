@@ -605,6 +605,7 @@ def handle_dm_message(event, client, say):
 
     user_id = event.get("user")
     text = event.get("text", "").strip()
+    msg_ts = event.get("ts")  # Message timestamp for tracking
 
     if not text:
         return
@@ -628,6 +629,7 @@ def handle_dm_message(event, client, say):
         "title": title,
         "description": text,
         "status": "open",
+        "slack_ts": msg_ts,  # Store for deduplication
         "created_at": datetime.utcnow()
     })
     mongo_client.close()
@@ -852,9 +854,115 @@ AUTO_DEPLOY=1 git pull
     thread.start()
 
 
+def check_missed_messages():
+    """Check for unprocessed DMs while bot was offline."""
+    log("SYSTEM", "Checking for missed messages...")
+
+    try:
+        import pymongo
+        mongo_client = pymongo.MongoClient(MONGODB_URI)
+        db = mongo_client[MONGODB_DATABASE]
+
+        # Get list of DM conversations
+        result = web_client.conversations_list(types="im", limit=100)
+        if not result.get("ok"):
+            log("ERROR", f"Failed to get conversations: {result.get('error')}")
+            return
+
+        channels = result.get("channels", [])
+        log("SYSTEM", f"Found {len(channels)} DM channels")
+
+        # Check messages from last 24 hours
+        oldest = time.time() - (24 * 60 * 60)
+        missed_count = 0
+
+        for channel in channels:
+            channel_id = channel.get("id")
+
+            try:
+                history = web_client.conversations_history(
+                    channel=channel_id,
+                    oldest=str(oldest),
+                    limit=50
+                )
+
+                if not history.get("ok"):
+                    continue
+
+                messages = history.get("messages", [])
+
+                for msg in messages:
+                    # Skip bot messages and subtypes (joins, etc)
+                    if msg.get("bot_id") or msg.get("subtype"):
+                        continue
+
+                    user_id = msg.get("user")
+                    text = msg.get("text", "").strip()
+                    msg_ts = msg.get("ts")
+
+                    if not text or not user_id:
+                        continue
+
+                    # Check if already processed (by message timestamp)
+                    existing = db.support_tickets.find_one({
+                        "reporter_id": user_id,
+                        "slack_ts": msg_ts
+                    })
+
+                    if existing:
+                        continue
+
+                    # Create ticket for missed message
+                    category = detect_category(text)
+                    title = text.split('\n')[0][:50]
+                    ticket_id = generate_ticket_id_sync()
+
+                    db.support_tickets.insert_one({
+                        "ticket_id": ticket_id,
+                        "reporter_id": user_id,
+                        "category": category,
+                        "title": title,
+                        "description": text,
+                        "status": "open",
+                        "slack_ts": msg_ts,  # Store message timestamp
+                        "created_at": datetime.utcnow(),
+                        "missed_while_offline": True
+                    })
+
+                    # Send to webhook for approval
+                    process_ticket(ticket_id, category, title, text)
+
+                    # Notify user
+                    web_client.chat_postMessage(
+                        channel=user_id,
+                        text=f"✅ 오프라인 동안 받은 메시지로 티켓이 생성되었습니다: *{ticket_id}*\n카테고리: {category}\n내용: {title}"
+                    )
+
+                    missed_count += 1
+                    log("BOT", f"Created ticket for missed message: {ticket_id}")
+
+            except Exception as e:
+                log("ERROR", f"Failed to check channel {channel_id}: {e}")
+                continue
+
+        mongo_client.close()
+
+        if missed_count > 0:
+            log("SYSTEM", f"Processed {missed_count} missed messages")
+        else:
+            log("SYSTEM", "No missed messages found")
+
+    except Exception as e:
+        log("ERROR", f"Failed to check missed messages: {e}")
+
+
 def run_slack_bot():
     """Run the Slack bot."""
     log("SYSTEM", "Starting Slack bot (Socket Mode)...")
+
+    # Check for missed messages before starting
+    check_missed_messages()
+
     handler = SocketModeHandler(app=slack_app, app_token=APP_TOKEN)
     handler.start()
 
