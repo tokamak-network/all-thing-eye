@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -75,21 +75,21 @@ class SlackScheduler:
         content_type = schedule.get("content_type", "custom_prompt")
         prompt = schedule.get("prompt", "Summarize today's activities.")
 
-        if content_type == "daily_analysis":
-            # Predefined prompt for daily analysis
-            prompt = "Provide a comprehensive daily analysis of team activities across GitHub and Slack for the last 24 hours."
-
         try:
-            # 1. Call AI Agent
-            agent_req = AgentRequest(
-                messages=[{"role": "user", "content": prompt}],
-                model=schedule.get("model", "qwen3-235b"),
-            )
+            if content_type == "daily_analysis":
+                # Fetch stored daily analysis from gemini.recordings_daily
+                answer = await self._fetch_stored_daily_analysis()
+            else:
+                # Custom prompt: Call AI Agent
+                agent_req = AgentRequest(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=schedule.get("model", "qwen3-235b"),
+                )
 
-            result = await run_mcp_agent(agent_req)
-            answer = result.get("answer", "Error generating response.")
+                result = await run_mcp_agent(agent_req)
+                answer = result.get("answer", "Error generating response.")
 
-            # 2. Send to Slack
+            # Send to Slack
             async with httpx.AsyncClient() as client:
                 headers = {
                     "Authorization": f"Bearer {self.bot_token}",
@@ -114,6 +114,71 @@ class SlackScheduler:
 
         except Exception as e:
             logger.error(f"Error executing scheduled task {schedule['_id']}: {e}")
+
+    async def _fetch_stored_daily_analysis(self) -> str:
+        """Fetch the most recent stored daily analysis from gemini.recordings_daily."""
+        from pymongo import MongoClient
+
+        # Get gemini database connection
+        gemini_uri = os.getenv('GEMINI_MONGODB_URI')
+        if not gemini_uri:
+            gemini_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
+
+        client = MongoClient(gemini_uri)
+        gemini_db = client["gemini"]
+
+        try:
+            # Get the most recent daily analysis (yesterday or today)
+            now = datetime.now(KST)
+            yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+            today = now.strftime("%Y-%m-%d")
+
+            # Try to get yesterday's analysis first, then today's
+            doc = gemini_db["recordings_daily"].find_one(
+                {"target_date": {"$in": [yesterday, today]}},
+                sort=[("target_date", -1)]
+            )
+
+            if not doc:
+                return "📊 *Daily Analysis*\n\n데이터가 없습니다. 해당 날짜의 분석 데이터가 아직 생성되지 않았습니다."
+
+            # Format the analysis for Slack
+            analysis = doc.get("analysis", {})
+            target_date = doc.get("target_date", "")
+            meeting_count = doc.get("meeting_count", 0)
+            meeting_titles = doc.get("meeting_titles", [])
+            total_meeting_time = doc.get("total_meeting_time", "")
+
+            # Build the formatted message
+            formatted = f"📊 *Daily Analysis - {target_date}*\n\n"
+            formatted += f"*📅 미팅 수:* {meeting_count}개\n"
+            if total_meeting_time:
+                formatted += f"*⏱️ 총 미팅 시간:* {total_meeting_time}\n"
+
+            if meeting_titles:
+                formatted += f"\n*📝 미팅 목록:*\n"
+                for title in meeting_titles[:10]:  # Limit to 10 meetings
+                    formatted += f"• {title}\n"
+                if len(meeting_titles) > 10:
+                    formatted += f"_...외 {len(meeting_titles) - 10}개_\n"
+
+            # Add the full analysis text
+            full_analysis = analysis.get("full_analysis_text", "")
+            if full_analysis:
+                formatted += f"\n{full_analysis}"
+            else:
+                # Fallback to summary if no full analysis
+                summary = analysis.get("summary", "")
+                if summary:
+                    formatted += f"\n*요약:*\n{summary}"
+
+            return formatted
+
+        except Exception as e:
+            logger.error(f"Error fetching stored daily analysis: {e}")
+            return f"📊 *Daily Analysis*\n\n분석 데이터를 가져오는 중 오류가 발생했습니다: {str(e)}"
+        finally:
+            client.close()
 
     async def add_schedule(self, schedule_data):
         """Add a new schedule to DB and scheduler."""
