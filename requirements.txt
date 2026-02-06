@@ -79,3 +79,4 @@ passlib[bcrypt]==1.7.4            # Password hashing
 eth-account==0.10.0               # Ethereum signature verification
 web3==6.11.3                      # Ethereum utilities
 
+slack-bolt==1.18.1       # Slack Socket Mode

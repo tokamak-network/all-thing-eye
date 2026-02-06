@@ -49,9 +49,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         // Clear invalid authentication
         clearToken();
         clearAuthSession();
-        
+
         console.log('🔒 Authentication invalid, redirecting to login');
-        
+
+        // Set loading to false before redirect to prevent infinite loading
+        setIsLoading(false);
+        setIsAuthenticated(false);
+
         // Redirect to login
         router.push('/login');
       } else {
@@ -60,7 +64,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
           const remaining = getTokenTimeRemaining();
           console.log(`✅ JWT token valid (expires in ${remaining} seconds)`);
         }
-        
+
         setIsAuthenticated(true);
         setIsLoading(false);
       }

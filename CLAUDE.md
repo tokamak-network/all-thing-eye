@@ -209,3 +209,35 @@ docker-compose up -d
 ### GraphQL 쿼리 실패
 1. `projectKey` 파라미터가 프로젝트 key 형식인지 확인 (예: `project-ooo`)
 2. Date 필터는 ISO 형식 사용 (예: `2026-01-01T00:00:00Z`)
+
+## Support Bot (ATI Support)
+
+티켓 기반 지원 봇. 버그/기능 요청을 받아 Claude Code로 자동 처리.
+
+### 핵심 파일
+- `scripts/support_bot_combined.py` - 메인 봇 (Socket Mode + Webhook Server 통합)
+- `Makefile` - 실행 명령어 (`make support`)
+
+### 실행
+```bash
+make support     # 봇 시작
+make stop        # 봇 중지
+```
+
+### 환경 변수
+```bash
+SLACK_SUPPORT_BOT_TOKEN=xoxb-...   # Bot OAuth Token
+SLACK_SUPPORT_APP_TOKEN=xapp-...   # Socket Mode Token
+SLACK_SUPPORT_ADMIN_ID=U...        # 관리자 Slack ID
+GITHUB_ACCOUNT_TOKEN=...           # AWS 배포용 GitHub 토큰
+```
+
+### 워크플로우
+1. `/ati-support` 또는 DM → 티켓 생성
+2. 관리자 승인 → Claude 작업 시작
+3. 완료 → 리뷰/배포/Revert 버튼
+
+### 배포 (deploy 버튼)
+1. `git push`
+2. `ssh all-thing-eye` → `cd all-thing-eye`
+3. `git pull` → `docker compose build` → `docker compose up -d`
