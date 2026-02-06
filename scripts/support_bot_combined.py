@@ -808,21 +808,20 @@ def handle_deploy(ack, body, client):
             # Step 2: SSH and deploy
             log("BOT", "Step 2: SSH deploy...")
             github_token = os.environ.get("GITHUB_ACCOUNT_TOKEN", "")
+            # AUTO_DEPLOY=1 triggers automatic deployment in post-merge hook
             ssh_commands = f"""
 cd all-thing-eye && \
 git config --global credential.helper 'cache --timeout=86400' && \
 echo -e 'protocol=https\\nhost=github.com\\nusername=SonYoungsung\\npassword={github_token}' | git credential-cache store && \
-git pull && \
-docker compose build frontend backend && \
-docker compose up -d frontend backend
+AUTO_DEPLOY=1 git pull
 """
             ssh_result = subprocess.run(
                 ["ssh", "all-thing-eye", ssh_commands],
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=600
             )
-            if ssh_result.returncode != 0:
+            if ssh_result.returncode != 0 and "fatal" in ssh_result.stderr.lower():
                 raise Exception(f"SSH deploy failed: {ssh_result.stderr}")
 
             # Step 3: Stop local review servers if running
