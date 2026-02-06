@@ -636,12 +636,17 @@ export default function DatabasePage() {
         </div>
 
         {/* Data Freshness - Moved from Dashboard */}
-        {appStats && appStats.last_collected && (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <span className="text-3xl">⏰</span>
-              Data Freshness
-            </h2>
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <span className="text-3xl">⏰</span>
+            Data Freshness
+          </h2>
+          {statsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
+              <span className="text-gray-500">Loading freshness data...</span>
+            </div>
+          ) : appStats && appStats.last_collected ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {Object.entries(appStats.last_collected).map(([source, time]) => {
                 const style = getSourceStyle(source);
@@ -667,8 +672,12 @@ export default function DatabasePage() {
                 );
               })}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="text-center text-gray-500 py-4">
+              No freshness data available
+            </div>
+          )}
+        </div>
 
         {/* Error Message */}
         {statsError && (
