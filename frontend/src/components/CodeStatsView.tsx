@@ -349,7 +349,10 @@ export default function CodeStatsView() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm">
+                        <p className="text-sm font-semibold text-gray-700">
+                          {(member.additions + member.deletions).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500">
                           <span className="text-emerald-600">
                             +{member.additions.toLocaleString()}
                           </span>
@@ -472,7 +475,10 @@ export default function CodeStatsView() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm">
+                          <p className="text-sm font-semibold text-gray-700">
+                            {(repo.additions + repo.deletions).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-gray-500">
                             <span className="text-emerald-600">
                               +{repo.additions.toLocaleString()}
                             </span>
@@ -520,7 +526,10 @@ export default function CodeStatsView() {
                                   </div>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-sm">
+                                  <p className="text-sm font-semibold text-gray-700">
+                                    {(contributor.additions + contributor.deletions).toLocaleString()}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
                                     <span className="text-emerald-600">
                                       +{contributor.additions.toLocaleString()}
                                     </span>

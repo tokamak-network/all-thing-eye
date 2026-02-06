@@ -360,7 +360,7 @@ export default function Home() {
           </div>
 
           {/* Code Changes Summary Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
               <div className="flex items-center justify-between">
                 <div>
@@ -394,6 +394,19 @@ export default function Home() {
                   <p className="text-indigo-200 text-xs mt-2">Lines of code</p>
                 </div>
                 <div className="text-6xl opacity-20">📊</div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-purple-100 text-sm font-medium mb-1">Total Changes</p>
+                  <p className="text-4xl font-bold">
+                    {(filteredTotals.additions + filteredTotals.deletions).toLocaleString()}
+                  </p>
+                  <p className="text-purple-200 text-xs mt-2">Lines modified</p>
+                </div>
+                <div className="text-6xl opacity-20">🔄</div>
               </div>
             </div>
           </div>
