@@ -57,6 +57,13 @@ interface CodeStats {
     additions: number;
     deletions: number;
     commits: number;
+    contributors?: Array<{
+      name: string;
+      github_id: string;
+      additions: number;
+      deletions: number;
+      commits: number;
+    }>;
   }>;
 }
 
@@ -90,8 +97,21 @@ export default function CodeStatsView() {
   const [error, setError] = useState<string | null>(null);
   const [contributorPage, setContributorPage] = useState(1);
   const [repositoryPage, setRepositoryPage] = useState(1);
+  const [expandedRepos, setExpandedRepos] = useState<Set<string>>(new Set());
   const CONTRIBUTORS_PER_PAGE = 10;
   const REPOSITORIES_PER_PAGE = 10;
+
+  const toggleRepoExpand = (repoName: string) => {
+    setExpandedRepos((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(repoName)) {
+        newSet.delete(repoName);
+      } else {
+        newSet.add(repoName);
+      }
+      return newSet;
+    });
+  };
 
   // Fetch code stats when date range changes
   useEffect(() => {
@@ -403,41 +423,121 @@ export default function CodeStatsView() {
                   {totalRepos} repositories
                 </span>
               </div>
-              <div className="space-y-4">
-                {currentPageRepos.map((repo) => (
-                  <div
-                    key={repo.name}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">🐙</span>
-                      <div>
-                        <a
-                          href={`https://github.com/tokamak-network/${repo.name}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-gray-900 hover:text-indigo-600 hover:underline transition-colors"
-                        >
-                          {repo.name}
-                        </a>
-                        <p className="text-sm text-gray-500">
-                          {repo.commits} commits
-                        </p>
+              <div className="space-y-3">
+                {currentPageRepos.map((repo) => {
+                  const isExpanded = expandedRepos.has(repo.name);
+                  const hasContributors = repo.contributors && repo.contributors.length > 0;
+
+                  return (
+                    <div
+                      key={repo.name}
+                      className="bg-gray-50 rounded-lg overflow-hidden"
+                    >
+                      {/* Main repo row */}
+                      <div
+                        className={`flex items-center justify-between p-3 ${
+                          hasContributors ? "cursor-pointer hover:bg-gray-100" : ""
+                        }`}
+                        onClick={() => hasContributors && toggleRepoExpand(repo.name)}
+                      >
+                        <div className="flex items-center gap-3">
+                          {hasContributors && (
+                            <span
+                              className={`text-gray-400 transition-transform ${
+                                isExpanded ? "rotate-90" : ""
+                              }`}
+                            >
+                              ▶
+                            </span>
+                          )}
+                          <span className="text-xl">🐙</span>
+                          <div>
+                            <a
+                              href={`https://github.com/tokamak-network/${repo.name}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-gray-900 hover:text-indigo-600 hover:underline transition-colors"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {repo.name}
+                            </a>
+                            <p className="text-sm text-gray-500">
+                              {repo.commits} commits
+                              {hasContributors && (
+                                <span className="text-gray-400 ml-2">
+                                  · {repo.contributors!.length} contributor{repo.contributors!.length !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm">
+                            <span className="text-emerald-600">
+                              +{repo.additions.toLocaleString()}
+                            </span>
+                            {" / "}
+                            <span className="text-rose-600">
+                              -{repo.deletions.toLocaleString()}
+                            </span>
+                          </p>
+                        </div>
                       </div>
+
+                      {/* Contributor breakdown (expandable) */}
+                      {isExpanded && hasContributors && (
+                        <div className="border-t border-gray-200 bg-white">
+                          <div className="px-4 py-2 bg-gray-100 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Contributors
+                          </div>
+                          <div className="divide-y divide-gray-100">
+                            {repo.contributors!.map((contributor, idx) => (
+                              <div
+                                key={contributor.github_id}
+                                className="flex items-center justify-between px-4 py-2 hover:bg-gray-50"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span
+                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                                      idx === 0
+                                        ? "bg-yellow-500"
+                                        : idx === 1
+                                        ? "bg-gray-400"
+                                        : idx === 2
+                                        ? "bg-orange-400"
+                                        : "bg-gray-300"
+                                    }`}
+                                  >
+                                    {idx + 1}
+                                  </span>
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {contributor.name}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      @{contributor.github_id} · {contributor.commits} commits
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm">
+                                    <span className="text-emerald-600">
+                                      +{contributor.additions.toLocaleString()}
+                                    </span>
+                                    {" / "}
+                                    <span className="text-rose-600">
+                                      -{contributor.deletions.toLocaleString()}
+                                    </span>
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm">
-                        <span className="text-emerald-600">
-                          +{repo.additions.toLocaleString()}
-                        </span>
-                        {" / "}
-                        <span className="text-rose-600">
-                          -{repo.deletions.toLocaleString()}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Pagination */}
