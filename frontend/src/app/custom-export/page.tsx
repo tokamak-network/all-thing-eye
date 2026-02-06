@@ -38,9 +38,6 @@ export default function CustomExportPage() {
 
   const [selectedFields, setSelectedFields] = useState<string[]>([
     "member.name",
-    "member.email",
-    "github.commits",
-    "slack.messages",
   ]);
 
   const [selectedCollections, setSelectedCollections] = useState<Set<string>>(
