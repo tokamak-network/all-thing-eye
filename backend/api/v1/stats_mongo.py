@@ -737,8 +737,11 @@ async def get_code_changes_stats(
 
         # Get all active members and include those with 0 commits
         all_members = []
+        active_member_names = set()  # Track active member names for filtering
         async for member in db["members"].find({"is_active": {"$ne": False}}, {"_id": 1, "name": 1}):
             all_members.append(member)
+            if member.get("name"):
+                active_member_names.add(member["name"].lower())
 
         # Aggregate by member_name (same person may have multiple GitHub usernames)
         member_stats = {}  # member_name -> {additions, deletions, commits, github_ids}
@@ -750,6 +753,15 @@ async def get_code_changes_stats(
                 continue
             github_username = doc["_id"]
             member_name = github_to_member.get(github_username) or github_to_member.get(github_username.lower()) or github_username
+
+            # Skip inactive members (filter out if member_name matches a known but inactive member)
+            # If member_name is in github_to_member values, it's a known member - check if active
+            # If not in github_to_member values, it could be an external contributor - allow
+            is_known_member = member_name.lower() in active_member_names or any(
+                v.lower() == member_name.lower() for v in github_to_member.values()
+            )
+            if is_known_member and member_name.lower() not in active_member_names:
+                continue
 
             # Aggregate stats by member_name
             if member_name not in member_stats:
