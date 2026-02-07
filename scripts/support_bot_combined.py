@@ -70,6 +70,47 @@ completed_tickets = {}  # ticket_id -> ticket_data
 running_servers = {}    # ticket_id -> {"frontend_pid": ..., "backend_pid": ...}
 
 # ============================================================
+# Bot Heartbeat (for offline message recovery)
+# ============================================================
+
+HEARTBEAT_INTERVAL = 60  # seconds
+
+def update_heartbeat():
+    """Record bot's last active timestamp in MongoDB for offline detection."""
+    import pymongo
+    try:
+        client = pymongo.MongoClient(MONGODB_URI)
+        db = client[MONGODB_DATABASE]
+        db.bot_state.update_one(
+            {"_id": "support_bot"},
+            {"$set": {"last_heartbeat": datetime.utcnow()}},
+            upsert=True
+        )
+        client.close()
+    except Exception:
+        pass  # Don't crash on heartbeat failure
+
+def heartbeat_loop():
+    """Background thread that periodically updates heartbeat."""
+    while True:
+        update_heartbeat()
+        time.sleep(HEARTBEAT_INTERVAL)
+
+def get_last_heartbeat():
+    """Get the last recorded heartbeat timestamp."""
+    import pymongo
+    try:
+        client = pymongo.MongoClient(MONGODB_URI)
+        db = client[MONGODB_DATABASE]
+        state = db.bot_state.find_one({"_id": "support_bot"})
+        client.close()
+        if state and state.get("last_heartbeat"):
+            return state["last_heartbeat"].timestamp()
+    except Exception:
+        pass
+    return None
+
+# ============================================================
 # Logging
 # ============================================================
 
@@ -872,8 +913,15 @@ def check_missed_messages():
         channels = result.get("channels", [])
         log("SYSTEM", f"Found {len(channels)} DM channels")
 
-        # Check messages from last 24 hours
-        oldest = time.time() - (24 * 60 * 60)
+        # Only check messages since last heartbeat (when bot went offline)
+        # Fall back to 24 hours if no heartbeat recorded
+        last_heartbeat = get_last_heartbeat()
+        if last_heartbeat:
+            oldest = last_heartbeat
+            log("SYSTEM", f"Scanning messages since last heartbeat: {datetime.utcfromtimestamp(oldest).isoformat()}Z")
+        else:
+            oldest = time.time() - (24 * 60 * 60)
+            log("SYSTEM", "No heartbeat found, scanning last 24 hours")
         missed_count = 0
 
         for channel in channels:
@@ -962,6 +1010,11 @@ def run_slack_bot():
 
     # Check for missed messages before starting
     check_missed_messages()
+
+    # Start heartbeat thread to track when bot is online
+    hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    hb_thread.start()
+    log("SYSTEM", "Heartbeat thread started")
 
     handler = SocketModeHandler(app=slack_app, app_token=APP_TOKEN)
     handler.start()
