@@ -2,9 +2,9 @@
 
 .PHONY: support support-bot webhook-server both weekly stop-weekly executor stop-executor help
 
-# Start Combined Server (Recommended)
+# Start Support Bot (HTTP Events API mode - executor polls AWS backend)
 support:
-	python3 scripts/support_bot_combined.py
+	python3 scripts/claude_executor.py
 
 # Start Support Bot (Socket Mode) - standalone
 support-bot:
@@ -49,8 +49,8 @@ stop:
 # Help
 help:
 	@echo "Available commands:"
-	@echo "  make support        - Start Support Bot (Socket Mode, legacy)"
-	@echo "  make executor       - Start Claude Executor (polls AWS for approved tickets)"
+	@echo "  make support        - Start Support Bot (HTTP Events API, polls AWS)"
+	@echo "  make executor       - Start Claude Executor (same as make support)"
 	@echo "  make weekly         - Start Weekly Output Bot"
 	@echo "  make stop-executor  - Stop Claude Executor"
 	@echo "  make stop-weekly    - Stop Weekly Output Bot"
