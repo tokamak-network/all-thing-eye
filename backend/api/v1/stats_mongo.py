@@ -9,7 +9,6 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from collections import Counter
-import os
 import re
 
 from src.utils.logger import get_logger
@@ -975,7 +974,6 @@ async def get_member_commits(
         cursor = db["github_commits"].find(query).sort("date", -1).limit(limit)
 
         commits = []
-        db_shas: set = set()
         async for doc in cursor:
             sha = doc.get("sha", "")
             repo = doc.get("repository", "")
@@ -983,98 +981,15 @@ async def get_member_commits(
             if not url and sha and repo:
                 url = f"https://github.com/tokamak-network/{repo}/commit/{sha}"
 
-            if sha:
-                db_shas.add(sha)
-
             commits.append({
                 "sha": sha[:7] if sha else "",
-                "full_sha": sha,
                 "message": doc.get("message", ""),
                 "repository": repo,
-                "date": doc["date"].isoformat() if isinstance(doc.get("date"), datetime) else str(doc.get("date", "")),
+                "date": (doc["date"].isoformat() + "Z") if isinstance(doc.get("date"), datetime) else str(doc.get("date", "")),
                 "additions": doc.get("additions", 0),
                 "deletions": doc.get("deletions", 0),
                 "url": url,
             })
-
-        # 4. Fetch latest commits from GitHub API to fill gaps between DB collections
-        import httpx
-        github_token = os.environ.get("GITHUB_TOKEN", "")
-        github_org = os.environ.get("GITHUB_ORG", "tokamak-network")
-
-        if github_token:
-            try:
-                headers = {
-                    "Authorization": f"token {github_token}",
-                    "Accept": "application/vnd.github.v3+json",
-                }
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    for username in github_usernames:
-                        # Use GitHub Search API to find recent commits by author
-                        search_query = f"author:{username} org:{github_org}"
-                        if start_date:
-                            search_query += f" committer-date:>={start_date}"
-                        if end_date:
-                            search_query += f" committer-date:<={end_date}"
-
-                        resp = await client.get(
-                            "https://api.github.com/search/commits",
-                            params={"q": search_query, "sort": "committer-date", "order": "desc", "per_page": limit},
-                            headers=headers,
-                        )
-                        if resp.status_code != 200:
-                            logger.warning(f"GitHub search API returned {resp.status_code} for {username}")
-                            continue
-
-                        items = resp.json().get("items", [])
-                        for item in items:
-                            sha = item.get("sha", "")
-                            if sha in db_shas:
-                                continue
-
-                            repo_full = item.get("repository", {}).get("full_name", "")
-                            repo_name = repo_full.split("/")[-1] if repo_full else ""
-                            commit_data = item.get("commit", {})
-                            committer_date = commit_data.get("committer", {}).get("date", "")
-                            stats = item.get("stats") or {}
-
-                            # If no stats from search, fetch individual commit for stats
-                            additions = stats.get("additions", 0)
-                            deletions = stats.get("deletions", 0)
-                            if not stats and sha and repo_full:
-                                try:
-                                    detail_resp = await client.get(
-                                        f"https://api.github.com/repos/{repo_full}/commits/{sha}",
-                                        headers=headers,
-                                    )
-                                    if detail_resp.status_code == 200:
-                                        detail_stats = detail_resp.json().get("stats", {})
-                                        additions = detail_stats.get("additions", 0)
-                                        deletions = detail_stats.get("deletions", 0)
-                                except Exception:
-                                    pass
-
-                            db_shas.add(sha)
-                            commits.append({
-                                "sha": sha[:7] if sha else "",
-                                "full_sha": sha,
-                                "message": commit_data.get("message", ""),
-                                "repository": repo_name,
-                                "date": committer_date,
-                                "additions": additions,
-                                "deletions": deletions,
-                                "url": item.get("html_url", ""),
-                            })
-            except Exception as e:
-                logger.warning(f"GitHub API fetch failed (non-fatal): {e}")
-
-        # Sort all commits by date descending and apply limit
-        commits.sort(key=lambda c: c.get("date", ""), reverse=True)
-        commits = commits[:limit]
-
-        # Remove internal full_sha field
-        for c in commits:
-            c.pop("full_sha", None)
 
         return {
             "member_name": member_name,
