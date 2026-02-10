@@ -224,6 +224,35 @@ services:
         python scripts/collect_notion_diff.py --schedule 1
       "
 
+  # Weekly Output Scheduler Bot (APScheduler-based long-lived process)
+  weekly-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: all-thing-eye-weekly-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Seoul
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-all_thing_eye}
+      SLACK_WEEKLY_BOT_TOKEN: ${SLACK_WEEKLY_BOT_TOKEN}
+    volumes:
+      - ./data/logs/weekly-bot:/app/logs
+    networks:
+      - all-thing-eye
+    command: >
+      bash -c "
+        echo '[INFO] Weekly Output Bot starting...'
+        echo '[INFO] Timezone: $$(date +%Z)'
+        echo '[INFO] Waiting 30 seconds for backend to initialize...'
+        sleep 30
+
+        echo '[INFO] Starting Weekly Output Bot (APScheduler)...'
+        python scripts/weekly_output_bot.py
+      "
+
 # No local volumes needed - MongoDB is remote
 
 networks:
