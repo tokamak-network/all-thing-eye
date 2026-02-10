@@ -68,6 +68,12 @@ services:
       # AI API (Tokamak)
       AI_API_KEY: ${AI_API_KEY}
       AI_API_URL: ${AI_API_URL:-https://api.ai.tokamak.network}
+
+      # Support Bot (HTTP Events API)
+      SLACK_SUPPORT_BOT_TOKEN: ${SLACK_SUPPORT_BOT_TOKEN}
+      SLACK_SUPPORT_SIGNING_SECRET: ${SLACK_SUPPORT_SIGNING_SECRET}
+      SLACK_SUPPORT_ADMIN_ID: ${SLACK_SUPPORT_ADMIN_ID}
+      EXECUTOR_SECRET: ${EXECUTOR_SECRET}
     volumes:
       - ./config:/app/config:ro
       - ./data/logs/backend:/app/logs

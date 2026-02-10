@@ -20,7 +20,7 @@ from src.core.config import Config
 from src.core.mongo_manager import get_mongo_manager
 from src.utils.logger import get_logger
 from src.scheduler.slack_scheduler import SlackScheduler
-from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, projects_management, exports_mongo, database_mongo, auth, oauth, tenants, stats_mongo, notion_export_mongo, ai_processed, custom_export, ai_proxy, mcp_api, mcp_agent, slack_bot, notion_diff, reports
+from backend.api.v1 import query_mongo, members_mongo, activities_mongo, projects_mongo, projects_management, exports_mongo, database_mongo, auth, oauth, tenants, stats_mongo, notion_export_mongo, ai_processed, custom_export, ai_proxy, mcp_api, mcp_agent, slack_bot, notion_diff, reports, weekly_output_schedules, support_bot
 
 logger = get_logger(__name__)
 
@@ -285,6 +285,20 @@ app.include_router(
     notion_diff.router,
     prefix="/api/v1",
     tags=["notion-diff"]
+)
+
+# Weekly Output Schedules
+app.include_router(
+    weekly_output_schedules.router,
+    prefix="/api/v1/weekly-output",
+    tags=["weekly-output"]
+)
+
+# Support Bot (HTTP Events API for Slack)
+app.include_router(
+    support_bot.router,
+    prefix="/api/v1/support",
+    tags=["support-bot"]
 )
 
 # GraphQL endpoint
