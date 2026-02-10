@@ -203,20 +203,55 @@ export default function WeeklyOutputPage() {
   const channelSearchTimer = useRef<NodeJS.Timeout | null>(null);
   const channelDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Channel membership status for the schedule list (channel_id -> boolean)
+  const [channelMemberMap, setChannelMemberMap] = useState<
+    Record<string, "checking" | "member" | "not_member" | "error">
+  >({});
+
   // ============================================================
   // Data fetching
   // ============================================================
 
+  const checkChannelMemberships = useCallback(async (scheduleList: Schedule[]) => {
+    const uniqueChannels = [...new Set(scheduleList.map((s) => s.channel_id))];
+    if (uniqueChannels.length === 0) return;
+
+    // Set all to checking
+    setChannelMemberMap((prev) => {
+      const next = { ...prev };
+      for (const ch of uniqueChannels) next[ch] = "checking";
+      return next;
+    });
+
+    // Check each channel in parallel
+    await Promise.all(
+      uniqueChannels.map(async (channelId) => {
+        try {
+          const resp = await apiClient.get(`/weekly-output/check-channel/${channelId}`);
+          setChannelMemberMap((prev) => ({
+            ...prev,
+            [channelId]:
+              resp.ok && resp.is_member ? "member" : resp.ok ? "not_member" : "error",
+          }));
+        } catch {
+          setChannelMemberMap((prev) => ({ ...prev, [channelId]: "error" }));
+        }
+      })
+    );
+  }, []);
+
   const fetchSchedules = useCallback(async () => {
     try {
       const data = await apiClient.getWeeklyOutputSchedules();
-      setSchedules(data.schedules || []);
+      const list = data.schedules || [];
+      setSchedules(list);
+      checkChannelMemberships(list);
     } catch (err: any) {
       setError(err.message || "Failed to fetch schedules");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [checkChannelMemberships]);
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -723,16 +758,31 @@ export default function WeeklyOutputPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <button
-                      onClick={() => handleToggle(s)}
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
-                        s.is_active
-                          ? "bg-green-100 text-green-800 hover:bg-green-200"
-                          : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-                      }`}
-                    >
-                      {s.is_active ? "Active" : "Inactive"}
-                    </button>
+                    {channelMemberMap[s.channel_id] === "not_member" ? (
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                          Bot not invited
+                        </span>
+                        <p className="text-[10px] text-amber-600 leading-tight">
+                          /invite @All-Thing-Eye Scheduler
+                        </p>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleToggle(s)}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                          s.is_active
+                            ? "bg-green-100 text-green-800 hover:bg-green-200"
+                            : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                        }`}
+                      >
+                        {channelMemberMap[s.channel_id] === "checking"
+                          ? "Checking..."
+                          : s.is_active
+                          ? "Active"
+                          : "Inactive"}
+                      </button>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                     <button
