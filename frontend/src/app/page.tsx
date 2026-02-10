@@ -91,19 +91,6 @@ export default function Home() {
     return null;
   }
 
-  // Calculate collection categories (matching database page)
-  const collectionCategories = new Set<string>();
-  stats.database.collections.forEach((col: any) => {
-    if (col.name.startsWith('member')) collectionCategories.add('members');
-    else if (col.name.startsWith('github')) collectionCategories.add('github');
-    else if (col.name.startsWith('slack')) collectionCategories.add('slack');
-    else if (col.name.startsWith('notion')) collectionCategories.add('notion');
-    else if (col.name.startsWith('drive')) collectionCategories.add('drive');
-    else if (col.name.startsWith('gemini.')) collectionCategories.add('gemini');
-    else if (col.name.startsWith('shared.')) collectionCategories.add('shared');
-    else collectionCategories.add('other');
-  });
-
   // Get most recent collection time from last_collected
   const getMostRecentCollectionTime = () => {
     const times = Object.values(stats.last_collected).filter(t => t !== null) as string[];
@@ -284,58 +271,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Total Members */}
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-blue-100 text-sm font-medium mb-1">Total Members</p>
-              <p className="text-4xl font-bold">{stats.total_members}</p>
-              <p className="text-blue-200 text-xs mt-2">Active team members</p>
-            </div>
-            <div className="text-6xl opacity-20">👥</div>
-          </div>
-        </div>
-
-        {/* Total Activities */}
-        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-green-100 text-sm font-medium mb-1">Total Activities</p>
-              <p className="text-4xl font-bold">{stats.database.total_documents.toLocaleString()}</p>
-              <p className="text-green-200 text-xs mt-2">Across all sources</p>
-            </div>
-            <div className="text-6xl opacity-20">📈</div>
-          </div>
-        </div>
-
-        {/* Active Projects */}
-        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-100 text-sm font-medium mb-1">Active Projects</p>
-              <p className="text-4xl font-bold">{stats.active_projects}</p>
-              <p className="text-purple-200 text-xs mt-2">Currently tracked</p>
-            </div>
-            <div className="text-6xl opacity-20">📁</div>
-          </div>
-        </div>
-
-        {/* Data Sources */}
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all duration-300 hover:shadow-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-orange-100 text-sm font-medium mb-1">Data Sources</p>
-              <p className="text-4xl font-bold">{collectionCategories.size}</p>
-              <p className="text-orange-200 text-xs mt-2">Collection categories</p>
-            </div>
-            <div className="text-6xl opacity-20">🗄️</div>
-          </div>
-        </div>
-      </div>
-
 
 
       {/* Code Changes Statistics */}
