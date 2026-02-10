@@ -137,7 +137,6 @@ async def generate_ticket_id() -> str:
 async def create_ticket(
     reporter_id: str,
     reporter_name: str,
-    category: str,
     title: str,
     description: str,
 ) -> Dict[str, Any]:
@@ -153,7 +152,6 @@ async def create_ticket(
         "ticket_id": ticket_id,
         "reporter_id": reporter_id,
         "reporter_name": reporter_name,
-        "category": category,
         "title": title,
         "description": description,
         "status": "open",
@@ -267,7 +265,6 @@ async def trigger_claude_webhook(ticket: Dict[str, Any]):
                 webhook_url,
                 json={
                     "ticket_id": ticket["ticket_id"],
-                    "category": ticket["category"],
                     "title": ticket["title"],
                     "description": ticket["description"],
                     "reporter_name": ticket["reporter_name"],
@@ -291,18 +288,6 @@ async def notify_admin_new_ticket(ticket: Dict[str, Any]):
         logger.warning("SLACK_SUPPORT_ADMIN_ID not configured")
         return
 
-    category_emoji = {
-        "bug": ":bug:",
-        "feature": ":sparkles:",
-        "question": ":question:",
-    }.get(ticket["category"], ":ticket:")
-
-    category_display = {
-        "bug": "Bug Report",
-        "feature": "Feature Request",
-        "question": "Question",
-    }.get(ticket["category"], ticket["category"])
-
     # Check executor status for display
     executor_online = await check_executor_online()
     executor_status_text = ":large_green_circle: Claude Executor: Online" if executor_online else ":red_circle: Claude Executor: Offline"
@@ -319,16 +304,10 @@ async def notify_admin_new_ticket(ticket: Dict[str, Any]):
         {"type": "divider"},
         {
             "type": "section",
-            "fields": [
-                {
-                    "type": "mrkdwn",
-                    "text": f"*{category_emoji} Category:*\n{category_display}",
-                },
-                {
-                    "type": "mrkdwn",
-                    "text": f"*:bust_in_silhouette: Reporter:*\n<@{ticket['reporter_id']}>",
-                },
-            ],
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*:bust_in_silhouette: Reporter:*\n<@{ticket['reporter_id']}>",
+            },
         },
         {
             "type": "section",
@@ -499,30 +478,6 @@ async def open_ticket_modal(trigger_id: str, user_id: str):
             {"type": "divider"},
             {
                 "type": "input",
-                "block_id": "category_block",
-                "element": {
-                    "type": "static_select",
-                    "action_id": "category_input",
-                    "placeholder": {"type": "plain_text", "text": "Select category"},
-                    "options": [
-                        {
-                            "text": {"type": "plain_text", "text": ":bug: Bug Report"},
-                            "value": "bug",
-                        },
-                        {
-                            "text": {"type": "plain_text", "text": ":sparkles: Feature Request"},
-                            "value": "feature",
-                        },
-                        {
-                            "text": {"type": "plain_text", "text": ":question: Question"},
-                            "value": "question",
-                        },
-                    ],
-                },
-                "label": {"type": "plain_text", "text": "Category"},
-            },
-            {
-                "type": "input",
                 "block_id": "title_block",
                 "element": {
                     "type": "plain_text_input",
@@ -667,7 +622,7 @@ async def open_reporter_reply_modal(trigger_id: str, ticket_id: str):
 # =============================================================================
 
 async def process_dm_message(event: Dict[str, Any]):
-    """Process DM message - create ticket or add to existing."""
+    """Process DM message - always create a new ticket."""
     user_id = event.get("user")
     text = event.get("text", "").strip()
 
@@ -678,62 +633,31 @@ async def process_dm_message(event: Dict[str, Any]):
     user_info = await get_user_info(user_id)
     reporter_name = user_info.get("name", "Unknown")
 
-    # Check for existing open ticket
-    existing_ticket = await get_open_ticket_for_user(user_id)
+    # Create new ticket from DM
+    lines = text.split("\n", 1)
+    title = lines[0][:150]
+    description = text
 
-    if existing_ticket:
-        # Add message to existing ticket
-        await add_message_to_ticket(
-            existing_ticket["ticket_id"],
-            "reporter",
-            text,
-        )
+    ticket = await create_ticket(
+        reporter_id=user_id,
+        reporter_name=reporter_name,
+        title=title,
+        description=description,
+    )
 
-        # Notify admin of new message
-        await notify_admin_ticket_update(existing_ticket["ticket_id"], text, reporter_name)
+    # Notify admin
+    await notify_admin_new_ticket(ticket)
 
-        # Confirm to user
-        bot_token = get_bot_token()
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                SLACK_POST_MESSAGE_URL,
-                json={
-                    "channel": user_id,
-                    "text": f":white_check_mark: Message added to your ticket [{existing_ticket['ticket_id']}]",
-                },
-                headers={
-                    "Authorization": f"Bearer {bot_token}",
-                    "Content-Type": "application/json",
-                },
-            )
-    else:
-        # Create new ticket from DM
-        # Use first line as title, rest as description
-        lines = text.split("\n", 1)
-        title = lines[0][:150]
-        description = text
+    # Trigger Claude Code webhook for auto-processing
+    await trigger_claude_webhook(ticket)
 
-        ticket = await create_ticket(
-            reporter_id=user_id,
-            reporter_name=reporter_name,
-            category="question",  # Default for DM tickets
-            title=title,
-            description=description,
-        )
-
-        # Notify admin
-        await notify_admin_new_ticket(ticket)
-
-        # Trigger Claude Code webhook for auto-processing
-        await trigger_claude_webhook(ticket)
-
-        # Confirm to user
-        await notify_reporter(
-            user_id,
-            ticket["ticket_id"],
-            "created",
-            f"Your support ticket has been created.\n\n*Title:* {title}\n\nAn admin will respond shortly. You can add more details by sending additional messages here.",
-        )
+    # Confirm to user
+    await notify_reporter(
+        user_id,
+        ticket["ticket_id"],
+        "created",
+        f"Your support ticket has been created.\n\n*Title:* {title}\n\nAn admin will respond shortly.",
+    )
 
 
 async def notify_admin_ticket_update(ticket_id: str, message: str, reporter_name: str):
@@ -885,7 +809,6 @@ async def support_interactive(request: Request, background_tasks: BackgroundTask
             private_metadata = json.loads(view.get("private_metadata", "{}"))
             user_id = payload["user"]["id"]
 
-            category = values["category_block"]["category_input"]["selected_option"]["value"]
             title = values["title_block"]["title_input"]["value"]
             description = values["description_block"]["description_input"]["value"]
 
@@ -895,7 +818,6 @@ async def support_interactive(request: Request, background_tasks: BackgroundTask
             ticket = await create_ticket(
                 reporter_id=user_id,
                 reporter_name=reporter_name,
-                category=category,
                 title=title,
                 description=description,
             )
@@ -912,7 +834,7 @@ async def support_interactive(request: Request, background_tasks: BackgroundTask
                 user_id,
                 ticket["ticket_id"],
                 "created",
-                f"Your support ticket has been created.\n\n*Title:* {title}\n*Category:* {category}\n\nAn admin will respond shortly.",
+                f"Your support ticket has been created.\n\n*Title:* {title}\n\nAn admin will respond shortly.",
             )
 
             return Response(status_code=200)
@@ -1348,7 +1270,7 @@ async def get_executor_queue(request: Request):
 
     cursor = collection.find(
         {"status": {"$in": QUEUE_STATUSES}},
-        {"_id": 0, "ticket_id": 1, "category": 1, "title": 1, "description": 1,
+        {"_id": 0, "ticket_id": 1, "title": 1, "description": 1,
          "reporter_name": 1, "status": 1, "created_at": 1, "messages": 1,
          "execution_result": 1}
     ).sort("created_at", 1)
