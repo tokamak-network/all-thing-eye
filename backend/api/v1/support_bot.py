@@ -114,7 +114,7 @@ async def get_user_info(user_id: str) -> Dict[str, Any]:
 async def generate_ticket_id() -> str:
     """Generate the next ticket ID (TKT-001, TKT-002, etc.)."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     # Find the highest ticket number
@@ -143,7 +143,7 @@ async def create_ticket(
 ) -> Dict[str, Any]:
     """Create a new support ticket in MongoDB."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     ticket_id = await generate_ticket_id()
@@ -180,7 +180,7 @@ async def create_ticket(
 async def get_open_ticket_for_user(user_id: str) -> Optional[Dict[str, Any]]:
     """Get the user's open ticket if exists."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     return await collection.find_one({
@@ -196,7 +196,7 @@ async def add_message_to_ticket(
 ) -> bool:
     """Add a message to an existing ticket."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     result = await collection.update_one(
@@ -222,7 +222,7 @@ async def update_ticket_status(
 ) -> bool:
     """Update ticket status."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     update_data = {
@@ -246,7 +246,7 @@ async def update_ticket_status(
 async def get_ticket_by_id(ticket_id: str) -> Optional[Dict[str, Any]]:
     """Get ticket by ticket_id."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
     return await collection.find_one({"ticket_id": ticket_id})
 
@@ -1063,7 +1063,7 @@ async def support_interactive(request: Request, background_tasks: BackgroundTask
 async def approve_claude_ticket(ticket_id: str):
     """Approve ticket for Claude Code execution via queue system."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     result = await collection.update_one(
@@ -1105,7 +1105,7 @@ async def approve_claude_ticket(ticket_id: str):
 async def reject_claude_ticket(ticket_id: str):
     """Reject ticket for Claude Code execution."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     result = await collection.update_one(
@@ -1135,7 +1135,7 @@ async def reject_claude_ticket(ticket_id: str):
 async def start_claude_review(ticket_id: str):
     """Queue review action for executor."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     result = await collection.update_one(
@@ -1161,7 +1161,7 @@ async def start_claude_review(ticket_id: str):
 async def revert_claude_commit(ticket_id: str):
     """Queue revert action for executor."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     result = await collection.update_one(
@@ -1187,7 +1187,7 @@ async def revert_claude_commit(ticket_id: str):
 async def deploy_claude_ticket(ticket_id: str):
     """Queue deploy action for executor."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     result = await collection.update_one(
@@ -1232,7 +1232,7 @@ def verify_executor_secret(request: Request) -> bool:
 async def check_executor_online() -> bool:
     """Check if executor has sent a heartbeat recently (within 90 seconds)."""
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     state = await db["bot_state"].find_one({"_id": "claude_executor"})
     if not state or not state.get("last_heartbeat"):
         return False
@@ -1343,7 +1343,7 @@ async def get_executor_queue(request: Request):
         raise HTTPException(status_code=401, detail="Invalid executor secret")
 
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     cursor = collection.find(
@@ -1379,7 +1379,7 @@ async def claim_ticket(request: Request):
         raise HTTPException(status_code=400, detail="ticket_id required")
 
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     # Read current status before claiming (to record what action is being executed)
@@ -1435,7 +1435,7 @@ async def post_execution_result(request: Request, background_tasks: BackgroundTa
         raise HTTPException(status_code=400, detail="ticket_id required")
 
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     new_status = "completed" if success else "failed"
@@ -1499,7 +1499,7 @@ async def executor_heartbeat(request: Request):
         raise HTTPException(status_code=401, detail="Invalid executor secret")
 
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
 
     await db["bot_state"].update_one(
         {"_id": "claude_executor"},
@@ -1516,7 +1516,7 @@ async def executor_status():
     online = await check_executor_online()
 
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     state = await db["bot_state"].find_one({"_id": "claude_executor"})
 
     last_heartbeat = None
@@ -1544,7 +1544,7 @@ async def list_tickets(
     elif limit > 100:
         limit = 100
     mongo = get_mongo()
-    db = mongo.get_database_async()
+    db = mongo.async_db
     collection = db["support_tickets"]
 
     query = {}
