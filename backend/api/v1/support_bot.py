@@ -290,7 +290,7 @@ async def notify_admin_new_ticket(ticket: Dict[str, Any]):
 
     # Check executor status for display
     executor_online = await check_executor_online()
-    executor_status_text = ":large_green_circle: Claude Executor: Online" if executor_online else ":red_circle: Claude Executor: Offline"
+    executor_status_text = ":large_green_circle: Executor: Online" if executor_online else ":red_circle: Executor: Offline"
 
     blocks = [
         {
@@ -335,13 +335,13 @@ async def notify_admin_new_ticket(ticket: Dict[str, Any]):
             "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": ":robot_face: Claude Approve", "emoji": True},
+                    "text": {"type": "plain_text", "text": ":white_check_mark: Approve", "emoji": True},
                     "style": "primary",
                     "action_id": f"claude_approve_{ticket['ticket_id']}",
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": ":x: Claude Reject", "emoji": True},
+                    "text": {"type": "plain_text", "text": ":x: Reject", "emoji": True},
                     "action_id": f"claude_reject_{ticket['ticket_id']}",
                 },
             ],
@@ -1006,7 +1006,7 @@ async def approve_claude_ticket(ticket_id: str):
                     SLACK_POST_MESSAGE_URL,
                     json={
                         "channel": admin_id,
-                        "text": f":rocket: *[{ticket_id}]* Claude 승인됨! {status_msg}",
+                        "text": f":rocket: *[{ticket_id}]* 승인됨! {status_msg}",
                     },
                     headers={"Authorization": f"Bearer {bot_token}"},
                 )
@@ -1046,7 +1046,7 @@ async def reject_claude_ticket(ticket_id: str):
                     SLACK_POST_MESSAGE_URL,
                     json={
                         "channel": admin_id,
-                        "text": f":x: *[{ticket_id}]* Claude 자동 개발 거부됨.",
+                        "text": f":x: *[{ticket_id}]* 거부됨.",
                     },
                     headers={"Authorization": f"Bearer {bot_token}"},
                 )
