@@ -501,6 +501,14 @@ class ApiClient {
     return response.data;
   }
 
+  async getMemberCommits(memberName: string, startDate?: string, endDate?: string) {
+    const params: Record<string, string> = { member_name: memberName };
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    const response = await this.client.get("/stats/member-commits", { params });
+    return response.data;
+  }
+
   // Authentication API
   async login(address: string, message: string, signature: string) {
     const response = await this.client.post("/auth/login", {
@@ -998,6 +1006,68 @@ class ApiClient {
     }>;
   }> {
     const response = await this.client.get("/reports/presets");
+    return response.data;
+  }
+  // ============================================
+  // Weekly Output Schedules API
+  // ============================================
+
+  async getWeeklyOutputSchedules(activeOnly?: boolean) {
+    const params: { active_only?: boolean } = {};
+    if (activeOnly !== undefined) params.active_only = activeOnly;
+    const response = await this.client.get("/weekly-output/schedules", { params });
+    return response.data;
+  }
+
+  async getWeeklyOutputSchedule(id: string) {
+    const response = await this.client.get(`/weekly-output/schedules/${id}`);
+    return response.data;
+  }
+
+  async createWeeklyOutputSchedule(data: {
+    name: string;
+    channel_id: string;
+    channel_name: string;
+    member_ids: string[];
+    thread_schedule: { day_of_week: string; hour: number; minute: number };
+    reminder_schedule: { day_of_week: string; hour: number; minute: number };
+    final_schedule: { day_of_week: string; hour: number; minute: number };
+    thread_message?: string | null;
+    reminder_message?: string | null;
+    final_message?: string | null;
+    is_active?: boolean;
+  }) {
+    const response = await this.client.post("/weekly-output/schedules", data);
+    return response.data;
+  }
+
+  async updateWeeklyOutputSchedule(
+    id: string,
+    data: {
+      name?: string;
+      channel_id?: string;
+      channel_name?: string;
+      member_ids?: string[];
+      thread_schedule?: { day_of_week: string; hour: number; minute: number };
+      reminder_schedule?: { day_of_week: string; hour: number; minute: number };
+      final_schedule?: { day_of_week: string; hour: number; minute: number };
+      thread_message?: string | null;
+      reminder_message?: string | null;
+      final_message?: string | null;
+      is_active?: boolean;
+    }
+  ) {
+    const response = await this.client.put(`/weekly-output/schedules/${id}`, data);
+    return response.data;
+  }
+
+  async deleteWeeklyOutputSchedule(id: string) {
+    const response = await this.client.delete(`/weekly-output/schedules/${id}`);
+    return response.data;
+  }
+
+  async getMembersWithSlack() {
+    const response = await this.client.get("/weekly-output/members-with-slack");
     return response.data;
   }
 }

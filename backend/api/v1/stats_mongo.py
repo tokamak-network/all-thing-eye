@@ -5,8 +5,8 @@ Provides consolidated statistics from MongoDB for Dashboard and other pages.
 This ensures data consistency across all frontend pages.
 """
 
-from fastapi import APIRouter, HTTPException, Request, Depends
-from typing import Dict, Any
+from fastapi import APIRouter, HTTPException, Request, Depends, Query
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from collections import Counter
 import re
@@ -887,4 +887,120 @@ async def get_code_changes_stats(
         import traceback
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to generate code statistics: {str(e)}")
+
+
+@router.get("/member-commits")
+async def get_member_commits(
+    request: Request,
+    member_name: str = Query(..., description="Member name to look up commits for"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    limit: int = Query(30, description="Max commits to return"),
+    _admin: str = Depends(require_admin),
+):
+    """
+    Get recent commits for a specific member.
+
+    Resolves member_name → GitHub username(s) via member_identifiers,
+    then queries github_commits for matching author_name entries.
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.async_db
+
+        from bson import ObjectId
+
+        # 1. Find GitHub usernames for this member
+        # Use the same pattern as code-changes: fetch all github identifiers
+        # and build reverse mapping (member_name → github usernames)
+        github_usernames: List[str] = []
+
+        # Look up member by name
+        member_doc = await db["members"].find_one(
+            {"name": member_name, "is_active": {"$ne": False}}
+        )
+
+        if member_doc:
+            member_id = str(member_doc["_id"])
+            try:
+                member_obj_id = ObjectId(member_id)
+            except Exception:
+                member_obj_id = None
+
+            # Query with both string and ObjectId formats (data may use either)
+            id_query: Dict[str, Any] = {
+                "$or": [{"member_id": member_id}],
+                "source": "github",
+            }
+            if member_obj_id:
+                id_query["$or"].append({"member_id": member_obj_id})
+
+            identifiers = await db["member_identifiers"].find(id_query).to_list(None)
+
+            for ident in identifiers:
+                val = ident.get("identifier_value")
+                if val and val not in github_usernames:
+                    github_usernames.append(val)
+
+        # Also try member_name itself as a GitHub username (fallback)
+        if member_name not in github_usernames:
+            github_usernames.append(member_name)
+
+        if not github_usernames:
+            return {"member_name": member_name, "commits": []}
+
+        # 2. Build date filter
+        date_filter: Dict[str, Any] = {}
+        if start_date:
+            try:
+                date_filter["$gte"] = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid start_date format")
+        if end_date:
+            try:
+                date_filter["$lt"] = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid end_date format")
+
+        # 3. Query github_commits (case-insensitive match on author_name)
+        query: Dict[str, Any] = {
+            "author_name": {
+                "$in": github_usernames
+            }
+        }
+        if date_filter:
+            query["date"] = date_filter
+
+        cursor = db["github_commits"].find(query).sort("date", -1).limit(limit)
+
+        commits = []
+        async for doc in cursor:
+            sha = doc.get("sha", "")
+            repo = doc.get("repository", "")
+            url = doc.get("url", "")
+            if not url and sha and repo:
+                url = f"https://github.com/tokamak-network/{repo}/commit/{sha}"
+
+            commits.append({
+                "sha": sha[:7] if sha else "",
+                "message": doc.get("message", ""),
+                "repository": repo,
+                "date": doc["date"].isoformat() if isinstance(doc.get("date"), datetime) else str(doc.get("date", "")),
+                "additions": doc.get("additions", 0),
+                "deletions": doc.get("deletions", 0),
+                "url": url,
+            })
+
+        return {
+            "member_name": member_name,
+            "commits": commits,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching member commits: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to fetch member commits: {str(e)}")
 

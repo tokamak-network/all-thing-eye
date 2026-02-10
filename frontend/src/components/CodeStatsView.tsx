@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   AreaChart,
   Area,
@@ -67,6 +67,16 @@ interface CodeStats {
   }>;
 }
 
+interface CommitInfo {
+  sha: string;
+  message: string;
+  repository: string;
+  date: string;
+  additions: number;
+  deletions: number;
+  url: string;
+}
+
 // Helper to calculate date range
 function getDateRange(preset: DateRangePreset): { startDate: string; endDate: string } {
   const now = new Date();
@@ -98,8 +108,47 @@ export default function CodeStatsView() {
   const [contributorPage, setContributorPage] = useState(1);
   const [repositoryPage, setRepositoryPage] = useState(1);
   const [expandedRepos, setExpandedRepos] = useState<Set<string>>(new Set());
+  const [expandedContributors, setExpandedContributors] = useState<Set<string>>(new Set());
+  const [contributorCommits, setContributorCommits] = useState<Record<string, CommitInfo[]>>({});
+  const [loadingContributor, setLoadingContributor] = useState<string | null>(null);
+  const [commitPage, setCommitPage] = useState<Record<string, number>>({});
   const CONTRIBUTORS_PER_PAGE = 10;
+  const COMMITS_PER_PAGE = 10;
   const REPOSITORIES_PER_PAGE = 10;
+
+  const toggleContributorExpand = async (name: string) => {
+    if (expandedContributors.has(name)) {
+      setExpandedContributors((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(name);
+        return newSet;
+      });
+      return;
+    }
+
+    // Expand and load commits if not cached
+    setExpandedContributors((prev) => new Set(prev).add(name));
+
+    if (!contributorCommits[name]) {
+      try {
+        setLoadingContributor(name);
+        const { startDate, endDate } = getDateRange(dateRange);
+        const data = await api.getMemberCommits(name, startDate, endDate);
+        setContributorCommits((prev) => ({
+          ...prev,
+          [name]: data.commits || [],
+        }));
+      } catch (err) {
+        console.error("Failed to fetch member commits:", err);
+        setContributorCommits((prev) => ({
+          ...prev,
+          [name]: [],
+        }));
+      } finally {
+        setLoadingContributor(null);
+      }
+    }
+  };
 
   const toggleRepoExpand = (repoName: string) => {
     setExpandedRepos((prev) => {
@@ -121,6 +170,9 @@ export default function CodeStatsView() {
         setError(null);
         setContributorPage(1); // Reset page when date range changes
         setRepositoryPage(1);
+        setExpandedContributors(new Set());
+        setContributorCommits({});
+        setCommitPage({});
         const { startDate, endDate } = getDateRange(dateRange);
         const data = await api.getCodeStats(startDate, endDate);
         setStats(data);
@@ -319,49 +371,157 @@ export default function CodeStatsView() {
                   {totalMembers} members
                 </span>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {currentPageMembers.map((member, index) => {
                   const globalIndex = startIndex + index;
+                  const isExpanded = expandedContributors.has(member.name);
+                  const hasCommits = member.commits > 0;
+
                   return (
                     <div
                       key={member.name}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className="bg-gray-50 rounded-lg overflow-hidden"
                     >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
-                            globalIndex === 0
-                              ? "bg-yellow-500"
-                              : globalIndex === 1
-                              ? "bg-gray-400"
-                              : globalIndex === 2
-                              ? "bg-orange-400"
-                              : "bg-gray-300"
-                          }`}
-                        >
-                          {globalIndex + 1}
-                        </span>
-                        <div>
-                          <p className="font-medium text-gray-900">{member.name}</p>
-                          <p className="text-sm text-gray-500">
-                            {member.commits} commits
+                      <div
+                        className={`flex items-center justify-between p-3 ${
+                          hasCommits ? "cursor-pointer hover:bg-gray-100" : ""
+                        }`}
+                        onClick={() => hasCommits && toggleContributorExpand(member.name)}
+                      >
+                        <div className="flex items-center gap-3">
+                          {hasCommits && (
+                            <span
+                              className={`text-gray-400 transition-transform ${
+                                isExpanded ? "rotate-90" : ""
+                              }`}
+                            >
+                              ▶
+                            </span>
+                          )}
+                          <span
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                              globalIndex === 0
+                                ? "bg-yellow-500"
+                                : globalIndex === 1
+                                ? "bg-gray-400"
+                                : globalIndex === 2
+                                ? "bg-orange-400"
+                                : "bg-gray-300"
+                            }`}
+                          >
+                            {globalIndex + 1}
+                          </span>
+                          <div>
+                            <p className="font-medium text-gray-900">{member.name}</p>
+                            <p className="text-sm text-gray-500">
+                              {member.commits} commits
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-gray-700">
+                            {(member.additions + member.deletions).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            <span className="text-emerald-600">
+                              +{member.additions.toLocaleString()}
+                            </span>
+                            {" / "}
+                            <span className="text-rose-600">
+                              -{member.deletions.toLocaleString()}
+                            </span>
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-gray-700">
-                          {(member.additions + member.deletions).toLocaleString()}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          <span className="text-emerald-600">
-                            +{member.additions.toLocaleString()}
-                          </span>
-                          {" / "}
-                          <span className="text-rose-600">
-                            -{member.deletions.toLocaleString()}
-                          </span>
-                        </p>
-                      </div>
+
+                      {/* Recent Commits (expandable) */}
+                      {isExpanded && (
+                        <div className="border-t border-gray-200 bg-white">
+                          <div className="px-4 py-2 bg-gray-100 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Recent Commits
+                          </div>
+                          {loadingContributor === member.name ? (
+                            <div className="flex items-center justify-center py-4">
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
+                              <span className="ml-2 text-sm text-gray-500">Loading commits...</span>
+                            </div>
+                          ) : (contributorCommits[member.name] || []).length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-500">
+                              No commits found for this period.
+                            </div>
+                          ) : (() => {
+                            const allCommits = contributorCommits[member.name] || [];
+                            const currentPage = commitPage[member.name] || 1;
+                            const totalCommitPages = Math.ceil(allCommits.length / COMMITS_PER_PAGE);
+                            const pageStart = (currentPage - 1) * COMMITS_PER_PAGE;
+                            const pageCommits = allCommits.slice(pageStart, pageStart + COMMITS_PER_PAGE);
+
+                            return (
+                              <>
+                                <div className="divide-y divide-gray-100">
+                                  {pageCommits.map((commit, idx) => (
+                                    <div
+                                      key={`${commit.sha}-${idx}`}
+                                      className="flex items-center justify-between px-4 py-2 hover:bg-gray-50"
+                                    >
+                                      <div className="flex-1 min-w-0 mr-3">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded shrink-0">
+                                            {commit.repository}
+                                          </span>
+                                          <span className="text-xs text-gray-400 shrink-0">
+                                            {commit.date ? formatDistanceToNow(new Date(commit.date), { addSuffix: true }) : ""}
+                                          </span>
+                                        </div>
+                                        <a
+                                          href={commit.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-sm text-gray-800 hover:text-indigo-600 hover:underline truncate block mt-0.5"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {commit.message?.split("\n")[0] || "No message"}
+                                        </a>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <p className="text-xs text-gray-500">
+                                          <span className="text-emerald-600">+{commit.additions}</span>
+                                          {" / "}
+                                          <span className="text-rose-600">-{commit.deletions}</span>
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                {totalCommitPages > 1 && (
+                                  <div
+                                    className="flex items-center justify-center gap-2 px-4 py-2 border-t border-gray-100 bg-gray-50"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      onClick={() => setCommitPage((prev) => ({ ...prev, [member.name]: Math.max(1, currentPage - 1) }))}
+                                      disabled={currentPage === 1}
+                                      className="px-2 py-0.5 text-xs border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      ‹
+                                    </button>
+                                    <span className="text-xs text-gray-600">
+                                      {currentPage} / {totalCommitPages}
+                                    </span>
+                                    <button
+                                      onClick={() => setCommitPage((prev) => ({ ...prev, [member.name]: Math.min(totalCommitPages, currentPage + 1) }))}
+                                      disabled={currentPage === totalCommitPages}
+                                      className="px-2 py-0.5 text-xs border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      ›
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
