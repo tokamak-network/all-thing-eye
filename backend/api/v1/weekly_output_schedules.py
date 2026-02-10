@@ -5,11 +5,14 @@ Provides CRUD operations for weekly output bot schedules stored in MongoDB.
 Allows creating schedules for any channel with custom member selection and timing.
 """
 
+import os
 from fastapi import APIRouter, HTTPException, Request
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from bson import ObjectId
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 from src.utils.logger import get_logger
 
@@ -336,3 +339,26 @@ async def get_members_with_slack(request: Request):
     except Exception as e:
         logger.error(f"Error fetching members with Slack IDs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch members: {str(e)}")
+
+
+@router.get("/check-channel/{channel_id}")
+async def check_channel_membership(request: Request, channel_id: str):
+    """Check if the weekly bot is a member of the given channel."""
+    bot_token = os.environ.get("SLACK_WEEKLY_BOT_TOKEN", "")
+    if not bot_token:
+        return {"ok": False, "error": "SLACK_WEEKLY_BOT_TOKEN not configured"}
+
+    try:
+        client = WebClient(token=bot_token)
+        resp = client.conversations_info(channel=channel_id)
+        channel_info = resp.get("channel", {})
+        is_member = channel_info.get("is_member", False)
+        channel_name = channel_info.get("name", "")
+        return {
+            "ok": True,
+            "is_member": is_member,
+            "channel_name": channel_name,
+        }
+    except SlackApiError as e:
+        error = e.response.get("error", "unknown_error")
+        return {"ok": False, "is_member": False, "error": error}

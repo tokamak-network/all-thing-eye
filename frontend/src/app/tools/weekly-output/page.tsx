@@ -197,6 +197,9 @@ export default function WeeklyOutputPage() {
   const [channelResults, setChannelResults] = useState<SlackChannel[]>([]);
   const [channelSearching, setChannelSearching] = useState(false);
   const [showChannelDropdown, setShowChannelDropdown] = useState(false);
+  const [botMemberStatus, setBotMemberStatus] = useState<
+    "unchecked" | "checking" | "member" | "not_member" | "error"
+  >("unchecked");
   const channelSearchTimer = useRef<NodeJS.Timeout | null>(null);
   const channelDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -285,6 +288,22 @@ export default function WeeklyOutputPage() {
     }, 300);
   }
 
+  async function checkBotMembership(channelId: string) {
+    setBotMemberStatus("checking");
+    try {
+      const resp = await apiClient.get(`/weekly-output/check-channel/${channelId}`);
+      if (resp.ok && resp.is_member) {
+        setBotMemberStatus("member");
+      } else if (resp.ok && !resp.is_member) {
+        setBotMemberStatus("not_member");
+      } else {
+        setBotMemberStatus("error");
+      }
+    } catch {
+      setBotMemberStatus("error");
+    }
+  }
+
   function selectChannel(ch: SlackChannel) {
     setFormData((p) => ({
       ...p,
@@ -293,6 +312,7 @@ export default function WeeklyOutputPage() {
     }));
     setChannelSearch("");
     setShowChannelDropdown(false);
+    checkBotMembership(ch.channel_id);
   }
 
   // ============================================================
@@ -400,6 +420,7 @@ export default function WeeklyOutputPage() {
     setShowCustomMessages(false);
     setMessagePreset("none");
     setShowPreview(false);
+    setBotMemberStatus("unchecked");
     setShowModal(true);
   }
 
@@ -438,6 +459,10 @@ export default function WeeklyOutputPage() {
       setMessagePreset("none");
     }
     setShowPreview(false);
+    setBotMemberStatus("unchecked");
+    if (schedule.channel_id) {
+      checkBotMembership(schedule.channel_id);
+    }
     setShowModal(true);
   }
 
@@ -783,32 +808,62 @@ export default function WeeklyOutputPage() {
                       Channel *
                     </label>
                     {formData.channel_id ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 flex items-center justify-between">
-                          <span>
-                            <span className="text-gray-400">#</span>{" "}
-                            <span className="font-medium text-gray-900">
-                              {formData.channel_name || formData.channel_id}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 flex items-center justify-between">
+                            <span>
+                              <span className="text-gray-400">#</span>{" "}
+                              <span className="font-medium text-gray-900">
+                                {formData.channel_name || formData.channel_id}
+                              </span>
+                              <span className="ml-2 text-xs text-gray-400">
+                                {formData.channel_id}
+                              </span>
                             </span>
-                            <span className="ml-2 text-xs text-gray-400">
-                              {formData.channel_id}
-                            </span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData((p) => ({
-                                ...p,
-                                channel_id: "",
-                                channel_name: "",
-                              }));
-                              setChannelSearch("");
-                            }}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
-                            <XMarkIcon className="h-4 w-4" />
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData((p) => ({
+                                  ...p,
+                                  channel_id: "",
+                                  channel_name: "",
+                                }));
+                                setChannelSearch("");
+                                setBotMemberStatus("unchecked");
+                              }}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
+                        {botMemberStatus === "checking" && (
+                          <p className="text-xs text-gray-400 flex items-center gap-1">
+                            <span className="inline-block h-3 w-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                            Checking bot membership...
+                          </p>
+                        )}
+                        {botMemberStatus === "member" && (
+                          <p className="text-xs text-green-600">
+                            Bot is a member of this channel
+                          </p>
+                        )}
+                        {botMemberStatus === "not_member" && (
+                          <div className="p-2 bg-amber-50 border border-amber-200 rounded-md">
+                            <p className="text-xs text-amber-800 font-medium">
+                              Bot is not in this channel
+                            </p>
+                            <p className="text-xs text-amber-600 mt-0.5">
+                              Run <code className="bg-amber-100 px-1 rounded">/invite @All-Thing-Eye Scheduler</code> in{" "}
+                              <strong>#{formData.channel_name || formData.channel_id}</strong> first
+                            </p>
+                          </div>
+                        )}
+                        {botMemberStatus === "error" && (
+                          <p className="text-xs text-gray-400">
+                            Could not verify bot membership
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <div className="relative" ref={channelDropdownRef}>
@@ -866,6 +921,7 @@ export default function WeeklyOutputPage() {
                                   channel_id: id.trim(),
                                   channel_name: "",
                                 }));
+                                checkBotMembership(id.trim());
                               }
                             }}
                             className="text-blue-600 hover:text-blue-800 underline"
