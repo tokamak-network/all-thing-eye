@@ -160,16 +160,23 @@ def get_schedule_members(schedule):
         name = m.get("name", "Unknown")
 
         # Resolve Slack user ID (3-step fallback)
-        slack_user_id = m.get("slack_id")
+        # Step 1: member_identifiers collection (most reliable - has actual Slack user IDs)
+        slack_user_id = None
+        ident = db["member_identifiers"].find_one({
+            "member_name": name,
+            "source": "slack",
+            "identifier_type": "user_id",
+        })
+        if ident:
+            slack_user_id = ident.get("identifier_value")
 
+        # Step 2: members.slack_id field (only if it looks like a Slack user ID)
         if not slack_user_id:
-            ident = db["member_identifiers"].find_one({
-                "member_name": name,
-                "source": "slack",
-            })
-            if ident:
-                slack_user_id = ident.get("identifier_value")
+            candidate = m.get("slack_id")
+            if candidate and candidate.startswith("U"):
+                slack_user_id = candidate
 
+        # Step 3: embedded identifiers on member document
         if not slack_user_id:
             for ident in m.get("identifiers", []):
                 if ident.get("source_type") == "slack":
