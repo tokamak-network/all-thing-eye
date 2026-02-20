@@ -166,6 +166,16 @@ deploy_build() {
 
     if [ $? -eq 0 ]; then
         log_info "✅ Build completed!"
+
+        # Reload nginx if backend was rebuilt (upstream IP may have changed)
+        for service in "${services[@]}"; do
+            if [ "$service" == "backend" ]; then
+                log_info "🔄 Reloading nginx (backend upstream refreshed)..."
+                docker-compose -f $COMPOSE_FILE restart nginx 2>/dev/null || true
+                break
+            fi
+        done
+
         echo ""
         deploy_status
     else
