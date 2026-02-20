@@ -133,7 +133,7 @@ deploy_backup() {
 }
 
 # Available services for selective build
-ALL_SERVICES=("frontend" "backend" "data-collector")
+ALL_SERVICES=("frontend" "backend" "data-collector" "weekly-bot")
 
 # Build specific services
 deploy_build() {
@@ -182,6 +182,7 @@ deploy_build_interactive() {
     echo "  [1] frontend"
     echo "  [2] backend"
     echo "  [3] data-collector"
+    echo "  [4] weekly-bot"
     echo "  [a] All services"
     echo "  [q] Quit"
     echo ""
@@ -204,6 +205,7 @@ deploy_build_interactive() {
             1) selected+=("frontend") ;;
             2) selected+=("backend") ;;
             3) selected+=("data-collector") ;;
+            4) selected+=("weekly-bot") ;;
             *)
                 log_warn "Invalid choice: $choice (skipped)"
                 ;;
@@ -274,7 +276,7 @@ case "${1:-}" in
         echo "  $0 build frontend backend    # Build multiple services"
         echo "  $0 build frontend backend data-collector  # Build all"
         echo ""
-        echo "Available services: frontend, backend, data-collector"
+        echo "Available services: frontend, backend, data-collector, weekly-bot"
         exit 1
         ;;
 esac
