@@ -14,6 +14,7 @@ import {
   UserPlusIcon,
   UsersIcon,
   ArchiveBoxIcon,
+  EnvelopeIcon,
 } from "@heroicons/react/24/outline";
 
 interface MemberIdentifiers {
@@ -162,6 +163,7 @@ export default function MembersPage() {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
 
   // Open modal for creating new member
   const openCreateModal = () => {
@@ -304,6 +306,33 @@ export default function MembersPage() {
     } catch (err: any) {
       console.error("Error reactivating member:", err);
       alert(err.message || "Failed to reactivate member");
+    }
+  };
+
+  // Handle sending welcome message
+  const handleSendWelcome = async (member: Member) => {
+    if (!confirm(`Send onboarding welcome message to ${member.name}?`)) return;
+
+    setSendingWelcome(member.id);
+    try {
+      await apiClient.sendWelcomeMessage(member.id);
+      alert(`Welcome message sent to ${member.name}`);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || err.message || "Failed to send welcome message";
+      if (detail.includes("already sent")) {
+        if (confirm(`${detail}\n\nResend anyway?`)) {
+          try {
+            await apiClient.sendWelcomeMessage(member.id, true);
+            alert(`Welcome message resent to ${member.name}`);
+          } catch (retryErr: any) {
+            alert(retryErr.response?.data?.detail || retryErr.message || "Failed to resend");
+          }
+        }
+      } else {
+        alert(detail);
+      }
+    } finally {
+      setSendingWelcome(null);
     }
   };
 
@@ -545,6 +574,16 @@ export default function MembersPage() {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      {activeTab === "active" && (
+                        <button
+                          onClick={() => handleSendWelcome(member)}
+                          className="text-green-600 hover:text-green-900 mr-3 disabled:opacity-50"
+                          title="Send Welcome Message"
+                          disabled={sendingWelcome === member.id}
+                        >
+                          <EnvelopeIcon className="h-5 w-5 inline" />
+                        </button>
+                      )}
                       <button
                         onClick={() => openEditModal(member)}
                         className="text-blue-600 hover:text-blue-900 mr-3"

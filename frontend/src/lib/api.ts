@@ -1070,6 +1070,15 @@ class ApiClient {
     const response = await this.client.get("/weekly-output/members-with-slack");
     return response.data;
   }
+
+  // Onboarding API
+  async sendWelcomeMessage(memberId: string, force: boolean = false) {
+    const response = await this.client.post("/onboarding/send-welcome", {
+      member_id: memberId,
+      force,
+    });
+    return response.data;
+  }
 }
 
 export const api = new ApiClient();
