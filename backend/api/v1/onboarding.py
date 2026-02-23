@@ -166,7 +166,7 @@ async def send_welcome_message(req: SendWelcomeRequest):
     if not req.force and member.get("onboarding_sent_at"):
         sent_at = member["onboarding_sent_at"]
         if isinstance(sent_at, datetime):
-            sent_at = sent_at.isoformat()
+            sent_at = sent_at.strftime("%Y-%m-%dT%H:%M:%S")
         raise HTTPException(
             status_code=409,
             detail=f"Welcome message already sent at {sent_at}. Use force=true to resend.",

@@ -322,10 +322,14 @@ export default function MembersPage() {
       const detail = data?.detail || data?.error || err.message || "Failed to send welcome message";
       if (err.response?.status === 409 || detail.includes("already sent")) {
         // Extract sent date from error message
-        const dateMatch = detail.match(/(\d{4}-\d{2}-\d{2}T[\d:.]+)/);
-        const sentDate = dateMatch
-          ? new Date(dateMatch[1]).toLocaleString("ko-KR")
-          : "";
+        const dateMatch = detail.match(/(\d{4}-\d{2}-\d{2}T[\d:]+)/);
+        let sentDate = "";
+        if (dateMatch) {
+          const parsed = new Date(dateMatch[1]);
+          if (!isNaN(parsed.getTime())) {
+            sentDate = parsed.toLocaleString("ko-KR");
+          }
+        }
         const msg = sentDate
           ? `${member.name}님에게 이미 웰컴 메시지를 보냈습니다. (${sentDate})\n\n그래도 다시 보내시겠습니까?`
           : `${member.name}님에게 이미 웰컴 메시지를 보냈습니다.\n\n그래도 다시 보내시겠습니까?`;
