@@ -46,6 +46,14 @@ stop:
 	@pkill -f "claude_webhook_server.py" 2>/dev/null || true
 	@echo "Stopped all bots"
 
+# Collect external project benchmarks (yesterday by default)
+benchmarks:
+	python3 scripts/external_project_collection.py
+
+# Backfill benchmark data for last 90 days
+benchmarks-backfill:
+	python3 scripts/external_project_collection.py --days 90
+
 # Help
 help:
 	@echo "Available commands:"
@@ -54,4 +62,6 @@ help:
 	@echo "  make weekly         - Start Weekly Output Bot"
 	@echo "  make stop-executor  - Stop Claude Executor"
 	@echo "  make stop-weekly    - Stop Weekly Output Bot"
+	@echo "  make benchmarks     - Collect external project benchmarks (yesterday)"
+	@echo "  make benchmarks-backfill - Backfill benchmark data (last 90 days)"
 	@echo "  make stop           - Stop all bots"

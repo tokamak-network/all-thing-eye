@@ -28,6 +28,7 @@ export default function Navigation() {
     { href: "/members", label: "Members" },
     { href: "/projects", label: "Projects" },
     { href: "/tools", label: "Tools" },
+    { href: "/benchmarks", label: "Benchmarks" },
   ];
 
   const isActive = (href: string) => {

@@ -1079,6 +1079,58 @@ class ApiClient {
     });
     return response.data;
   }
+
+  // Benchmarks API
+  async getExternalProjects() {
+    const response = await this.client.get("/benchmarks/projects");
+    return response.data;
+  }
+
+  async searchInternalRepos(q: string = "", limit: number = 20) {
+    const response = await this.client.get("/benchmarks/internal-repos", {
+      params: { q, limit },
+    });
+    return response.data;
+  }
+
+  async addExternalProject(owner: string, repo: string, category?: string, displayName?: string) {
+    const response = await this.client.post("/benchmarks/projects", {
+      owner,
+      repo,
+      category: category || "",
+      display_name: displayName || "",
+    }, {
+      timeout: 120000, // 2 min - includes 30-day backfill
+    });
+    return response.data;
+  }
+
+  async removeExternalProject(fullName: string) {
+    const response = await this.client.delete(`/benchmarks/projects/${fullName}`);
+    return response.data;
+  }
+
+  async getBenchmarkComparison(params: {
+    projects: string;
+    metric?: string;
+    start_date: string;
+    end_date: string;
+    granularity?: string;
+  }) {
+    const response = await this.client.get("/benchmarks/compare", { params });
+    return response.data;
+  }
+
+  async backfillBenchmarkData(projects: string[], startDate: string, endDate: string) {
+    const response = await this.client.post("/benchmarks/compare/backfill", {
+      projects,
+      start_date: startDate,
+      end_date: endDate,
+    }, {
+      timeout: 300000, // 5 min - bulk fetching can take a while
+    });
+    return response.data;
+  }
 }
 
 export const api = new ApiClient();
