@@ -3,12 +3,14 @@
 import { useState } from "react";
 import ActivitiesView from "@/components/ActivitiesView";
 import CodeStatsView from "@/components/CodeStatsView";
+import BenchmarksView from "@/components/BenchmarksView";
 
-type TabType = "activities" | "code-stats";
+type TabType = "activities" | "code-stats" | "benchmarks";
 
 const TABS: { value: TabType; label: string; icon: string }[] = [
   { value: "activities", label: "Activities", icon: "📋" },
   { value: "code-stats", label: "Code Stats", icon: "💻" },
+  { value: "benchmarks", label: "Benchmarks", icon: "📊" },
 ];
 
 export default function ActivitiesPage() {
@@ -39,6 +41,7 @@ export default function ActivitiesPage() {
       {/* Tab Content */}
       {activeTab === "activities" && <ActivitiesView showProjectFilter={true} />}
       {activeTab === "code-stats" && <CodeStatsView />}
+      {activeTab === "benchmarks" && <BenchmarksView />}
     </div>
   );
 }
