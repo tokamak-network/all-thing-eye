@@ -311,21 +311,31 @@ export default function MembersPage() {
 
   // Handle sending welcome message
   const handleSendWelcome = async (member: Member) => {
-    if (!confirm(`Send onboarding welcome message to ${member.name}?`)) return;
+    if (!confirm(`${member.name}님에게 온보딩 웰컴 메시지를 보내시겠습니까?`)) return;
 
     setSendingWelcome(member.id);
     try {
       await apiClient.sendWelcomeMessage(member.id);
-      alert(`Welcome message sent to ${member.name}`);
+      alert(`${member.name}님에게 웰컴 메시지를 전송했습니다.`);
     } catch (err: any) {
-      const detail = err.response?.data?.detail || err.message || "Failed to send welcome message";
-      if (detail.includes("already sent")) {
-        if (confirm(`${detail}\n\nResend anyway?`)) {
+      const data = err.response?.data;
+      const detail = data?.detail || data?.error || err.message || "Failed to send welcome message";
+      if (err.response?.status === 409 || detail.includes("already sent")) {
+        // Extract sent date from error message
+        const dateMatch = detail.match(/(\d{4}-\d{2}-\d{2}T[\d:.]+)/);
+        const sentDate = dateMatch
+          ? new Date(dateMatch[1]).toLocaleString("ko-KR")
+          : "";
+        const msg = sentDate
+          ? `${member.name}님에게 이미 웰컴 메시지를 보냈습니다. (${sentDate})\n\n그래도 다시 보내시겠습니까?`
+          : `${member.name}님에게 이미 웰컴 메시지를 보냈습니다.\n\n그래도 다시 보내시겠습니까?`;
+        if (confirm(msg)) {
           try {
             await apiClient.sendWelcomeMessage(member.id, true);
-            alert(`Welcome message resent to ${member.name}`);
+            alert(`${member.name}님에게 웰컴 메시지를 재전송했습니다.`);
           } catch (retryErr: any) {
-            alert(retryErr.response?.data?.detail || retryErr.message || "Failed to resend");
+            const retryData = retryErr.response?.data;
+            alert(retryData?.detail || retryData?.error || retryErr.message || "재전송에 실패했습니다.");
           }
         }
       } else {
