@@ -2,7 +2,7 @@
 
 import time
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
@@ -1346,6 +1346,12 @@ class GitHubPluginMongo(DataSourcePlugin):
             f"   📊 Checking {len(active_repos)} active repositories (pushed during collection period)"
         )
 
+        # Use a wider lookback for the commit query (14 days).
+        # Commits may have been authored days ago but pushed recently.
+        # The active_repos filter already limits which repos we check,
+        # and SHA-based upsert prevents duplicates.
+        commit_since = min(start_date, end_date - timedelta(days=14))
+
         all_commits = []
 
         for member in members:
@@ -1355,7 +1361,7 @@ class GitHubPluginMongo(DataSourcePlugin):
 
             print(f"\n   👤 Collecting commits for {member_login}...")
             member_commits = self._get_member_commits(
-                member_login, active_repos, start_date, end_date
+                member_login, active_repos, commit_since, end_date
             )
 
             if member_commits:
