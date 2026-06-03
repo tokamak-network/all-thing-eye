@@ -6,6 +6,7 @@ import FieldSelector from "./components/FieldSelector";
 import FilterPanel from "./components/FilterPanel";
 import PreviewTable from "./components/PreviewTable";
 import ReportGeneratorPanel from "./components/ReportGeneratorPanel";
+import ReportDistributionPanel from "./components/ReportDistributionPanel";
 import DataAIChatPanel from "./components/DataAIChatPanel";
 import { api } from "@/lib/api";
 
@@ -28,7 +29,9 @@ function getThisMonthRange(): { startDate: string; endDate: string } {
 }
 
 export default function CustomExportPage() {
-  const [activeTab, setActiveTab] = useState<"custom" | "report">("custom");
+  const [activeTab, setActiveTab] = useState<"custom" | "report" | "distribute">(
+    "custom"
+  );
   const [exportMode, setExportMode] = useState<"fields" | "collections">(
     "fields"
   );
@@ -287,6 +290,16 @@ export default function CustomExportPage() {
             >
               📊 Report Generator
             </button>
+            <button
+              onClick={() => setActiveTab("distribute")}
+              className={`${
+                activeTab === "distribute"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              📧 Report Distribution
+            </button>
           </nav>
         </div>
       </div>
@@ -296,6 +309,9 @@ export default function CustomExportPage() {
         {activeTab === "report" ? (
           /* Report Generator Tab */
           <ReportGeneratorPanel />
+        ) : activeTab === "distribute" ? (
+          /* Report Distribution Tab */
+          <ReportDistributionPanel />
         ) : (
           /* Custom Export Tab */
           <>

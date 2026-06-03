@@ -69,6 +69,13 @@ services:
       AI_API_KEY: ${AI_API_KEY}
       AI_API_URL: ${AI_API_URL:-https://api.ai.tokamak.network}
 
+      # AWS (S3 report upload + SES email distribution)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      SENDER_EMAIL_ADDRESS: ${SENDER_EMAIL_ADDRESS}
+      S3_REPORTS_BUCKET: ${S3_REPORTS_BUCKET:-tokamak-reports}
+
       # Support Bot (HTTP Events API)
       SLACK_SUPPORT_BOT_TOKEN: ${SLACK_SUPPORT_BOT_TOKEN}
       SLACK_SUPPORT_SIGNING_SECRET: ${SLACK_SUPPORT_SIGNING_SECRET}

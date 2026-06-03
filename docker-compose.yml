@@ -53,6 +53,16 @@ services:
       # Translation API (Tokamak AI - qwen3-80b-next)
       TRANSLATION_API_KEY: ${TRANSLATION_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}  # Legacy, kept for backward compatibility
+
+      # Admin wallet addresses (comma-separated) - report distribution admin gate
+      ADMIN_ADDRESSES: ${ADMIN_ADDRESSES}
+
+      # AWS (S3 report upload + SES email distribution)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      SENDER_EMAIL_ADDRESS: ${SENDER_EMAIL_ADDRESS}
+      S3_REPORTS_BUCKET: ${S3_REPORTS_BUCKET:-tokamak-reports}
     ports:
       - "8000:8000"
     volumes:

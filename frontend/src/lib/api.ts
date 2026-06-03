@@ -1131,6 +1131,108 @@ class ApiClient {
     });
     return response.data;
   }
+
+  // ===== Report Distribution (S3 upload + SES email) =====
+
+  /**
+   * Upload report HTML to S3 and parse KPI stats + metadata.
+   */
+  async uploadReportHtml(
+    html: string,
+    reportNumber?: string,
+    reportTitle?: string
+  ): Promise<{
+    success: boolean;
+    report_url: string;
+    stats: Array<{ value: string; label: string }>;
+    executive_summary: string;
+    metadata: {
+      title: string;
+      report_number: string;
+      date_range: string;
+      executive_summary: string;
+      stats: Array<{ value: string; label: string }>;
+    };
+    html_size: number;
+  }> {
+    const response = await this.client.post(
+      "/report-distribution/upload",
+      { html, report_number: reportNumber, report_title: reportTitle },
+      { timeout: 120000 } // large HTML + S3 upload
+    );
+    return response.data;
+  }
+
+  /**
+   * Render the summary/notification email HTML (no sending).
+   */
+  async previewReportEmail(params: {
+    report_url: string;
+    stats: Array<{ value: string; label: string }>;
+    summary: string;
+    report_number: string;
+    date_range?: string;
+  }): Promise<{ html: string }> {
+    const response = await this.client.post(
+      "/report-distribution/preview-email",
+      params
+    );
+    return response.data;
+  }
+
+  /**
+   * Send the email to one or more test recipients.
+   */
+  async sendTestReportEmail(to: string[], subject: string, html: string) {
+    const response = await this.client.post("/report-distribution/send-test", {
+      to,
+      subject,
+      html,
+    });
+    return response.data;
+  }
+
+  /**
+   * Broadcast the email to all active subscribers (runs in background).
+   */
+  async sendReportEmailToAll(subject: string, html: string) {
+    const response = await this.client.post("/report-distribution/send-all", {
+      subject,
+      html,
+    });
+    return response.data;
+  }
+
+  async getReportSubscribers(): Promise<{
+    total: number;
+    active: number;
+    subscribers: Array<{
+      id: string;
+      email: string;
+      name?: string;
+      source?: string;
+      status: string;
+      created_at?: string;
+    }>;
+  }> {
+    const response = await this.client.get("/report-distribution/subscribers");
+    return response.data;
+  }
+
+  async addReportSubscriber(email: string, name?: string) {
+    const response = await this.client.post(
+      "/report-distribution/subscribers",
+      { email, name }
+    );
+    return response.data;
+  }
+
+  async deleteReportSubscriber(id: string) {
+    const response = await this.client.delete(
+      `/report-distribution/subscribers/${id}`
+    );
+    return response.data;
+  }
 }
 
 export const api = new ApiClient();

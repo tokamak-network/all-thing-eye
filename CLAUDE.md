@@ -139,6 +139,16 @@ AI_MODEL=qwen3-235b
 
 # JWT Auth
 JWT_SECRET_KEY=your-secret-key
+
+# Admin (지갑 주소 화이트리스트, comma-separated) - report distribution 등 admin 게이트
+ADMIN_ADDRESSES=0x...,0x...
+
+# AWS (S3 리포트 업로드 + SES 이메일 발송 - Report Distribution)
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=ap-northeast-2
+SENDER_EMAIL_ADDRESS=hello@tokamak.network   # SES 검증된 발신자
+S3_REPORTS_BUCKET=tokamak-reports            # 백업용 S3_BACKUP_BUCKET과 분리
 ```
 
 ## Development Commands
@@ -209,6 +219,29 @@ docker-compose up -d
 ### GraphQL 쿼리 실패
 1. `projectKey` 파라미터가 프로젝트 key 형식인지 확인 (예: `project-ooo`)
 2. Date 필터는 ISO 형식 사용 (예: `2026-01-01T00:00:00Z`)
+
+## Report Distribution (Biweekly 리포트 배포·이메일 발송)
+
+biweekly 리포트 HTML을 S3에 올리고, 요약 이메일을 만들어 구독자에게 AWS SES로 발송.
+별도 `biweekly-reporter` 프로젝트에서 FastAPI/Next.js로 포팅됨. admin 게이트는 기존 `require_admin` 재사용.
+
+### 핵심 파일
+- `backend/api/v1/report_distribution.py` - 라우터 (`/api/v1/report-distribution`)
+  - `POST /upload` (HTML→S3+파싱), `POST /preview-email`, `POST /send-test`, `POST /send-all` (BackgroundTasks 배치), `GET/POST/DELETE /subscribers`
+- `src/integrations/aws_s3.py` - S3 업로드 (`upload_report_html`)
+- `src/integrations/aws_email.py` - SES 발송 (`send_email`, `send_bulk`: 10건/배치 + 1초 지연)
+- `src/report/summary_email.py` - 요약 이메일 빌더 + KPI/메타 파서
+- `frontend/.../custom-export/components/ReportDistributionPanel.tsx` - UI ("Report Distribution" 탭)
+- `scripts/import_email_subscribers.py` - emails.txt → `email_subscribers` 컬렉션 임포트 (`--dry-run` 지원)
+
+### MongoDB
+- `email_subscribers`: `{ email(unique), name?, source(import|manual), status(active|unsubscribed), created_at }`
+- send-all은 `status:"active"`만 발송 대상.
+
+### 주의
+- SES 샌드박스 상태에서는 발신자·수신자 모두 검증 필요. 전체 발송 전 프로덕션 액세스 확인.
+- `emails.txt`(~2,800건 외부 구독자 PII)는 git 커밋 금지, MongoDB에만 저장.
+- 다음 단계(미구현): custom-export 리포트 **생성** 결과를 업로드 없이 바로 배포 흐름으로 연결.
 
 ## Support Bot (ATI Support)
 
