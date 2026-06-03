@@ -282,6 +282,7 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
                 "drive",
                 "gemini",
                 "recordings",
+                "archive",
             }
 
         # Build date filter - convert string to datetime for MongoDB comparison
@@ -360,6 +361,12 @@ async def get_custom_export_preview(request: Request, body: CustomExportRequest)
                 results.extend(
                     await fetch_recordings_data(
                         db, members_to_filter, date_filter, member_info_map
+                    )
+                )
+            elif source == "archive":
+                results.extend(
+                    await fetch_archive_materials(
+                        db, members_to_filter, date_filter
                     )
                 )
 
@@ -1102,6 +1109,64 @@ async def fetch_recordings_data(
     return results
 
 
+async def fetch_archive_materials(
+    db, members: List[str], date_filter: dict
+) -> List[dict]:
+    """Fetch retired-member materials from the additive `member_artifacts` collection.
+
+    member_artifacts.date is a 'YYYY-MM-DD' string, so date bounds are compared as
+    strings. This reads ONLY the archive collection; live source collections are
+    never touched.
+    """
+    import re
+
+    results = []
+    try:
+        col = db["member_artifacts"]
+        query: dict = {}
+        if members:
+            query["$or"] = [
+                {"member_name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}}
+                for name in members
+            ]
+        if date_filter:
+            dr = {}
+            if "$gte" in date_filter:
+                v = date_filter["$gte"]
+                dr["$gte"] = v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
+            if "$lt" in date_filter:
+                v = date_filter["$lt"]
+                dr["$lt"] = v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else str(v)[:10]
+            elif "$lte" in date_filter:
+                dr["$lte"] = str(date_filter["$lte"])[:10]
+            if dr:
+                query["date"] = dr
+
+        docs = list(col.find(query).sort("date", -1).limit(20000))
+        logger.info(f"[ARCHIVE] Query: {query} -> {len(docs)} member_artifacts")
+        for d in docs:
+            results.append(
+                {
+                    "source": "archive",
+                    "type": d.get("type") or d.get("source"),
+                    "member_name": d.get("member_name"),
+                    "timestamp": d.get("date"),
+                    "date": d.get("date"),
+                    "title": d.get("title"),
+                    "url": d.get("url"),
+                    "script_url": d.get("script_url"),
+                    "project": d.get("project"),
+                    "role": d.get("role"),
+                    "artifact_source": d.get("source"),  # vault / github / google_meet
+                    "status": d.get("status"),
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error fetching archive materials: {e}")
+
+    return results
+
+
 @router.get("/custom-export/members")
 async def get_export_members(request: Request):
     """
@@ -1115,18 +1180,44 @@ async def get_export_members(request: Request):
             db["members"].find({}, {"name": 1, "email": 1, "role": 1, "team": 1})
         )
 
-        return {
-            "success": True,
-            "members": [
+        out = [
+            {
+                "name": m.get("name"),
+                "email": m.get("email"),
+                "role": m.get("role"),
+                "team": m.get("team"),
+                "is_active": m.get("is_active", True),
+                "is_archive": False,
+            }
+            for m in members
+        ]
+
+        # Merge retired/historical members from the isolated archive_members collection
+        existing_names = {m["name"] for m in out}
+        archive_members = list(
+            db["archive_members"].find(
+                {}, {"name": 1, "email": 1, "role": 1, "team": 1, "active_era": 1}
+            )
+        )
+        for m in archive_members:
+            if m.get("name") in existing_names:
+                continue
+            out.append(
                 {
                     "name": m.get("name"),
                     "email": m.get("email"),
                     "role": m.get("role"),
                     "team": m.get("team"),
+                    "active_era": m.get("active_era"),
+                    "is_active": False,
+                    "is_archive": True,
                 }
-                for m in members
-            ],
-            "total": len(members),
+            )
+
+        return {
+            "success": True,
+            "members": out,
+            "total": len(out),
         }
 
     except Exception as e:
@@ -1182,6 +1273,7 @@ async def export_custom_data(
                 "drive",
                 "gemini",
                 "recordings",
+                "archive",
             }
             logger.info(f"[EXPORT] No sources specified, using all: {sources_needed}")
 
@@ -1245,6 +1337,10 @@ async def export_custom_data(
             elif source == "recordings":
                 source_data = await fetch_recordings_data(
                     db, members_to_filter, date_filter, member_info_map
+                )
+            elif source == "archive":
+                source_data = await fetch_archive_materials(
+                    db, members_to_filter, date_filter
                 )
 
             source_results_count[source] = len(source_data)
