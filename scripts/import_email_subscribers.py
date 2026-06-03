@@ -34,16 +34,24 @@ EMAIL_RE = re.compile(r"^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 DEFAULT_FILE = project_root.parent / "biweekly-reporter" / "emails.txt"
 
 
-def read_emails(file_path: Path) -> list[str]:
-    """Read, validate, lowercase, and dedupe emails from the file."""
-    if not file_path.exists():
-        print(f"❌ File not found: {file_path}")
-        sys.exit(1)
+def read_emails(file_path) -> list[str]:
+    """Read, validate, lowercase, and dedupe emails from a file or stdin.
+
+    Pass "-" as the path to read from stdin (avoids writing PII to disk).
+    """
+    if str(file_path) == "-":
+        raw = sys.stdin.read()
+    else:
+        file_path = Path(file_path)
+        if not file_path.exists():
+            print(f"❌ File not found: {file_path}")
+            sys.exit(1)
+        raw = file_path.read_text(encoding="utf-8")
 
     seen: set[str] = set()
     unique: list[str] = []
     total_lines = 0
-    for line in file_path.read_text(encoding="utf-8").splitlines():
+    for line in raw.splitlines():
         total_lines += 1
         email = line.strip().lower()
         if EMAIL_RE.match(email) and email not in seen:
@@ -60,7 +68,7 @@ def main() -> None:
         "--file",
         type=str,
         default=str(DEFAULT_FILE),
-        help=f"Path to emails.txt (default: {DEFAULT_FILE})",
+        help=f'Path to emails.txt, or "-" for stdin (default: {DEFAULT_FILE})',
     )
     parser.add_argument(
         "--dry-run",
@@ -69,7 +77,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    emails = read_emails(Path(args.file))
+    emails = read_emails(args.file)
     if not emails:
         print("Nothing to import.")
         return

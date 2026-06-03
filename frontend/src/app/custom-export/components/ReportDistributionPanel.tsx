@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { getAuthSession, isAdmin } from "@/lib/auth";
+import SubscriberManager from "./SubscriberManager";
 
 interface ReportStat {
   value: string;
@@ -52,10 +53,6 @@ export default function ReportDistributionPanel() {
   useEffect(() => {
     const session = getAuthSession();
     setIsAdminUser(isAdmin(session?.address));
-    api
-      .getReportSubscribers()
-      .then((d) => setSubscriberCount(d.active))
-      .catch(() => {});
   }, []);
 
   // ----- File handling -----
@@ -360,6 +357,9 @@ export default function ReportDistributionPanel() {
             </p>
           )}
         </div>
+
+        {/* Subscriber management */}
+        <SubscriberManager isAdmin={isAdminUser} onCountChange={setSubscriberCount} />
 
         {status.message && (
           <div className={`rounded-lg border p-3 text-sm ${statusColor}`}>
