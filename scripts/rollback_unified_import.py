@@ -17,10 +17,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ORIGIN = "archive_unified"
 
-# Collections we INSERT tagged docs into (deleted by marker, originals preserved)
+# We never modify existing collections — only create these two new ones.
+# Rollback = drop them. (Tagged-delete fallback kept in case anything was ever
+# inserted into an existing collection with the marker.)
 TAGGED_COLLECTIONS = ["members", "member_identifiers"]
-# Additive collections we CREATE (dropped entirely on rollback)
-NEW_COLLECTIONS = ["member_artifacts"]
+NEW_COLLECTIONS = ["archive_members", "member_artifacts"]
 
 
 def get_db(args):

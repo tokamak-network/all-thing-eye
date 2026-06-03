@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-Import curated RETIRED/historical members into the live `members` collection
-(is_active=false) + their identifiers into `member_identifiers`, so they become
-first-class, selectable members in custom-export and all activity queries.
-
-SAFETY:
-  - NEVER overwrites existing members: uses $setOnInsert only (insert-if-absent).
-  - Every inserted doc is tagged `import_origin="archive_unified"` for clean rollback
-    (see scripts/rollback_unified_import.py).
-  - Idempotent: re-running inserts nothing new.
+Import curated RETIRED/historical members into a NEW, isolated `archive_members`
+collection in the live `ati` DB. The existing `members` / `member_identifiers`
+collections and ALL source collections (slack_messages, github_commits, ...) are
+NEVER touched. custom-export reads `archive_members` for the member picker and
+`member_artifacts` for their materials.
 
 Population = retired employees only (status=퇴직), enriched from the identity map.
 
+SAFETY:
+  - Only writes the additive `archive_members` collection -> rollback = drop it.
+  - Idempotent upsert by member_key.
+
 Usage:
   python scripts/import_retired_members.py --dry-run
-  python scripts/import_retired_members.py                 # writes (run on server)
-  python scripts/import_retired_members.py --mongo-uri ... --db ati
+  python scripts/import_retired_members.py              # writes (run on server)
 """
 import argparse
 import csv
@@ -39,6 +38,11 @@ IDMAP_FILE = DATA / "tokamak_member_identity_map.csv"
 
 def now():
     return datetime.now(timezone.utc)
+
+
+def slug(s):
+    s = re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
+    return s or "unknown"
 
 
 def norm_name(s):
@@ -77,48 +81,37 @@ def load_idmap():
 
 def build_members():
     by_gh, by_name = load_idmap()
-    members = {}  # name -> member doc
+    members = {}  # member_key -> doc
     for path in CURATED:
         for r in read_csv(path):
             name = (r.get("member_name") or "").strip()
-            if not name or (r.get("status") and r["status"] != "퇴직"):
-                # curated foreign file has no status; treat as retired by inclusion
-                if r.get("status") and r["status"] != "퇴직":
-                    continue
-            if not name or name in members:
+            if not name:
+                continue
+            if r.get("status") and r["status"] != "퇴직":
                 continue
             gh = (r.get("github_username") or "").strip()
+            key = gh.lower() if gh else slug(name)
+            if key in members:
+                continue
             enrich = by_gh.get(gh.lower()) or by_name.get(norm_name(name)) or {}
-            emails = enrich.get("emails", [])
-            members[name] = {
+            members[key] = {
+                "member_key": key,
                 "name": name,
-                "email": emails[0] if emails else "",
-                "role": "; ".join(enrich.get("vault_roles", []))[:120] or None,
-                "team": "; ".join(enrich.get("vault_teams", []))[:120] or None,
-                "github_username": gh or enrich.get("github_username", "") or None,
-                "is_active": False,
-                "resignation_reason": "archived (2019-2023 era)",
-                "active_era": enrich.get("active_era") or None,
                 "real_name_en": enrich.get("real_name_en") or None,
                 "real_name_kr": enrich.get("real_name_kr") or None,
+                "email": (enrich.get("emails") or [""])[0],
+                "emails": enrich.get("emails", []),
+                "github_username": gh or enrich.get("github_username", "") or None,
+                "role": "; ".join(enrich.get("vault_roles", []))[:120] or None,
+                "team": "; ".join(enrich.get("vault_teams", []))[:120] or None,
+                "vault_teams": enrich.get("vault_teams", []),
+                "vault_roles": enrich.get("vault_roles", []),
+                "active_era": enrich.get("active_era") or None,
+                "is_active": False,
+                "status": "퇴직",
                 "import_origin": ORIGIN,
             }
     return list(members.values())
-
-
-def build_identifiers(members):
-    ids = []
-    for m in members:
-        gh = m.get("github_username")
-        if gh:
-            ids.append({
-                "source": "github",
-                "identifier_type": "username",
-                "identifier_value": gh,
-                "member_name": m["name"],
-                "import_origin": ORIGIN,
-            })
-    return ids
 
 
 def main():
@@ -129,13 +122,11 @@ def main():
     args = ap.parse_args()
 
     members = build_members()
-    identifiers = build_identifiers(members)
-    print(f"📦 retired members to import : {len(members)}")
-    print(f"   github identifiers        : {len(identifiers)}")
+    print(f"📦 retired members -> archive_members: {len(members)}")
     print("   sample:", ", ".join(m["name"] for m in members[:8]))
 
     if args.dry_run:
-        print("\n✅ DRY-RUN: no DB writes.")
+        print("\n✅ DRY-RUN: no DB writes. (writes only the new `archive_members` collection)")
         return
 
     from pymongo import MongoClient, UpdateOne
@@ -157,19 +148,16 @@ def main():
     db = client[args.db]
     print(f"\n🔌 Connected: {args.db}")
 
-    # members — insert-if-absent only (never overwrite existing/active members)
-    mops = [UpdateOne({"name": m["name"]},
-                      {"$setOnInsert": {**m, "created_at": now(), "updated_at": now()}},
-                      upsert=True) for m in members]
-    mres = db["members"].bulk_write(mops, ordered=False)
-    print(f"  members      : +{mres.upserted_count} inserted, {len(members) - mres.upserted_count} already existed (untouched)")
+    col = db["archive_members"]
+    col.create_index("member_key", unique=True)
+    col.create_index("status")
+    col.create_index("active_era")
 
-    iops = [UpdateOne({"source": i["source"], "identifier_value": i["identifier_value"]},
-                      {"$setOnInsert": {**i, "created_at": now()}},
-                      upsert=True) for i in identifiers]
-    if iops:
-        ires = db["member_identifiers"].bulk_write(iops, ordered=False)
-        print(f"  identifiers  : +{ires.upserted_count} inserted, {len(identifiers) - ires.upserted_count} already existed")
+    ops = [UpdateOne({"member_key": m["member_key"]},
+                     {"$set": m, "$setOnInsert": {"created_at": now()}},
+                     upsert=True) for m in members]
+    res = col.bulk_write(ops, ordered=False)
+    print(f"  archive_members: +{res.upserted_count} new, ~{res.modified_count} updated  (sent {len(members)})")
     print("\n✅ Done. Rollback: python scripts/rollback_unified_import.py")
 
 
