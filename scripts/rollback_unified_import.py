@@ -20,7 +20,7 @@ ORIGIN = "archive_unified"
 # Collections we INSERT tagged docs into (deleted by marker, originals preserved)
 TAGGED_COLLECTIONS = ["members", "member_identifiers"]
 # Additive collections we CREATE (dropped entirely on rollback)
-NEW_COLLECTIONS = ["member_documents", "member_recordings"]
+NEW_COLLECTIONS = ["member_artifacts"]
 
 
 def get_db(args):
