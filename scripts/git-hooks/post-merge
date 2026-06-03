@@ -41,7 +41,7 @@ if echo "$CHANGED_FILES" | grep -q "^frontend/"; then
     REBUILD_FRONTEND=true
 fi
 
-if echo "$CHANGED_FILES" | grep -q "^backend/"; then
+if echo "$CHANGED_FILES" | grep -qE "^(backend/|src/|requirements\.txt)"; then
     REBUILD_BACKEND=true
 fi
 
