@@ -865,3 +865,76 @@ class CollaborationNetwork:
     time_range_days: int
     total_score: float  # Sum of all collaboration scores
     generated_at: datetime
+
+
+# =============================================================================
+# Archive (retired members data) — read from the separate ati_archive database
+# =============================================================================
+
+@strawberry.type
+class ArchiveMember:
+    """A retired/departed member in the archive."""
+    member_key: str
+    member_name: str
+    github_username: Optional[str] = None
+    real_name_en: Optional[str] = None
+    real_name_kr: Optional[str] = None
+    emails: List[str] = strawberry.field(default_factory=list)
+    status: Optional[str] = None
+    active_era: Optional[str] = None
+    vault_teams: List[str] = strawberry.field(default_factory=list)
+    vault_roles: List[str] = strawberry.field(default_factory=list)
+    tier_final: Optional[str] = None
+    total_commits: int = 0
+    total_repos: int = 0
+    artifact_count: int = 0
+    meeting_count: int = 0
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
+
+
+@strawberry.type
+class ArchiveArtifact:
+    """A single artifact (vault doc, github, meeting, ...) of a retired member."""
+    artifact_id: str
+    member_key: str
+    member_name: str
+    source: str
+    project: Optional[str] = None
+    date: Optional[str] = None
+    type: Optional[str] = None
+    title: Optional[str] = None
+    url: Optional[str] = None
+    script_url: Optional[str] = None
+    role: Optional[str] = None
+    status: Optional[str] = None
+
+
+@strawberry.type
+class ArchiveRecording:
+    """A recording/transcript file in the archive catalog."""
+    file_id: str
+    date: Optional[str] = None
+    category: Optional[str] = None
+    title: Optional[str] = None
+    owner: Optional[str] = None
+    mime: Optional[str] = None
+    size_mb: Optional[float] = None
+    view_url: Optional[str] = None
+
+
+@strawberry.type
+class ArchiveMemberDetail:
+    """A retired member profile with their artifacts and meetings."""
+    member: ArchiveMember
+    artifact_count: int
+    artifacts: List[ArchiveArtifact]
+    meetings: List[ArchiveArtifact]
+
+
+@strawberry.type
+class ArchiveStats:
+    """Summary counts for the archive database."""
+    members: int
+    artifacts: int
+    recordings: int

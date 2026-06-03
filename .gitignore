@@ -120,6 +120,9 @@ Thumbs.db
 data/raw/
 data/processed/
 data/cache/
+# Member/archive data artifacts contain PII (personal emails) — keep in MongoDB only, never commit
+data/*.csv
+data/meeting-recordings-inventory/
 *.bak
 *.backup
 

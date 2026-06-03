@@ -18,7 +18,52 @@ from .types import (
     Collaboration,
     CollaborationDetail,
     CollaborationNetwork,
+    ArchiveMember,
+    ArchiveArtifact,
+    ArchiveRecording,
+    ArchiveMemberDetail,
+    ArchiveStats,
 )
+
+
+def _archive_member_from_doc(doc: Dict[str, Any]) -> "ArchiveMember":
+    """Map an archive_members document to the ArchiveMember GraphQL type."""
+    return ArchiveMember(
+        member_key=doc.get("member_key", ""),
+        member_name=doc.get("member_name", ""),
+        github_username=doc.get("github_username") or None,
+        real_name_en=doc.get("real_name_en") or None,
+        real_name_kr=doc.get("real_name_kr") or None,
+        emails=doc.get("emails", []) or [],
+        status=doc.get("status") or None,
+        active_era=doc.get("active_era") or None,
+        vault_teams=doc.get("vault_teams", []) or [],
+        vault_roles=doc.get("vault_roles", []) or [],
+        tier_final=doc.get("tier_final") or None,
+        total_commits=doc.get("total_commits", 0) or 0,
+        total_repos=doc.get("total_repos", 0) or 0,
+        artifact_count=doc.get("artifact_count", 0) or 0,
+        meeting_count=doc.get("meeting_count", 0) or 0,
+        first_seen=doc.get("first_seen") or None,
+        last_seen=doc.get("last_seen") or None,
+    )
+
+
+def _archive_artifact_from_doc(doc: Dict[str, Any]) -> "ArchiveArtifact":
+    return ArchiveArtifact(
+        artifact_id=doc.get("artifact_id", ""),
+        member_key=doc.get("member_key", ""),
+        member_name=doc.get("member_name", ""),
+        source=doc.get("source", ""),
+        project=doc.get("project") or None,
+        date=doc.get("date") or None,
+        type=doc.get("type") or None,
+        title=doc.get("title") or None,
+        url=doc.get("url") or None,
+        script_url=doc.get("script_url") or None,
+        role=doc.get("role") or None,
+        status=doc.get("status") or None,
+    )
 
 
 def ensure_datetime(value: Any) -> Optional[datetime]:
@@ -535,6 +580,103 @@ async def get_activity_stats(db, member_name: str) -> "ActivityStats":
 @strawberry.type
 class Query:
     """Root Query type for GraphQL API"""
+
+    # ------------------------------------------------------------------
+    # Archive (retired members data) — reads info.context["archive_db"]
+    # ------------------------------------------------------------------
+    @strawberry.field
+    async def archive_stats(self, info) -> ArchiveStats:
+        """Summary counts for the archive database."""
+        db = info.context["archive_db"]
+        return ArchiveStats(
+            members=await db["archive_members"].count_documents({}),
+            artifacts=await db["archive_artifacts"].count_documents({}),
+            recordings=await db["archive_recordings"].count_documents({}),
+        )
+
+    @strawberry.field
+    async def archive_members(
+        self, info, q: Optional[str] = None, era: Optional[str] = None,
+        team: Optional[str] = None, status: Optional[str] = None,
+        limit: int = 100, offset: int = 0,
+    ) -> List[ArchiveMember]:
+        """List retired members with optional filters."""
+        db = info.context["archive_db"]
+        flt: Dict[str, Any] = {}
+        if q:
+            rx = {"$regex": q, "$options": "i"}
+            flt["$or"] = [{"member_name": rx}, {"real_name_en": rx},
+                          {"real_name_kr": rx}, {"github_username": rx}]
+        if era:
+            flt["active_era"] = era
+        if team:
+            flt["vault_teams"] = {"$regex": team, "$options": "i"}
+        if status:
+            flt["status"] = status
+        cursor = db["archive_members"].find(flt).sort("artifact_count", -1).skip(offset).limit(min(limit, 500))
+        return [_archive_member_from_doc(d) async for d in cursor]
+
+    @strawberry.field
+    async def archive_member(self, info, member_key: str) -> Optional[ArchiveMemberDetail]:
+        """A retired member profile with artifacts and meetings."""
+        db = info.context["archive_db"]
+        doc = await db["archive_members"].find_one({"member_key": member_key})
+        if not doc:
+            return None
+        cursor = db["archive_artifacts"].find({"member_key": member_key}).sort("date", -1).limit(2000)
+        artifacts = [_archive_artifact_from_doc(a) async for a in cursor]
+        meetings = [a for a in artifacts if a.source == "google_meet"][:200]
+        return ArchiveMemberDetail(
+            member=_archive_member_from_doc(doc),
+            artifact_count=len(artifacts),
+            artifacts=artifacts,
+            meetings=meetings,
+        )
+
+    @strawberry.field
+    async def archive_artifacts(
+        self, info, member: Optional[str] = None, source: Optional[str] = None,
+        project: Optional[str] = None, artifact_type: Optional[str] = None,
+        q: Optional[str] = None, limit: int = 100, offset: int = 0,
+    ) -> List[ArchiveArtifact]:
+        """Search artifacts across retired members."""
+        db = info.context["archive_db"]
+        flt: Dict[str, Any] = {}
+        if member:
+            flt["member_key"] = member
+        if source:
+            flt["source"] = source
+        if project:
+            flt["project"] = {"$regex": project, "$options": "i"}
+        if artifact_type:
+            flt["type"] = artifact_type
+        if q:
+            flt["title"] = {"$regex": q, "$options": "i"}
+        cursor = db["archive_artifacts"].find(flt).sort("date", -1).skip(offset).limit(min(limit, 1000))
+        return [_archive_artifact_from_doc(a) async for a in cursor]
+
+    @strawberry.field
+    async def archive_recordings(
+        self, info, category: Optional[str] = None, q: Optional[str] = None,
+        limit: int = 100, offset: int = 0,
+    ) -> List[ArchiveRecording]:
+        """Recording/transcript file catalog."""
+        db = info.context["archive_db"]
+        flt: Dict[str, Any] = {}
+        if category:
+            flt["category"] = category
+        if q:
+            flt["title"] = {"$regex": q, "$options": "i"}
+        cursor = db["archive_recordings"].find(flt).sort("date", -1).skip(offset).limit(min(limit, 1000))
+        out = []
+        async for r in cursor:
+            out.append(ArchiveRecording(
+                file_id=r.get("file_id", ""), date=r.get("date") or None,
+                category=r.get("category") or None, title=r.get("title") or None,
+                owner=r.get("owner") or None, mime=r.get("mime") or None,
+                size_mb=r.get("size_mb"), view_url=r.get("view_url") or None,
+            ))
+        return out
 
     @strawberry.field
     async def members(

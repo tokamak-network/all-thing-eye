@@ -869,14 +869,72 @@ class Project(BaseModel):
     
     # Project members (member IDs from members collection)
     member_ids: List[str] = Field(default_factory=list)  # List of member IDs
-    
+
     # Metadata
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     class Config:
         populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
+
+
+# =============================================================================
+# Archive Collections (retired members data) — separate `ati_archive` database
+# =============================================================================
+
+class ArchiveMember(BaseModel):
+    """A retired/departed member profile in the archive (key: member_key)."""
+    member_key: str  # github_username (lowercased) or slug(name)
+    member_name: str
+    github_username: Optional[str] = None
+    real_name_en: Optional[str] = None
+    real_name_kr: Optional[str] = None
+    emails: List[str] = Field(default_factory=list)
+    status: Optional[str] = "퇴직"
+    active_era: Optional[str] = None
+    vault_teams: List[str] = Field(default_factory=list)
+    vault_periods: List[str] = Field(default_factory=list)
+    vault_roles: List[str] = Field(default_factory=list)
+    tier_final: Optional[str] = None
+    total_commits: int = 0
+    total_repos: int = 0
+    artifact_count: int = 0
+    meeting_count: int = 0
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ArchiveArtifact(BaseModel):
+    """A single artifact of a retired member (key: artifact_id)."""
+    artifact_id: str  # sha1(member_key|source|type|title|date|url)
+    member_key: str
+    member_name: str
+    source: str  # vault, github, google_meet, ...
+    project: Optional[str] = None
+    date: Optional[str] = None  # YYYY-MM-DD
+    type: Optional[str] = None  # document, meeting, ...
+    title: Optional[str] = None
+    url: Optional[str] = None
+    script_url: Optional[str] = None  # transcript link (meetings)
+    role: Optional[str] = None
+    status: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ArchiveRecording(BaseModel):
+    """A recording/transcript file in the archive catalog (key: file_id)."""
+    file_id: str
+    date: Optional[str] = None
+    category: Optional[str] = None  # video, transcript, chat-transcript, gemini-notes
+    title: Optional[str] = None
+    owner: Optional[str] = None
+    mime: Optional[str] = None
+    size_mb: Optional[float] = None
+    view_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 

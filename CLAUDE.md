@@ -274,3 +274,29 @@ GITHUB_ACCOUNT_TOKEN=...           # AWS 배포용 GitHub 토큰
 1. `git push`
 2. `ssh all-thing-eye` → `cd all-thing-eye`
 3. `git pull` → `docker compose build` → `docker compose up -d`
+
+## Archive (퇴사 멤버 자료 별도 DB)
+
+퇴사한 직원들의 프로필·산출물·녹화 자료를 운영 DB(`ati`)와 분리된 **별도 MongoDB DB `ati_archive`**(같은 클러스터)에 적재하고 조회. 읽기 전용, admin 게이트.
+
+### MongoDB (별도 DB: `ati_archive`)
+- `src/core/mongo_manager.py`가 `shared` DB 패턴을 미러링해 `archive` 핸들 제공: `archive_db` / `archive_async_db` / `get_archive_collection()`. DB명은 `MONGODB_ARCHIVE_DATABASE`(기본 `ati_archive`), URI는 `MONGODB_ARCHIVE_URI`(미설정 시 메인 URI 재사용). `config.yaml mongodb.archive_database`.
+- 컬렉션:
+  - `archive_members` (key `member_key`) — 퇴사 직원 프로필(`status=퇴직`, ~40명). 식별맵으로 real_name/github/era 보강.
+  - `archive_artifacts` (key `artifact_id`) — 퇴사자 소유 산출물 long 통합(vault 문서·github·google_meet 미팅). 미팅은 `url`(meeting_url)+`script_url`(전사).
+  - `archive_recordings` (key `file_id`) — 녹화/전사 파일 카탈로그(4,003).
+
+### 적재 (data/ CSV → ati_archive)
+```bash
+python scripts/import_archive_data.py --dry-run     # DB 없이 카운트 검증
+python scripts/import_archive_data.py               # idempotent upsert (서버에서 실행)
+# 원천: data/{retired,foreign}_members_all_artifacts.csv, member_vault_artifacts.csv,
+#       data/meeting-recordings-inventory/{meeting_participants_by_member,drive_recordings_full_inventory}.csv,
+#       data/tokamak_member_identity_map.csv (프로필 보강)
+```
+**주의**: 식별맵에 개인 이메일(PII) 포함 → 원천 CSV(`data/`)는 git 커밋 금지, DB에만. 로컬에선 27017 미도달 → 적재는 서버(`docker exec all-thing-eye-backend python scripts/import_archive_data.py`)에서.
+
+### 조회 API
+- REST: `backend/api/v1/archive_mongo.py` (`/api/v1/archive/{stats,members,members/{key},artifacts,recordings}`), `require_admin`.
+- GraphQL: `archiveStats / archiveMembers / archiveMember(memberKey) / archiveArtifacts / archiveRecordings` (queries.py + types.py, context에 `archive_db` 주입).
+- 프론트: `/archive` (목록·검색·멤버 상세).

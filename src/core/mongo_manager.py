@@ -41,7 +41,14 @@ class MongoDBManager:
         
         # Shared database URI (for recordings from Google Drive)
         self.shared_uri = os.getenv('MONGODB_SHARED_URI', self.uri)
-        
+
+        # Archive database (retired members data) — separate DB on same cluster
+        self.archive_uri = os.getenv('MONGODB_ARCHIVE_URI', self.uri)
+        self.archive_database = (
+            config.get('archive_database')
+            or os.getenv('MONGODB_ARCHIVE_DATABASE', 'ati_archive')
+        )
+
         # Connection pool settings
         self.max_pool_size = config.get('max_pool_size', 100)
         self.min_pool_size = config.get('min_pool_size', 10)
@@ -74,7 +81,13 @@ class MongoDBManager:
         self._shared_sync_db: Optional[Database] = None
         self._shared_async_client: Optional[AsyncIOMotorClient] = None
         self._shared_async_db: Optional[Database] = None
-        
+
+        # Archive database clients (retired members data)
+        self._archive_sync_client: Optional[MongoClient] = None
+        self._archive_sync_db: Optional[Database] = None
+        self._archive_async_client: Optional[AsyncIOMotorClient] = None
+        self._archive_async_db: Optional[Database] = None
+
         logger.info(f"MongoDB Manager initialized for database: {self.database_name}")
     
     def _get_read_preference(self, pref_str: str):
@@ -233,7 +246,99 @@ class MongoDBManager:
         if self._shared_async_db is None:
             self.connect_shared_async()
         return self._shared_async_db
-    
+
+    # -------------------------------------------------------------------------
+    # Archive database (retired members data) — separate DB on same cluster
+    # -------------------------------------------------------------------------
+    def connect_archive_sync(self) -> MongoClient:
+        """Create synchronous connection to the archive MongoDB database."""
+        if self._archive_sync_client is None:
+            try:
+                self._archive_sync_client = MongoClient(
+                    self.archive_uri,
+                    maxPoolSize=self.max_pool_size,
+                    minPoolSize=self.min_pool_size,
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=10000,
+                    socketTimeoutMS=30000,
+                )
+                self._archive_sync_client.admin.command('ping')
+                logger.info("✅ Synchronous archive MongoDB connection established")
+                self._archive_sync_db = self._archive_sync_client[self.archive_database]
+
+                if self.config.get('auto_create_indexes', True):
+                    self._create_archive_indexes(self._archive_sync_db)
+            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+                logger.error(f"❌ Failed to connect to archive MongoDB: {e}")
+                raise
+        return self._archive_sync_client
+
+    def connect_archive_async(self) -> AsyncIOMotorClient:
+        """Create asynchronous connection to the archive MongoDB database (FastAPI)."""
+        if self._archive_async_client is None:
+            try:
+                self._archive_async_client = AsyncIOMotorClient(
+                    self.archive_uri,
+                    maxPoolSize=self.max_pool_size,
+                    minPoolSize=self.min_pool_size,
+                    serverSelectionTimeoutMS=5000,
+                    connectTimeoutMS=10000,
+                    socketTimeoutMS=30000,
+                )
+                logger.info("✅ Asynchronous archive MongoDB connection established")
+                self._archive_async_db = self._archive_async_client[self.archive_database]
+            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+                logger.error(f"❌ Failed to connect to archive MongoDB (async): {e}")
+                raise
+        return self._archive_async_client
+
+    @property
+    def archive_db(self) -> Database:
+        """Get synchronous archive database instance"""
+        if self._archive_sync_db is None:
+            self.connect_archive_sync()
+        return self._archive_sync_db
+
+    @property
+    def archive_async_db(self) -> Database:
+        """Get asynchronous archive database instance"""
+        if self._archive_async_db is None:
+            self.connect_archive_async()
+        return self._archive_async_db
+
+    def get_archive_collection(self, collection_name: str) -> Collection:
+        """Get an archive-database collection by name (synchronous)."""
+        return self.archive_db[collection_name]
+
+    def get_archive_async_collection(self, collection_name: str):
+        """Get an archive-database collection by name (asynchronous)."""
+        return self.archive_async_db[collection_name]
+
+    def _create_archive_indexes(self, db: Database):
+        """Create indexes for archive collections (retired members data)."""
+        try:
+            members = db['archive_members']
+            members.create_index('member_key', unique=True)
+            members.create_index('github_username', sparse=True)
+            members.create_index('status')
+            members.create_index('active_era')
+
+            artifacts = db['archive_artifacts']
+            artifacts.create_index('artifact_id', unique=True)
+            artifacts.create_index('member_key')
+            artifacts.create_index([('source', 1), ('type', 1)])
+            artifacts.create_index('project')
+            artifacts.create_index('date')
+
+            recordings = db['archive_recordings']
+            recordings.create_index('file_id', unique=True)
+            recordings.create_index('category')
+            recordings.create_index('date')
+
+            logger.info("✅ Archive indexes created successfully")
+        except Exception as e:
+            logger.warning(f"⚠️  Error creating archive indexes: {e}")
+
     def get_collection(self, collection_name: str) -> Collection:
         """
         Get collection by name (synchronous)
@@ -372,7 +477,15 @@ class MongoDBManager:
         if self._shared_async_client:
             self._shared_async_client.close()
             logger.info("🔒 Closed shared asynchronous MongoDB connection")
-    
+
+        if self._archive_sync_client:
+            self._archive_sync_client.close()
+            logger.info("🔒 Closed archive synchronous MongoDB connection")
+
+        if self._archive_async_client:
+            self._archive_async_client.close()
+            logger.info("🔒 Closed archive asynchronous MongoDB connection")
+
     def test_connection(self) -> bool:
         """
         Test MongoDB connection

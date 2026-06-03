@@ -26,6 +26,7 @@ export default function Navigation() {
     { href: "/database", label: "🗄️ Database" },
     { href: "/custom-export", label: "🎨 Custom Export" },
     { href: "/members", label: "Members" },
+    { href: "/archive", label: "Archive" },
     { href: "/projects", label: "Projects" },
     { href: "/tools", label: "Tools" },
   ];

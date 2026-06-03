@@ -24,7 +24,11 @@ mongodb:
   # Shared Database (for recordings and other shared data)
   shared_uri: ${MONGODB_SHARED_URI:} # If empty, uses same as main URI
   shared_database: ${MONGODB_SHARED_DATABASE:shared}
-  
+
+  # Archive Database (retired members data: profiles, artifacts, recordings)
+  # Separate DB on the same cluster. If MONGODB_ARCHIVE_URI empty, uses main URI.
+  archive_database: ${MONGODB_ARCHIVE_DATABASE:ati_archive}
+
   # Connection Pool Settings
   max_pool_size: 100
   min_pool_size: 10

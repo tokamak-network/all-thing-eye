@@ -287,3 +287,120 @@ export interface DeactivateMemberResponse {
 export interface ReactivateMemberResponse {
   reactivateMember: MemberUpdateResult;
 }
+
+// ============================================
+// Archive Types
+// ============================================
+
+export interface ArchiveStats {
+  members: number;
+  artifacts: number;
+  recordings: number;
+}
+
+export interface ArchiveMember {
+  memberKey: string;
+  memberName: string;
+  githubUsername?: string;
+  realNameEn?: string;
+  realNameKr?: string;
+  emails: string[];
+  status?: string;
+  activeEra?: string;
+  vaultTeams: string[];
+  vaultRoles: string[];
+  tierFinal?: string;
+  totalCommits?: number;
+  totalRepos?: number;
+  artifactCount?: number;
+  meetingCount?: number;
+  firstSeen?: string;
+  lastSeen?: string;
+}
+
+export interface ArchiveArtifact {
+  artifactId: string;
+  memberKey?: string;
+  memberName?: string;
+  source?: string;
+  project?: string;
+  date?: string;
+  type?: string;
+  title?: string;
+  url?: string;
+  scriptUrl?: string;
+  role?: string;
+  status?: string;
+}
+
+export interface ArchiveMemberDetail {
+  member: ArchiveMember;
+  artifactCount: number;
+  artifacts: ArchiveArtifact[];
+  meetings: ArchiveArtifact[];
+}
+
+export interface ArchiveRecording {
+  fileId: string;
+  date?: string;
+  category?: string;
+  title?: string;
+  owner?: string;
+  mime?: string;
+  sizeMb?: number;
+  viewUrl?: string;
+}
+
+// Archive query variables
+export interface GetArchiveStatsVariables {}
+
+export interface GetArchiveMembersVariables {
+  q?: string;
+  era?: string;
+  team?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface GetArchiveMemberVariables {
+  memberKey: string;
+}
+
+export interface GetArchiveArtifactsVariables {
+  member?: string;
+  source?: string;
+  project?: string;
+  artifactType?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface GetArchiveRecordingsVariables {
+  category?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+// Archive query responses
+export interface GetArchiveStatsResponse {
+  archiveStats: ArchiveStats;
+}
+
+export interface GetArchiveMembersResponse {
+  archiveMembers: ArchiveMember[];
+}
+
+export interface GetArchiveMemberResponse {
+  archiveMember: ArchiveMemberDetail | null;
+}
+
+export interface GetArchiveArtifactsResponse {
+  archiveArtifacts: ArchiveArtifact[];
+}
+
+export interface GetArchiveRecordingsResponse {
+  archiveRecordings: ArchiveRecording[];
+}
