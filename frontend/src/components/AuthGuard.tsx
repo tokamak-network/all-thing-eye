@@ -13,10 +13,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Dev-only auth bypass — active ONLY when NEXT_PUBLIC_DEV_MODE=true (local .env.local).
+  // Never true in production builds, so this does not weaken prod auth.
+  const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+
   // Monitor wallet connection status
   useEffect(() => {
     // Skip for login page
     if (pathname === '/login') {
+      return;
+    }
+
+    if (DEV_BYPASS) {
       return;
     }
 
@@ -27,11 +35,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       clearAuthSession();
       router.push('/login');
     }
-  }, [isConnected, pathname, router]);
+  }, [isConnected, pathname, router, DEV_BYPASS]);
 
   useEffect(() => {
     // Skip auth check for login page
     if (pathname === '/login') {
+      setIsLoading(false);
+      return;
+    }
+
+    // Dev-only bypass: render the app without login when NEXT_PUBLIC_DEV_MODE=true
+    if (DEV_BYPASS) {
+      setIsAuthenticated(true);
       setIsLoading(false);
       return;
     }
@@ -76,7 +91,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const interval = setInterval(checkAuth, 60000);
 
     return () => clearInterval(interval);
-  }, [pathname, router]);
+  }, [pathname, router, DEV_BYPASS]);
 
   // Show loading on login page
   if (pathname === '/login') {
