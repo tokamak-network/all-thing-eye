@@ -15,6 +15,7 @@ import {
   UsersIcon,
   ArchiveBoxIcon,
   EnvelopeIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 
 interface MemberIdentifiers {
@@ -351,6 +352,18 @@ export default function MembersPage() {
   };
 
   // Open delete confirmation dialog
+  // Export ALL of a member's tenure data (github/drive/videos/scripts/...) as artifact CSV
+  const exportMemberTenure = (name: string) => {
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const url = `${base}/api/v1/custom-export/member-tenure?member=${encodeURIComponent(name)}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name}_tenure_artifacts.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const openDeleteDialog = (member: Member) => {
     setDeletingMember(member);
     setIsDeleteDialogOpen(true);
@@ -598,6 +611,13 @@ export default function MembersPage() {
                           <EnvelopeIcon className="h-5 w-5 inline" />
                         </button>
                       )}
+                      <button
+                        onClick={() => exportMemberTenure(member.name)}
+                        className="text-purple-600 hover:text-purple-900 mr-3"
+                        title="재직기간 전체 데이터 CSV (GitHub·Drive·영상·스크립트)"
+                      >
+                        <ArrowDownTrayIcon className="h-5 w-5 inline" />
+                      </button>
                       <button
                         onClick={() => openEditModal(member)}
                         className="text-blue-600 hover:text-blue-900 mr-3"

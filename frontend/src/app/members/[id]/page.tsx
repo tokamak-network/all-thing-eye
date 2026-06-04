@@ -11,6 +11,7 @@ import {
   FolderIcon,
   SparklesIcon,
   ChartBarIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import {
   Area,
@@ -146,6 +147,18 @@ export default function MemberDetailPage() {
   const params = useParams();
   const router = useRouter();
   const memberId = params.id as string;
+
+  // Export ALL of this member's tenure data (github/drive/videos/scripts/...) as artifact CSV
+  const exportMemberTenure = (name: string) => {
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const url = `${base}/api/v1/custom-export/member-tenure?member=${encodeURIComponent(name)}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name}_tenure_artifacts.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   // GraphQL query for projects (to get project names)
   const { data: projectsData } = useProjects({ isActive: true });
@@ -453,7 +466,17 @@ export default function MemberDetailPage() {
             <ArrowLeftIcon className="h-5 w-5" />
             Back to Members
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">{member.name}</h1>
+          <div className="flex items-center justify-between gap-4">
+            <h1 className="text-3xl font-bold text-gray-900">{member.name}</h1>
+            <button
+              onClick={() => exportMemberTenure(member.name)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 whitespace-nowrap"
+              title="재직기간 전체 데이터 CSV (GitHub·Drive·영상·스크립트)"
+            >
+              <ArrowDownTrayIcon className="h-5 w-5" />
+              재직기간 데이터 CSV
+            </button>
+          </div>
           <p className="mt-2 text-gray-600">
             {member.activity_stats?.total_activities?.toLocaleString() || 0}{" "}
             activities recorded across all sources

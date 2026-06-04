@@ -1225,6 +1225,120 @@ async def get_export_members(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/custom-export/member-tenure")
+async def export_member_tenure_csv(
+    member: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """
+    Export ALL of a single member's data over their tenure (GitHub, Google Drive,
+    recordings/videos, transcripts/scripts, vault docs, meetings, ...) as ONE CSV
+    in the artifact format used by our scripts:
+
+      member_name, source, project, date, type, title, url, script_url, role, status
+
+    Default date range = all-time (a member's data == their tenure data); pass
+    start_date/end_date (YYYY-MM-DD) to narrow it.
+    """
+    try:
+        mongo = get_mongo()
+        db = mongo.db
+
+        # member info for source-identifier resolution
+        member_info_map = {}
+        mdoc = db["members"].find_one(
+            {"name": {"$regex": f"^{re.escape(member)}$", "$options": "i"}}
+        )
+        if mdoc:
+            member_info_map[member] = {
+                "email": mdoc.get("email"),
+                "role": mdoc.get("role"),
+                "team": mdoc.get("team"),
+            }
+
+        # tenure date filter (optional)
+        date_filter: dict = {}
+        if start_date:
+            try:
+                date_filter["$gte"] = datetime.fromisoformat(start_date)
+            except ValueError:
+                date_filter["$gte"] = start_date
+        if end_date:
+            try:
+                date_filter["$lt"] = datetime.fromisoformat(end_date) + timedelta(days=1)
+            except ValueError:
+                date_filter["$lte"] = end_date + "T23:59:59"
+
+        members = [member]
+        records: List[dict] = []
+        for coro in (
+            fetch_archive_materials(db, members, date_filter),
+            fetch_github_data(db, members, date_filter, member_info_map, None),
+            fetch_drive_data(db, members, date_filter, member_info_map),
+            fetch_recordings_data(db, members, date_filter, member_info_map),
+            fetch_gemini_data(db, members, date_filter, member_info_map),
+            fetch_slack_data(db, members, date_filter, member_info_map),
+            fetch_notion_data(db, members, date_filter, member_info_map, []),
+        ):
+            try:
+                records.extend(await coro)
+            except Exception as e:
+                logger.warning(f"[member-tenure] a source fetch failed: {e}")
+
+        def norm(r: dict) -> dict:
+            d = r.get("date") or r.get("timestamp") or ""
+            return {
+                "member_name": r.get("member_name") or member,
+                "source": r.get("artifact_source") or r.get("source") or "",
+                "project": r.get("project") or r.get("repository") or "",
+                "date": str(d)[:10],
+                "type": r.get("type") or "",
+                "title": (
+                    r.get("title") or r.get("message") or r.get("meeting_title")
+                    or r.get("document_title") or r.get("doc_title") or r.get("text") or ""
+                ),
+                "url": (
+                    r.get("url") or r.get("html_url") or r.get("meeting_url")
+                    or r.get("web_view_link") or r.get("webViewLink") or ""
+                ),
+                "script_url": r.get("script_url") or "",
+                "role": r.get("role") or "",
+                "status": r.get("status") or "",
+            }
+
+        rows = [norm(r) for r in records]
+        # dedupe
+        seen, uniq = set(), []
+        for x in rows:
+            k = (x["source"], x["date"], x["title"], x["url"])
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(x)
+        # GROUP BY SOURCE (then newest-first within each source).
+        # Stable sort: date desc first, then source asc preserves date order per source.
+        uniq.sort(key=lambda x: x["date"], reverse=True)
+        uniq.sort(key=lambda x: x["source"])
+
+        cols = ["member_name", "source", "project", "date", "type", "title",
+                "url", "script_url", "role", "status"]
+        safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", member).strip("_") or "member"
+
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=cols)
+        writer.writeheader()
+        writer.writerows(uniq)
+        return StreamingResponse(
+            io.BytesIO(buf.getvalue().encode("utf-8-sig")),  # BOM so Excel opens UTF-8 cleanly
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{safe}_tenure_artifacts.csv"'},
+        )
+    except Exception as e:
+        logger.error(f"Error exporting member tenure: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/custom-export/export")
 async def export_custom_data(
     request: Request,
