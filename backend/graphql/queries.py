@@ -747,7 +747,7 @@ class Query:
                 Member(
                     id=member_id,
                     name=member_name,
-                    email=doc["email"],
+                    email=doc.get("email", ""),
                     role=doc.get("role"),
                     team=doc.get("team"),
                     github_username=github_username,
@@ -828,7 +828,7 @@ class Query:
         return Member(
             id=str(doc["_id"]),
             name=member_name,
-            email=doc["email"],
+            email=doc.get("email", ""),
             role=doc.get("role"),
             team=doc.get("team"),
             github_username=github_username,
