@@ -67,6 +67,27 @@ def send_email(to: list[str], subject: str, html: str) -> None:
     logger.info(f"📧 Sent email to {len(to)} recipient(s): {', '.join(to)}")
 
 
+def send_batch(recipients: list[str], subject: str, html: str) -> None:
+    """
+    Send a single BCC batch (raises on failure).
+
+    Used by the progress-tracked broadcast (`/send-all`) which loops batches
+    itself so it can persist per-batch progress to MongoDB between sends.
+    """
+    recipients = [r.strip() for r in recipients if r and r.strip()]
+    if not recipients:
+        return
+    client = _get_ses_client()
+    client.send_email(
+        Source=_get_sender(),
+        Destination={"BccAddresses": recipients},
+        Message={
+            "Subject": {"Data": subject},
+            "Body": {"Html": {"Data": html}},
+        },
+    )
+
+
 def send_bulk(recipients: Iterable[str], subject: str, html: str) -> dict:
     """
     Send an HTML email to many subscribers using BCC batches.

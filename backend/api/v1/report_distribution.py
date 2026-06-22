@@ -9,6 +9,7 @@ Ported from the standalone biweekly-reporter project (Express/TS) into FastAPI,
 reusing All-Thing-Eye's admin auth (`require_admin`) and MongoDB.
 """
 
+import asyncio
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,7 +25,7 @@ from pydantic import BaseModel, EmailStr
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.integrations.aws_email import send_bulk, send_email
+from src.integrations.aws_email import BATCH_DELAY_SECONDS, BATCH_SIZE, send_batch, send_email
 from src.integrations.aws_s3 import upload_report_html
 from src.report.summary_email import build_summary_email_html, parse_report_metadata
 from src.utils.logger import get_logger
@@ -35,6 +36,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 COLLECTION = "email_subscribers"
+JOBS_COLLECTION = "report_distributions"  # broadcast job/progress + send history
 
 
 def get_mongo():
@@ -50,6 +52,10 @@ async def _subscribers_collection():
     # Idempotent; ensures uniqueness on email
     await col.create_index("email", unique=True)
     return col
+
+
+def _jobs_collection():
+    return get_mongo().async_db[JOBS_COLLECTION]
 
 
 # ---------- Models ----------
@@ -168,6 +174,37 @@ async def send_test(
     return {"success": True, "message": f"Test email sent to {len(recipients)} recipient(s)."}
 
 
+async def _run_broadcast(job_id: ObjectId, recipients: List[str], subject: str, html: str) -> None:
+    """
+    Background broadcast with live progress persisted to MongoDB.
+
+    Sends in BCC batches; after each batch increments the job doc's sent/failed
+    counters so the frontend can poll `/send-all/status/{job_id}` for real-time
+    n/total progress. Runs in the event loop (SES calls offloaded to a thread).
+    """
+    jobs = _jobs_collection()
+    for i in range(0, len(recipients), BATCH_SIZE):
+        batch = recipients[i : i + BATCH_SIZE]
+        try:
+            await run_in_threadpool(send_batch, batch, subject, html)
+            await jobs.update_one({"_id": job_id}, {"$inc": {"sent": len(batch)}})
+        except Exception as e:  # noqa: BLE001 - record and continue to next batch
+            await jobs.update_one(
+                {"_id": job_id},
+                {"$inc": {"failed": len(batch)}, "$push": {"errors": f"batch@{i}: {e}"}},
+            )
+            logger.error(f"❌ Broadcast batch@{i} failed (job {job_id}): {e}")
+        # Delay between batches (skip after the last one) to respect SES rate limit
+        if i + BATCH_SIZE < len(recipients):
+            await asyncio.sleep(BATCH_DELAY_SECONDS)
+
+    await jobs.update_one(
+        {"_id": job_id},
+        {"$set": {"status": "done", "finished_at": datetime.now(timezone.utc)}},
+    )
+    logger.info(f"📨 Broadcast job {job_id} complete.")
+
+
 @router.post("/send-all")
 async def send_all(
     body: SendAllRequest,
@@ -175,8 +212,9 @@ async def send_all(
     _admin: str = Depends(require_admin),
 ) -> Dict[str, Any]:
     """
-    Broadcast the email to all active subscribers. Runs in the background
-    (batched) and returns immediately with the queued recipient count.
+    Broadcast to all active subscribers in the background. Creates a job doc
+    for progress tracking and returns its job_id + total immediately; poll
+    `/send-all/status/{job_id}` for live n/total progress.
     """
     if not body.subject:
         raise HTTPException(status_code=400, detail="Subject is required.")
@@ -190,13 +228,59 @@ async def send_all(
     if not recipients:
         raise HTTPException(status_code=400, detail="No active subscribers.")
 
-    background_tasks.add_task(send_bulk, recipients, body.subject, body.html)
-    logger.info(f"📨 Queued broadcast to {len(recipients)} subscribers by {_admin}")
+    job = {
+        "subject": body.subject,
+        "total": len(recipients),
+        "sent": 0,
+        "failed": 0,
+        "status": "running",
+        "admin": _admin,
+        "errors": [],
+        "started_at": datetime.now(timezone.utc),
+    }
+    result = await _jobs_collection().insert_one(job)
+    job_id = result.inserted_id
+
+    background_tasks.add_task(_run_broadcast, job_id, recipients, body.subject, body.html)
+    logger.info(f"📨 Queued broadcast job {job_id} to {len(recipients)} subscribers by {_admin}")
 
     return {
         "success": True,
-        "queued_count": len(recipients),
-        "message": f"Queued broadcast to {len(recipients)} subscribers.",
+        "job_id": str(job_id),
+        "total": len(recipients),
+        "message": f"Broadcasting to {len(recipients)} subscribers.",
+    }
+
+
+@router.get("/send-all/status/{job_id}")
+async def send_all_status(
+    job_id: str, _admin: str = Depends(require_admin)
+) -> Dict[str, Any]:
+    """Return live progress for a broadcast job (sent/total + percent)."""
+    try:
+        oid = ObjectId(job_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid job id.")
+
+    job = await _jobs_collection().find_one({"_id": oid})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    total = job.get("total", 0)
+    sent = job.get("sent", 0)
+    failed = job.get("failed", 0)
+    processed = sent + failed
+    percent = round(100 * processed / total) if total else 0
+
+    return {
+        "job_id": job_id,
+        "status": job.get("status", "running"),
+        "total": total,
+        "sent": sent,
+        "failed": failed,
+        "percent": percent,
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
     }
 
 

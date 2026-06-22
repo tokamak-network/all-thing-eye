@@ -43,6 +43,14 @@ export default function ReportDistributionPanel() {
   const [sending, setSending] = useState(false);
   const [sendResults, setSendResults] = useState<SendResult[]>([]);
   const [broadcasting, setBroadcasting] = useState(false);
+  const [sendJob, setSendJob] = useState<{
+    jobId: string;
+    total: number;
+    sent: number;
+    failed: number;
+    percent: number;
+    status: string;
+  } | null>(null);
 
   // Subscribers
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
@@ -54,6 +62,37 @@ export default function ReportDistributionPanel() {
     const session = getAuthSession();
     setIsAdminUser(isAdmin(session?.address));
   }, []);
+
+  // Poll broadcast progress while a job is running
+  useEffect(() => {
+    if (!sendJob || sendJob.status !== "running") return;
+    const jobId = sendJob.jobId;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const s = await api.getReportSendStatus(jobId);
+        if (cancelled) return;
+        setSendJob((prev) =>
+          prev && prev.jobId === jobId
+            ? { ...prev, sent: s.sent, failed: s.failed, total: s.total, percent: s.percent, status: s.status }
+            : prev
+        );
+        if (s.status !== "running") {
+          setBroadcasting(false);
+          setStatus({
+            message: `발송 완료: ${s.sent}/${s.total} 성공${s.failed ? `, ${s.failed} 실패` : ""}`,
+            type: s.failed ? "error" : "success",
+          });
+        }
+      } catch {
+        /* transient error — keep polling */
+      }
+    }, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [sendJob?.jobId, sendJob?.status]);
 
   // ----- File handling -----
   const handleFile = useCallback((file: File) => {
@@ -164,20 +203,25 @@ export default function ReportDistributionPanel() {
     const count = subscriberCount ?? 0;
     if (!window.confirm(`활성 구독자 ${count}명에게 발송하시겠습니까?`)) return;
     setBroadcasting(true);
-    setStatus({ message: "전체 발송 대기열에 추가 중...", type: "info" });
+    setSendJob(null);
+    setStatus({ message: "전체 발송을 시작합니다...", type: "info" });
     try {
       const data = await api.sendReportEmailToAll(subject, emailHtml);
-      setStatus({
-        message: data.message || `${data.queued_count}명에게 발송 대기열 등록됨.`,
-        type: "success",
+      // 폴링 effect가 진행률을 갱신한다
+      setSendJob({
+        jobId: data.job_id,
+        total: data.total,
+        sent: 0,
+        failed: 0,
+        percent: 0,
+        status: "running",
       });
     } catch (err: any) {
+      setBroadcasting(false);
       setStatus({
         message: `전체 발송 실패: ${err.response?.data?.error || err.message}`,
         type: "error",
       });
-    } finally {
-      setBroadcasting(false);
     }
   };
 
@@ -343,19 +387,55 @@ export default function ReportDistributionPanel() {
             </span>
             명
           </p>
-          {isAdminUser ? (
-            <button
-              onClick={handleSendAll}
-              disabled={!emailHtml || broadcasting}
-              className="w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:bg-gray-300"
-            >
-              {broadcasting ? "발송 중..." : "전체 구독자에게 발송"}
-            </button>
-          ) : (
-            <p className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-400">
-              전체 발송은 관리자만 가능합니다.
-            </p>
+          {sendJob && (
+            <div className="mb-3">
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span
+                  className={
+                    sendJob.status === "running" ? "text-blue-600" : "text-green-600"
+                  }
+                >
+                  {sendJob.status === "running" ? "발송 중…" : "발송 완료"}
+                </span>
+                <span className="font-semibold text-gray-800">
+                  {sendJob.sent.toLocaleString()}/{sendJob.total.toLocaleString()} (
+                  {sendJob.percent}%)
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded bg-gray-100">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    sendJob.status === "running" ? "bg-blue-500" : "bg-green-500"
+                  }`}
+                  style={{ width: `${sendJob.percent}%` }}
+                />
+              </div>
+              {sendJob.failed > 0 && (
+                <p className="mt-1 text-[10px] text-red-500">
+                  실패 {sendJob.failed.toLocaleString()}건
+                </p>
+              )}
+            </div>
           )}
+          {isAdminUser
+            ? (!sendJob || sendJob.status !== "running") && (
+                <button
+                  onClick={handleSendAll}
+                  disabled={!emailHtml || broadcasting}
+                  className="w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:bg-gray-300"
+                >
+                  {broadcasting
+                    ? "시작 중..."
+                    : sendJob
+                    ? "다시 발송"
+                    : "전체 구독자에게 발송"}
+                </button>
+              )
+            : !sendJob && (
+                <p className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-400">
+                  전체 발송은 관리자만 가능합니다.
+                </p>
+              )}
         </div>
 
         {/* Subscriber management */}

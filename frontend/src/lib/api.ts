@@ -1194,12 +1194,35 @@ class ApiClient {
 
   /**
    * Broadcast the email to all active subscribers (runs in background).
+   * Returns a job_id to poll for live progress.
    */
-  async sendReportEmailToAll(subject: string, html: string) {
+  async sendReportEmailToAll(
+    subject: string,
+    html: string
+  ): Promise<{ success: boolean; job_id: string; total: number; message?: string }> {
     const response = await this.client.post("/report-distribution/send-all", {
       subject,
       html,
     });
+    return response.data;
+  }
+
+  /**
+   * Poll live progress for a broadcast job (sent/total + percent).
+   */
+  async getReportSendStatus(jobId: string): Promise<{
+    job_id: string;
+    status: string;
+    total: number;
+    sent: number;
+    failed: number;
+    percent: number;
+    started_at?: string;
+    finished_at?: string;
+  }> {
+    const response = await this.client.get(
+      `/report-distribution/send-all/status/${jobId}`
+    );
     return response.data;
   }
 
